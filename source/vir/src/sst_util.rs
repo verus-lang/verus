@@ -11,9 +11,9 @@ use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{
     ArithOp, BinaryOp, BndX, CallFun, Exp, ExpX, Exps, FuncCheckSst, FunctionSst, InternalFun,
-    LocalDeclKind, Stm, StmX, Trigs, UniqueIdent,
+    LocalDeclKind, Stm, StmX, UniqueIdent,
 };
-use crate::sst_visitor::{NoScoper, Visitor, Walk};
+use crate::sst_visitor::{NoScoper, Visitor, VisitorScopeMap, Walk};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -205,123 +205,11 @@ impl FreshNameGenerator {
     }
 }
 
-fn rebind_binders<A: Clone>(
-    bs: &VarBinders<A>,
-    avoid_set: &HashSet<VarIdent>,
-    names: &mut FreshNameGenerator,
-    renames: &mut HashMap<VarIdent, VarIdent>,
-) -> VarBinders<A> {
-    let mut binders: Vec<VarBinder<A>> = Vec::new();
-    for b in bs.iter() {
-        if avoid_set.contains(&b.name) {
-            let fresh = names.get_fresh(&b.name);
-            renames.insert(b.name.clone(), fresh.clone());
-            binders.push(Arc::new(VarBinderX { name: fresh, a: b.a.clone() }));
-        } else {
-            // b shadows any outer renaming of the same name
-            renames.remove(&b.name);
-            binders.push(b.clone());
-        }
-    }
-    Arc::new(binders)
-}
-
-fn rebind_trigs(
-    ts: &Trigs,
-    avoid_set: &HashSet<VarIdent>,
-    names: &mut FreshNameGenerator,
-    renames: &HashMap<VarIdent, VarIdent>,
-) -> Trigs {
-    let trigs = ts
-        .iter()
-        .map(|t| Arc::new(t.iter().map(|e| rebind_rec(e, avoid_set, names, renames)).collect()));
-    Arc::new(trigs.collect())
-}
-
-fn rebind_rec(
-    exp: &Exp,
-    avoid_set: &HashSet<VarIdent>,
-    names: &mut FreshNameGenerator,
-    renames: &HashMap<VarIdent, VarIdent>,
-) -> Exp {
-    let mk_exp = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
-    match &exp.x {
-        ExpX::Var(x) => match renames.get(x) {
-            Some(y) => mk_exp(ExpX::Var(y.clone())),
-            None => exp.clone(),
-        },
-        ExpX::VarLoc(x) => match renames.get(x) {
-            Some(y) => mk_exp(ExpX::VarLoc(y.clone())),
-            None => exp.clone(),
-        },
-        ExpX::VarAt(x, a) => match renames.get(x) {
-            Some(y) => mk_exp(ExpX::VarAt(y.clone(), *a)),
-            None => exp.clone(),
-        },
-        ExpX::Old(_, x) => {
-            assert!(!renames.contains_key(x), "cannot rename bound variable in Old");
-            exp.clone()
-        }
-        ExpX::Bind(bnd, body) => {
-            let mut inner = renames.clone();
-            let bndx = match &bnd.x {
-                BndX::Let(bs) => {
-                    // the right-hand sides are evaluated in the outer scope
-                    let bs: Vec<VarBinder<Exp>> = bs
-                        .iter()
-                        .map(|b| b.new_a(rebind_rec(&b.a, avoid_set, names, renames)))
-                        .collect();
-                    BndX::Let(rebind_binders(&Arc::new(bs), avoid_set, names, &mut inner))
-                }
-                BndX::Quant(quant, bs, ts, ab) => {
-                    let bs = rebind_binders(bs, avoid_set, names, &mut inner);
-                    let ts = rebind_trigs(ts, avoid_set, names, &inner);
-                    BndX::Quant(*quant, bs, ts, ab.clone())
-                }
-                BndX::Lambda(bs, ts) => {
-                    let bs = rebind_binders(bs, avoid_set, names, &mut inner);
-                    BndX::Lambda(bs, rebind_trigs(ts, avoid_set, names, &inner))
-                }
-                BndX::Choose(bs, ts, cond) => {
-                    let bs = rebind_binders(bs, avoid_set, names, &mut inner);
-                    let ts = rebind_trigs(ts, avoid_set, names, &inner);
-                    let cond = rebind_rec(cond, avoid_set, names, &inner);
-                    BndX::Choose(bs, ts, cond)
-                }
-            };
-            let bnd = Spanned::new(bnd.span.clone(), bndx);
-            let body = rebind_rec(body, avoid_set, names, &inner);
-            mk_exp(ExpX::Bind(bnd, body))
-        }
-        ExpX::Interp(_) => {
-            panic!("Found an interpreter expression {:?} outside the interpreter", exp)
-        }
-        ExpX::Const(..)
-        | ExpX::StaticVar(..)
-        | ExpX::Loc(..)
-        | ExpX::Call(..)
-        | ExpX::CallLambda(..)
-        | ExpX::Ctor(..)
-        | ExpX::NullaryOpr(..)
-        | ExpX::Unary(..)
-        | ExpX::UnaryOpr(..)
-        | ExpX::Binary(..)
-        | ExpX::BinaryOpr(..)
-        | ExpX::If(..)
-        | ExpX::WithTriggers(..)
-        | ExpX::ExecFnByName(..)
-        | ExpX::ArrayLiteral(..)
-        | ExpX::FuelConst(..) => {
-            crate::sst_visitor::map_shallow_exp(exp, names, &|_, t| Ok(t.clone()), &|names, e| {
-                Ok(rebind_rec(e, avoid_set, names, renames))
-            })
-            .expect("map_shallow_exp for rebind_rec")
-        }
-    }
-}
-
 /// Rename every binder in e1 whose name is in avoid_set to a fresh name
 /// (and rename the corresponding bound occurrences).
+/// Every binder named x (for x in avoid_set) is renamed to the same fresh name f(x).
+/// Since f(x) occurs nowhere else, this preserves the binding structure of e1.
+/// Free occurrences of x are left unchanged.
 pub(crate) fn rebind_to_avoid(
     e1: &Exp,
     avoid_set: &HashSet<VarIdent>,
@@ -330,114 +218,194 @@ pub(crate) fn rebind_to_avoid(
     if avoid_set.is_empty() {
         return e1.clone();
     }
-    rebind_rec(e1, avoid_set, names, &HashMap::new())
+    struct Env<'a> {
+        names: &'a mut FreshNameGenerator,
+        renames: HashMap<VarIdent, VarIdent>,
+    }
+    impl<'a> Env<'a> {
+        fn rename(&mut self, x: &VarIdent) -> VarIdent {
+            let names = &mut self.names;
+            self.renames.entry(x.clone()).or_insert_with(|| names.get_fresh(x)).clone()
+        }
+    }
+    // Is x a bound occurrence of a variable that must be renamed?
+    let must_rename = |x: &VarIdent, scope_map: &VisitorScopeMap| {
+        avoid_set.contains(x) && scope_map.contains_key(x)
+    };
+    fn rename_binders<A: Clone>(
+        bs: &VarBinders<A>,
+        avoid_set: &HashSet<VarIdent>,
+        env: &mut Env,
+    ) -> VarBinders<A> {
+        let rename = |b: &VarBinder<A>| {
+            if avoid_set.contains(&b.name) {
+                Arc::new(VarBinderX { name: env.rename(&b.name), a: b.a.clone() })
+            } else {
+                b.clone()
+            }
+        };
+        Arc::new(bs.iter().map(rename).collect())
+    }
+    let mut fe = |e: &Exp, env: &mut Env, scope_map: &mut VisitorScopeMap| -> Result<Exp, ()> {
+        let mk_exp = |x: ExpX| SpannedTyped::new(&e.span, &e.typ, x);
+        match &e.x {
+            ExpX::Var(x) if must_rename(x, scope_map) => Ok(mk_exp(ExpX::Var(env.rename(x)))),
+            ExpX::VarLoc(x) if must_rename(x, scope_map) => Ok(mk_exp(ExpX::VarLoc(env.rename(x)))),
+            ExpX::VarAt(x, a) if must_rename(x, scope_map) => {
+                Ok(mk_exp(ExpX::VarAt(env.rename(x), *a)))
+            }
+            ExpX::Old(_, x) if must_rename(x, scope_map) => {
+                panic!("cannot rename bound variable in Old")
+            }
+            ExpX::Bind(bnd, body) => {
+                let bndx = match &bnd.x {
+                    BndX::Let(bs) => BndX::Let(rename_binders(bs, avoid_set, env)),
+                    BndX::Quant(quant, bs, ts, ab) => BndX::Quant(
+                        *quant,
+                        rename_binders(bs, avoid_set, env),
+                        ts.clone(),
+                        ab.clone(),
+                    ),
+                    BndX::Lambda(bs, ts) => {
+                        BndX::Lambda(rename_binders(bs, avoid_set, env), ts.clone())
+                    }
+                    BndX::Choose(bs, ts, cond) => {
+                        BndX::Choose(rename_binders(bs, avoid_set, env), ts.clone(), cond.clone())
+                    }
+                };
+                let bnd = Spanned::new(bnd.span.clone(), bndx);
+                Ok(mk_exp(ExpX::Bind(bnd, body.clone())))
+            }
+            ExpX::Interp(_) => {
+                panic!("Found an interpreter expression {:?} outside the interpreter", e)
+            }
+            ExpX::Var(..)
+            | ExpX::VarLoc(..)
+            | ExpX::VarAt(..)
+            | ExpX::Old(..)
+            | ExpX::Const(..)
+            | ExpX::StaticVar(..)
+            | ExpX::Loc(..)
+            | ExpX::Call(..)
+            | ExpX::CallLambda(..)
+            | ExpX::Ctor(..)
+            | ExpX::NullaryOpr(..)
+            | ExpX::Unary(..)
+            | ExpX::UnaryOpr(..)
+            | ExpX::Binary(..)
+            | ExpX::BinaryOpr(..)
+            | ExpX::If(..)
+            | ExpX::WithTriggers(..)
+            | ExpX::ExecFnByName(..)
+            | ExpX::ArrayLiteral(..)
+            | ExpX::FuelConst(..) => Ok(e.clone()),
+        }
+    };
+    let mut ft =
+        |t: &Typ, _: &mut Env, _: &mut VisitorScopeMap| -> Result<Typ, ()> { Ok(t.clone()) };
+    let mut env = Env { names, renames: HashMap::new() };
+    crate::sst_visitor::exp_typ_visitor_map(
+        e1,
+        &mut VisitorScopeMap::new(),
+        &mut env,
+        &mut fe,
+        &mut ft,
+    )
+    .expect("rebind_to_avoid")
 }
 
 /// Substitution that does NOT avoid capture.
 /// Callers must ensure that no binder in exp captures a free variable of substs.
+/// (Variables shadowed by binders in exp are not substituted.)
 fn subst_exp_no_capture_check(
     typ_substs: &HashMap<Ident, Typ>,
     substs: &HashMap<UniqueIdent, Exp>,
     allow_unfinalized: bool,
     exp: &Exp,
 ) -> Exp {
-    let rec = |substs: &HashMap<UniqueIdent, Exp>, e: &Exp| {
-        subst_exp_no_capture_check(typ_substs, substs, allow_unfinalized, e)
+    // Returns the substitution for x, unless x is shadowed by an enclosing binder
+    let get_subst = |x: &UniqueIdent, scope_map: &VisitorScopeMap| {
+        if scope_map.contains_key(x) { None } else { substs.get(x) }
     };
-    let ft = |t: &Typ| subst_typ(typ_substs, t);
-    let typ = ft(&exp.typ);
-    let mk_exp = |e: ExpX| SpannedTyped::new(&exp.span, &typ, e);
-    let ftrigs = |substs: &HashMap<UniqueIdent, Exp>, ts: &Trigs| -> Trigs {
-        Arc::new(ts.iter().map(|t| Arc::new(t.iter().map(|e| rec(substs, e)).collect())).collect())
-    };
-    let fbinders = |bs: &VarBinders<Typ>| -> VarBinders<Typ> {
-        Arc::new(bs.iter().map(|b| b.new_a(ft(&b.a))).collect())
-    };
-    // Remove the substitutions for variables shadowed by bs
-    fn shadow<'a, A: Clone>(
-        substs: &'a HashMap<UniqueIdent, Exp>,
-        owned: &'a mut Option<HashMap<UniqueIdent, Exp>>,
-        bs: &VarBinders<A>,
-    ) -> &'a HashMap<UniqueIdent, Exp> {
-        if bs.iter().any(|b| substs.contains_key(&b.name)) {
-            let mut s = substs.clone();
-            for b in bs.iter() {
-                s.remove(&b.name);
+    let mut fe = |e: &Exp, _: &mut (), scope_map: &mut VisitorScopeMap| -> Result<Exp, ()> {
+        match &e.x {
+            ExpX::Unary(UnaryOp::MustBeFinalized, _) if !allow_unfinalized => {
+                // Var won't match binders if we're not finalized
+                // (special case allow_unfinalized = true for type-only substitution)
+                panic!("MustBeFinalized")
             }
-            *owned = Some(s);
-            owned.as_ref().unwrap()
-        } else {
-            substs
+            ExpX::Var(x) => match get_subst(x, scope_map) {
+                Some(v) => Ok(v.clone()),
+                None => Ok(e.clone()),
+            },
+            ExpX::VarLoc(x) => match get_subst(x, scope_map) {
+                Some(_) => panic!("cannot substitute for VarLoc"),
+                None => Ok(e.clone()),
+            },
+            ExpX::VarAt(x, _) => match get_subst(x, scope_map) {
+                Some(_) => panic!("cannot substitute for VarAt"),
+                None => Ok(e.clone()),
+            },
+            ExpX::Interp(_) => {
+                panic!("Found an interpreter expression {:?} outside the interpreter", e)
+            }
+            ExpX::Const(..)
+            | ExpX::StaticVar(..)
+            | ExpX::Loc(..)
+            | ExpX::Old(..)
+            | ExpX::Call(..)
+            | ExpX::CallLambda(..)
+            | ExpX::Ctor(..)
+            | ExpX::NullaryOpr(..)
+            | ExpX::Unary(..)
+            | ExpX::UnaryOpr(..)
+            | ExpX::Binary(..)
+            | ExpX::BinaryOpr(..)
+            | ExpX::If(..)
+            | ExpX::WithTriggers(..)
+            | ExpX::Bind(..)
+            | ExpX::ExecFnByName(..)
+            | ExpX::ArrayLiteral(..)
+            | ExpX::FuelConst(..) => Ok(e.clone()),
         }
-    }
-    match &exp.x {
-        ExpX::Unary(UnaryOp::MustBeFinalized, _) if !allow_unfinalized => {
-            // Var won't match binders if we're not finalized
-            // (special case allow_unfinalized = true for type-only substitution)
-            panic!("MustBeFinalized")
+    };
+    // Children have already been mapped bottom-up, so only replace TypParam leaves
+    let mut ft = |t: &Typ, _: &mut (), _: &mut VisitorScopeMap| -> Result<Typ, ()> {
+        match &**t {
+            TypX::TypParam(x) => match typ_substs.get(x) {
+                Some(t2) => Ok(t2.clone()),
+                None => Ok(t.clone()),
+            },
+            TypX::Bool { .. }
+            | TypX::Int { .. }
+            | TypX::Real { .. }
+            | TypX::Float { .. }
+            | TypX::SpecFn { .. }
+            | TypX::AnonymousClosure { .. }
+            | TypX::FnDef { .. }
+            | TypX::Datatype { .. }
+            | TypX::Dyn { .. }
+            | TypX::Opaque { .. }
+            | TypX::Primitive { .. }
+            | TypX::Decorate { .. }
+            | TypX::Boxed { .. }
+            | TypX::Projection { .. }
+            | TypX::PointeeMetadata { .. }
+            | TypX::TypeId { .. }
+            | TypX::ConstInt { .. }
+            | TypX::ConstBool { .. }
+            | TypX::Air { .. }
+            | TypX::MutRef { .. } => Ok(t.clone()),
         }
-        ExpX::Var(x) => match substs.get(x) {
-            None => mk_exp(ExpX::Var(x.clone())),
-            Some(e) => e.clone(),
-        },
-        ExpX::VarLoc(x) => match substs.get(x) {
-            None => mk_exp(ExpX::VarLoc(x.clone())),
-            Some(_) => panic!("cannot substitute for VarLoc"),
-        },
-        ExpX::VarAt(x, a) => match substs.get(x) {
-            None => mk_exp(ExpX::VarAt(x.clone(), *a)),
-            Some(_) => panic!("cannot substitute for VarAt"),
-        },
-        ExpX::Bind(bnd, body) => {
-            let mut owned = None;
-            let (bndx, inner) = match &bnd.x {
-                BndX::Let(bs) => {
-                    // the right-hand sides are evaluated in the outer scope
-                    let new_bs = Arc::new(bs.iter().map(|b| b.new_a(rec(substs, &b.a))).collect());
-                    (BndX::Let(new_bs), shadow(substs, &mut owned, bs))
-                }
-                BndX::Quant(quant, bs, ts, ab) => {
-                    let inner = shadow(substs, &mut owned, bs);
-                    (BndX::Quant(*quant, fbinders(bs), ftrigs(inner, ts), ab.clone()), inner)
-                }
-                BndX::Lambda(bs, ts) => {
-                    let inner = shadow(substs, &mut owned, bs);
-                    (BndX::Lambda(fbinders(bs), ftrigs(inner, ts)), inner)
-                }
-                BndX::Choose(bs, ts, cond) => {
-                    let inner = shadow(substs, &mut owned, bs);
-                    (BndX::Choose(fbinders(bs), ftrigs(inner, ts), rec(inner, cond)), inner)
-                }
-            };
-            let bnd = Spanned::new(bnd.span.clone(), bndx);
-            mk_exp(ExpX::Bind(bnd, rec(inner, body)))
-        }
-        ExpX::Interp(_) => {
-            panic!("Found an interpreter expression {:?} outside the interpreter", exp)
-        }
-        ExpX::Const(..)
-        | ExpX::Old(..)
-        | ExpX::StaticVar(..)
-        | ExpX::Loc(..)
-        | ExpX::Call(..)
-        | ExpX::CallLambda(..)
-        | ExpX::Ctor(..)
-        | ExpX::NullaryOpr(..)
-        | ExpX::Unary(..)
-        | ExpX::UnaryOpr(..)
-        | ExpX::Binary(..)
-        | ExpX::BinaryOpr(..)
-        | ExpX::If(..)
-        | ExpX::WithTriggers(..)
-        | ExpX::ExecFnByName(..)
-        | ExpX::ArrayLiteral(..)
-        | ExpX::FuelConst(..) => {
-            crate::sst_visitor::map_shallow_exp(exp, &mut (), &|_, t| Ok(ft(t)), &|_, e| {
-                Ok(rec(substs, e))
-            })
-            .expect("map_shallow_exp for subst_exp")
-        }
-    }
+    };
+    crate::sst_visitor::exp_typ_visitor_map(
+        exp,
+        &mut VisitorScopeMap::new(),
+        &mut (),
+        &mut fe,
+        &mut ft,
+    )
+    .expect("subst_exp_no_capture_check")
 }
 
 /// Capture-avoiding substitution of types and variables in exp
