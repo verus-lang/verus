@@ -140,7 +140,7 @@ pub fn subst_typ_for_datatype(
 }
 
 /// Generates variable names that are guaranteed not to collide with any name
-/// (free or bound) in the expressions passed to `avoid_names_in_expr`.
+/// (free or bound) in the expressions passed to `avoid_names_in_exp`.
 pub(crate) struct FreshNameGenerator {
     used: HashSet<VarIdent>,
     next: u64,
@@ -152,7 +152,7 @@ impl FreshNameGenerator {
     }
 
     /// Record every variable name that is used or bound anywhere in `exp`
-    pub(crate) fn avoid_names_in_expr(&mut self, exp: &Exp) {
+    pub(crate) fn avoid_names_in_exp(&mut self, exp: &Exp) {
         let used = &mut self.used;
         crate::sst_visitor::exp_visitor_dfs::<(), _>(
             exp,
@@ -168,28 +168,42 @@ impl FreshNameGenerator {
                             used.extend(bs.iter().map(|b| b.name.clone()))
                         }
                     },
-                    _ => {}
+                    ExpX::Const(..)
+                    | ExpX::StaticVar(..)
+                    | ExpX::Loc(..)
+                    | ExpX::Call(..)
+                    | ExpX::CallLambda(..)
+                    | ExpX::Ctor(..)
+                    | ExpX::NullaryOpr(..)
+                    | ExpX::Unary(..)
+                    | ExpX::UnaryOpr(..)
+                    | ExpX::Binary(..)
+                    | ExpX::BinaryOpr(..)
+                    | ExpX::If(..)
+                    | ExpX::WithTriggers(..)
+                    | ExpX::ExecFnByName(..)
+                    | ExpX::ArrayLiteral(..)
+                    | ExpX::Interp(..)
+                    | ExpX::FuelConst(..) => {}
                 }
                 crate::sst_visitor::VisitorControlFlow::Recurse
             },
         );
     }
 
-    /// Return a name not recorded by avoid_names_in_expr and not returned by a previous get_fresh
-    pub(crate) fn get_fresh(&mut self) -> VarIdent {
+    /// Return a name not recorded by avoid_names_in_exp and not returned by a previous get_fresh.
+    /// The new name keeps the identifier part of x; the VirSubst disambiguator makes it fresh.
+    pub(crate) fn get_fresh(&mut self, x: &VarIdent) -> VarIdent {
         loop {
             let n = self.next;
             self.next += 1;
-            let x =
-                VarIdent(Arc::new(SUBST_FRESH_NAME.to_string()), VarIdentDisambiguate::VirSubst(n));
-            if self.used.insert(x.clone()) {
-                return x;
+            let y = VarIdent(x.0.clone(), VarIdentDisambiguate::VirSubst(n));
+            if self.used.insert(y.clone()) {
+                return y;
             }
         }
     }
 }
-
-const SUBST_FRESH_NAME: &str = "subst%";
 
 fn rebind_binders<A: Clone>(
     bs: &VarBinders<A>,
@@ -200,7 +214,7 @@ fn rebind_binders<A: Clone>(
     let mut binders: Vec<VarBinder<A>> = Vec::new();
     for b in bs.iter() {
         if avoid_set.contains(&b.name) {
-            let fresh = names.get_fresh();
+            let fresh = names.get_fresh(&b.name);
             renames.insert(b.name.clone(), fresh.clone());
             binders.push(Arc::new(VarBinderX { name: fresh, a: b.a.clone() }));
         } else {
@@ -282,10 +296,27 @@ fn rebind_rec(
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
-        _ => crate::sst_visitor::map_shallow_exp(exp, names, &|_, t| Ok(t.clone()), &|names, e| {
-            Ok(rebind_rec(e, avoid_set, names, renames))
-        })
-        .expect("map_shallow_exp for rebind_rec"),
+        ExpX::Const(..)
+        | ExpX::StaticVar(..)
+        | ExpX::Loc(..)
+        | ExpX::Call(..)
+        | ExpX::CallLambda(..)
+        | ExpX::Ctor(..)
+        | ExpX::NullaryOpr(..)
+        | ExpX::Unary(..)
+        | ExpX::UnaryOpr(..)
+        | ExpX::Binary(..)
+        | ExpX::BinaryOpr(..)
+        | ExpX::If(..)
+        | ExpX::WithTriggers(..)
+        | ExpX::ExecFnByName(..)
+        | ExpX::ArrayLiteral(..)
+        | ExpX::FuelConst(..) => {
+            crate::sst_visitor::map_shallow_exp(exp, names, &|_, t| Ok(t.clone()), &|names, e| {
+                Ok(rebind_rec(e, avoid_set, names, renames))
+            })
+            .expect("map_shallow_exp for rebind_rec")
+        }
     }
 }
 
@@ -384,10 +415,28 @@ fn subst_exp_no_capture_check(
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
-        _ => crate::sst_visitor::map_shallow_exp(exp, &mut (), &|_, t| Ok(ft(t)), &|_, e| {
-            Ok(rec(substs, e))
-        })
-        .expect("map_shallow_exp for subst_exp"),
+        ExpX::Const(..)
+        | ExpX::Old(..)
+        | ExpX::StaticVar(..)
+        | ExpX::Loc(..)
+        | ExpX::Call(..)
+        | ExpX::CallLambda(..)
+        | ExpX::Ctor(..)
+        | ExpX::NullaryOpr(..)
+        | ExpX::Unary(..)
+        | ExpX::UnaryOpr(..)
+        | ExpX::Binary(..)
+        | ExpX::BinaryOpr(..)
+        | ExpX::If(..)
+        | ExpX::WithTriggers(..)
+        | ExpX::ExecFnByName(..)
+        | ExpX::ArrayLiteral(..)
+        | ExpX::FuelConst(..) => {
+            crate::sst_visitor::map_shallow_exp(exp, &mut (), &|_, t| Ok(ft(t)), &|_, e| {
+                Ok(rec(substs, e))
+            })
+            .expect("map_shallow_exp for subst_exp")
+        }
     }
 }
 
@@ -413,9 +462,9 @@ pub(crate) fn subst_exp(
         exp.clone()
     } else {
         let mut names = FreshNameGenerator::new();
-        names.avoid_names_in_expr(exp);
+        names.avoid_names_in_exp(exp);
         for e in substs.values() {
-            names.avoid_names_in_expr(e);
+            names.avoid_names_in_exp(e);
         }
         rebind_to_avoid(exp, &free_vars, &mut names)
     };
