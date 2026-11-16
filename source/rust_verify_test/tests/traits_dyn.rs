@@ -778,3 +778,14 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] dyn_cycle_supertrait verus_code! {
+        use vstd::prelude::*;
+        trait U {
+            spec fn f(&self, s: S) -> bool;
+        }
+        trait T: U {}
+        struct S(Box<dyn T>);
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
