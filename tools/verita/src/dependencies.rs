@@ -84,19 +84,29 @@ fn visit_dependencies(
     table: &mut dyn toml_edit::TableLike,
     visit: &mut impl FnMut(&str, &mut toml_edit::Item),
 ) {
-    visit_dependency_sections(table, visit);
+    // Inherited entries are handled at their workspace declaration.
+    let mut visit_declared = |name: &str, dep: &mut toml_edit::Item| {
+        if dep.get("workspace").and_then(|w| w.as_bool()) != Some(true) {
+            visit(name, dep);
+        }
+    };
+    visit_dependency_sections(table, &mut visit_declared);
     if let Some(workspace) = table
         .get_mut("workspace")
         .and_then(|w| w.as_table_like_mut())
     {
-        visit_dependency_sections(workspace, visit);
+        visit_dependency_sections(workspace, &mut visit_declared);
     }
+}
+
+fn dependency_package_name<'a>(name: &'a str, dep: &'a toml_edit::Item) -> &'a str {
+    dep.get("package").and_then(|p| p.as_str()).unwrap_or(name)
 }
 
 fn collect_dep_names(manifest: &mut toml_edit::DocumentMut) -> HashSet<String> {
     let mut names = HashSet::new();
-    visit_dependencies(manifest.as_table_mut(), &mut |name, _| {
-        names.insert(name.to_string());
+    visit_dependencies(manifest.as_table_mut(), &mut |name, dep| {
+        names.insert(dependency_package_name(name, dep).to_string());
     });
     names
 }
@@ -120,13 +130,15 @@ fn expand_workspace_paths(
     Ok(paths)
 }
 
-/// Discover members without Cargo metadata, which cannot load broken path dependencies.
+/// Discover members and reachable in-repo dependencies without loading Cargo metadata.
 fn collect_workspace_manifests(
     workspace_root: &Path,
     target_dir: &Path,
+    repo_root: &Path,
     verus_crate_map: &HashMap<String, PathBuf>,
 ) -> anyhow::Result<Vec<PathBuf>> {
     let workspace_root = dunce::canonicalize(workspace_root)?;
+    let repo_root = dunce::canonicalize(repo_root)?;
     let root_manifest = std::fs::read_to_string(workspace_root.join("Cargo.toml"))?
         .parse::<toml_edit::DocumentMut>()?;
     let workspace = root_manifest.get("workspace");
@@ -141,6 +153,7 @@ fn collect_workspace_manifests(
     pending.extend(
         expand_workspace_paths(&workspace_root, workspace.and_then(|w| w.get("members")))?
             .into_iter()
+            .filter(|path| !excluded.contains(path))
             .map(|path| path.join("Cargo.toml")),
     );
     let mut manifests = BTreeSet::new();
@@ -150,16 +163,12 @@ fn collect_workspace_manifests(
             Err(_) => continue,
         };
         let dir = path.parent().expect("manifest must have a parent");
-        if excluded.contains(dir) || !manifests.insert(path.clone()) {
+        if !path.starts_with(&repo_root) || !manifests.insert(path.clone()) {
             continue;
         }
         let content = std::fs::read_to_string(&path)?;
         let mut manifest = content.parse::<toml_edit::DocumentMut>()?;
         visit_dependency_sections(manifest.as_table_mut(), &mut |name, dep| {
-            // These paths will be redirected, so the old Verus checkout is not a member.
-            if verus_crate_map.contains_key(name) {
-                return;
-            }
             let (dep, base) = if dep.get("workspace").and_then(|w| w.as_bool()) == Some(true) {
                 match workspace
                     .and_then(|w| w.get("dependencies"))
@@ -171,10 +180,13 @@ fn collect_workspace_manifests(
             } else {
                 (&*dep, dir)
             };
+            // These paths will be redirected, so the old Verus checkout must not be loaded.
+            if verus_crate_map.contains_key(dependency_package_name(name, dep)) {
+                return;
+            }
             if let Some(path) = dep.get("path").and_then(|p| p.as_str()) {
                 if let Ok(path) = dunce::canonicalize(base.join(path)) {
-                    // Cargo implicitly includes path dependencies inside the workspace.
-                    if path.starts_with(&workspace_root) {
+                    if path.starts_with(&repo_root) {
                         pending.push(path.join("Cargo.toml"));
                     }
                 }
@@ -286,14 +298,15 @@ fn update_verus_dependencies(
     let mut changed = false;
 
     visit_dependencies(doc.as_table_mut(), &mut |name, dep| {
-        for (crate_name, crate_path) in patches {
-            if name == crate_name {
-                changed |= update_dep_item(
-                    dep,
-                    crate_path,
-                    local_versions.get(crate_name).map(String::as_str),
-                );
-            }
+        if let Some((crate_name, crate_path)) = patches
+            .iter()
+            .find(|(crate_name, _)| dependency_package_name(name, dep) == crate_name)
+        {
+            changed |= update_dep_item(
+                dep,
+                crate_path,
+                local_versions.get(crate_name).map(String::as_str),
+            );
         }
     });
 
@@ -330,7 +343,8 @@ pub fn inject_verus_patches(
 
     let workspace_root = find_workspace_root(target_dir, repo_root);
     let workspace_cargo_toml = workspace_root.join("Cargo.toml");
-    let manifests = collect_workspace_manifests(&workspace_root, target_dir, &verus_crate_map)?;
+    let manifests =
+        collect_workspace_manifests(&workspace_root, target_dir, repo_root, &verus_crate_map)?;
 
     let mut all_dep_names: HashSet<String> = HashSet::new();
     for path in &manifests {
@@ -443,7 +457,7 @@ mod tests {
         verus
     }
 
-    fn assert_local_dependencies(project: &Path, verus: &Path) {
+    fn cargo_metadata(project: &Path) -> serde_json::Value {
         let output = Command::new(env!("CARGO"))
             .args([
                 "metadata",
@@ -460,7 +474,11 @@ mod tests {
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let metadata: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        serde_json::from_slice(&output.stdout).unwrap()
+    }
+
+    fn assert_local_dependencies(project: &Path, verus: &Path) {
+        let metadata = cargo_metadata(project);
         for name in ["vstd", "verus_builtin", "verus_builtin_macros"] {
             let package = metadata["packages"]
                 .as_array()
@@ -845,5 +863,227 @@ unused = { path = "unused" }
             "not a valid manifest\n"
         );
         assert_local_dependencies(&target, &verus);
+    }
+
+    #[test]
+    fn redirects_aliased_verus_packages_without_redirecting_non_verus_aliases() {
+        let temp = TempDir::new("verita-package-aliases").unwrap();
+        let verus = setup_verus(temp.path());
+        let project = temp.path().join("project");
+        fs::create_dir_all(temp.path().join("old/vstd")).unwrap();
+        fs::write(
+            temp.path().join("old/vstd/Cargo.toml"),
+            "invalid manifest\n",
+        )
+        .unwrap();
+        write_crate(
+            &project.join("helper"),
+            "custom-vstd",
+            r#"
+[dependencies]
+std_alias = { package = "vstd", path = "../../old/vstd", version = "^0.2" }
+builtin_alias = { package = "verus_builtin", version = "=0.0.0" }
+macros_alias = { package = "verus_builtin_macros", git = "https://github.com/verus-lang/verus", version = "=0.0.0" }
+"#,
+        );
+        write_crate(
+            &project,
+            "project",
+            r#"
+[dependencies]
+vstd = { package = "custom-vstd", path = "helper", version = "0.1" } # keep
+"#,
+        );
+
+        inject_verus_patches(
+            &project,
+            &project,
+            &verus,
+            "https://github.com/verus-lang/verus",
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(project.join("Cargo.toml")).unwrap();
+        assert!(content.contains(
+            "vstd = { package = \"custom-vstd\", path = \"helper\", version = \"0.1\" } # keep"
+        ));
+        let content = fs::read_to_string(project.join("helper/Cargo.toml")).unwrap();
+        let manifest: toml::Value = toml::from_str(&content).unwrap();
+        for alias in ["std_alias", "builtin_alias", "macros_alias"] {
+            assert_eq!(
+                manifest["dependencies"][alias]["version"].as_str(),
+                Some("=0.1.0")
+            );
+        }
+        assert_local_dependencies(&project, &verus);
+    }
+
+    #[test]
+    fn resolves_inherited_aliases_before_deciding_which_paths_to_follow() {
+        let temp = TempDir::new("verita-workspace-aliases").unwrap();
+        let verus = setup_verus(temp.path());
+        let project = temp.path().join("project");
+        let target = project.join("member");
+        fs::create_dir_all(temp.path().join("old/vstd")).unwrap();
+        fs::write(
+            temp.path().join("old/vstd/Cargo.toml"),
+            "invalid manifest\n",
+        )
+        .unwrap();
+        write_crate(
+            &target,
+            "member",
+            "[dependencies]\nvstd.workspace = true\nstd_alias.workspace = true\n",
+        );
+        let member_content = fs::read_to_string(target.join("Cargo.toml")).unwrap();
+        write_crate(
+            &project.join("helper"),
+            "custom-vstd",
+            r#"
+[dependencies]
+builtin_alias = { package = "verus_builtin", path = "../../missing/builtin" }
+macros_alias = { package = "verus_builtin_macros", path = "../../missing/builtin_macros" }
+"#,
+        );
+        fs::write(
+            project.join("Cargo.toml"),
+            r#"[workspace]
+members = ["member"]
+
+[workspace.dependencies]
+vstd = { package = "custom-vstd", path = "helper", version = "0.1" }
+std_alias = { package = "vstd", path = "../old/vstd", version = "~0.2" }
+"#,
+        )
+        .unwrap();
+
+        inject_verus_patches(
+            &target,
+            &project,
+            &verus,
+            "https://github.com/verus-lang/verus",
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(target.join("Cargo.toml")).unwrap(),
+            member_content
+        );
+        let content = fs::read_to_string(project.join("Cargo.toml")).unwrap();
+        let manifest: toml::Value = toml::from_str(&content).unwrap();
+        assert_eq!(
+            manifest["workspace"]["dependencies"]["vstd"]["path"].as_str(),
+            Some("helper")
+        );
+        assert_eq!(
+            manifest["workspace"]["dependencies"]["vstd"]["version"].as_str(),
+            Some("0.1")
+        );
+        assert_local_dependencies(&target, &verus);
+    }
+
+    #[test]
+    fn leaves_non_verus_workspace_aliases_unchanged() {
+        let temp = TempDir::new("verita-custom-workspace-alias").unwrap();
+        let verus = setup_verus(temp.path());
+        let project = temp.path().join("project");
+        let target = project.join("member");
+        write_crate(&target, "member", "[dependencies]\nvstd.workspace = true\n");
+        write_crate(&project.join("helper"), "custom-vstd", "");
+        let workspace_content = r#"[workspace]
+members = ["member"]
+
+[workspace.dependencies]
+vstd = { package = "custom-vstd", path = "helper" }
+"#;
+        fs::write(project.join("Cargo.toml"), workspace_content).unwrap();
+
+        inject_verus_patches(
+            &target,
+            &project,
+            &verus,
+            "https://github.com/verus-lang/verus",
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(project.join("Cargo.toml")).unwrap(),
+            workspace_content
+        );
+        cargo_metadata(&target);
+    }
+
+    #[test]
+    fn rewrites_reachable_excluded_helpers_but_not_unused_excluded_crates() {
+        for (inherited, outside_workspace) in [(false, false), (true, false), (true, true)] {
+            let temp = TempDir::new("verita-excluded-helpers").unwrap();
+            let verus = setup_verus(temp.path());
+            let project = temp.path().join("project");
+            let workspace = if outside_workspace {
+                project.join("workspace")
+            } else {
+                project.clone()
+            };
+            let target = workspace.join("crates/member");
+            let helper_path = if outside_workspace {
+                "../crates/excluded-helper"
+            } else {
+                "crates/excluded-helper"
+            };
+            let unused_path = if outside_workspace {
+                "../crates/excluded-unused"
+            } else {
+                "crates/excluded-unused"
+            };
+            let dependency = if inherited {
+                "helper.workspace = true"
+            } else {
+                "helper = { path = \"../excluded-helper\" }"
+            };
+            write_crate(
+                &target,
+                "member",
+                &format!("[dependencies]\n{dependency}\n"),
+            );
+            write_crate(
+                &project.join("crates/excluded-helper"),
+                "helper",
+                r#"
+[dependencies]
+vstd = { path = "../../../missing/vstd" }
+verus_builtin = { path = "../../../missing/builtin" }
+
+[build-dependencies]
+verus_builtin_macros = { path = "../../../missing/builtin_macros" }
+"#,
+            );
+            let unused = project.join("crates/excluded-unused/Cargo.toml");
+            fs::create_dir_all(unused.parent().unwrap()).unwrap();
+            fs::write(&unused, "invalid manifest\n").unwrap();
+            fs::write(
+                workspace.join("Cargo.toml"),
+                format!(
+                    r#"[workspace]
+members = ["crates/*"]
+exclude = ["{helper_path}", "{unused_path}"]
+
+[workspace.dependencies]
+helper = {{ path = "{helper_path}" }}
+"#
+                ),
+            )
+            .unwrap();
+
+            inject_verus_patches(
+                &target,
+                &project,
+                &verus,
+                "https://github.com/verus-lang/verus",
+            )
+            .unwrap();
+
+            assert_eq!(fs::read_to_string(&unused).unwrap(), "invalid manifest\n");
+            assert_local_dependencies(&target, &verus);
+        }
     }
 }
