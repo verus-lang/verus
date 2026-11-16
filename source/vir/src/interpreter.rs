@@ -876,6 +876,28 @@ fn eval_array(
         ),
     }
 }
+
+/// A string literal's view is its sequence of chars.
+/// Without this, the literal stays symbolic, and recursive spec functions over its view
+/// (e.g., `encode_utf8` in the spec for `str::len`) unfold forever.
+fn eval_str_view(exp: &Exp, fun: &Fun, typs: &Typs, args: &Exps) -> Option<Exp> {
+    if path_as_vstd_name(&fun.path).as_deref() != Some("view::View::view")
+        || typs.len() != 1
+        || !matches!(&*undecorate_typ(&typs[0]), TypX::Primitive(Primitive::StrSlice, _))
+    {
+        return None;
+    }
+    let ExpX::Const(Constant::StrSlice(s)) = &args.first()?.x else {
+        return None;
+    };
+    let char_typ = Arc::new(TypX::Int(IntRange::Char));
+    let chars = s
+        .chars()
+        .map(|c| SpannedTyped::new(&exp.span, &char_typ, ExpX::Const(Constant::Char(c))))
+        .collect();
+    Some(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Interp(InterpExp::Seq(chars))))
+}
+
 /***********************************************
  * Special handling for interpreting sequences *
  ***********************************************/
@@ -1844,7 +1866,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_args = Arc::new(new_args?);
-            if let Some(array_fn) = is_array_fn(&reduced_fun) {
+            if let Some(e) = eval_str_view(exp, fun, typs, &new_args) {
+                Ok(e)
+            } else if let Some(array_fn) = is_array_fn(&reduced_fun) {
                 eval_array(ctx, state, array_fn, exp, &new_args)
             } else if let Some(seq_fn) = is_sequence_fn(&reduced_fun) {
                 eval_seq(ctx, state, seq_fn, exp, &new_args)
