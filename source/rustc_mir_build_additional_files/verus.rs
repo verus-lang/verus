@@ -172,9 +172,18 @@ static SETUP_CALLBACK: RwLock<Option<SetupCallbackFn>> = RwLock::new(None);
 /// and by `core::mem::zeroed()` otherwise (which should only happen for erroneous code,
 /// for bodies that are erased entirely, and for the tuple of `Ghost`/`Tracked` outputs
 /// of a `proof_with_callee` call, which is zero-sized).
+///
+/// The ghost code criteria are described by the `GhostDetectionCtxt`.
 pub struct FullErasureCtxt {
-    pub erase_call_fns: HashSet<DefId>,
+    pub ghost_detection: Arc<GhostDetectionCtxt>,
     pub proof_with_callee_fn_def_id: DefId,
+}
+
+/// Information used to identify ghost code syntactically (see `FullErasureCtxt`).
+/// This is used by full erasure, and by normal erasure to avoid emitting drops
+/// for ghost code (see `GhostDrops`).
+pub struct GhostDetectionCtxt {
+    pub erase_call_fns: HashSet<DefId>,
     pub ghost_struct_def_id: DefId,
     pub tracked_struct_def_id: DefId,
     pub ghost_assume_new_fn_def_id: DefId,
@@ -376,7 +385,7 @@ pub(crate) struct VerusThirBuildCtxt {
     pub(crate) full_erasure: Option<Arc<FullErasureCtxt>>,
     /// In normal (non-full-erasure) mode, this is used to identify ghost code
     /// (using the same criteria as full erasure) so we can record ghost THIR nodes.
-    ghost_detection: Option<Arc<FullErasureCtxt>>,
+    ghost_detection: Option<Arc<GhostDetectionCtxt>>,
     /// If we are currently mirroring ghost code, the index of the first ExprId created for it
     ghost_expr_start: Option<usize>,
 }
@@ -413,13 +422,17 @@ impl VerusThirBuildCtxt {
 
         let do_time_travel_prevention = verus_aware && ctxt.is_some();
 
-        let ghost_detection = if ctxt.is_some() { get_full_erasure_ctxt() } else { None };
+        let ghost_detection = if ctxt.is_some() {
+            get_full_erasure_ctxt().map(|fe| fe.ghost_detection.clone())
+        } else {
+            None
+        };
         let ghost_drops = match (&ctxt, &ghost_detection) {
-            (Some(ctxt), Some(fe)) => GhostDrops {
+            (Some(ctxt), Some(gd)) => GhostDrops {
                 no_drop_vars: ctxt.no_drop_vars.clone(),
                 fn_local_def_id: Some(fn_local_def_id),
                 ghost_exprs: HashSet::new(),
-                ghost_body: body_is_ghost(tcx, fe, local_def_id),
+                ghost_body: body_is_ghost(tcx, gd, local_def_id),
             },
             _ => GhostDrops::default(),
         };
@@ -2299,7 +2312,7 @@ pub(crate) fn full_erasure_erase_body<'tcx>(
 ) -> Option<ExprId> {
     let fe = cx.verus_ctxt.full_erasure.clone()?;
     let hir_id = cx.tcx.local_def_id_to_hir_id(local_def_id);
-    if !(fe.is_ghost_attrs)(cx.tcx.hir_attrs(hir_id)) {
+    if !(fe.ghost_detection.is_ghost_attrs)(cx.tcx.hir_attrs(hir_id)) {
         return None;
     }
 
@@ -2318,7 +2331,7 @@ pub(crate) fn full_erasure_erase_let<'tcx>(
     stmt: &'tcx hir::Stmt<'tcx>,
 ) -> bool {
     match &cx.verus_ctxt.full_erasure {
-        Some(fe) => (fe.is_ghost_attrs)(cx.tcx.hir_attrs(stmt.hir_id)),
+        Some(fe) => (fe.ghost_detection.is_ghost_attrs)(cx.tcx.hir_attrs(stmt.hir_id)),
         None => false,
     }
 }
@@ -2337,7 +2350,7 @@ pub(crate) fn full_erasure_mirror_expr_pre<'tcx>(
         return Some(full_erasure_proof_with_callee(cx, &fe, expr, verified, compiled));
     }
 
-    if is_ghost_expr(cx.tcx, cx.typeck_results, &fe, expr) {
+    if is_ghost_expr(cx.tcx, cx.typeck_results, &fe.ghost_detection, expr) {
         let ty = cx.typeck_results.expr_ty(expr);
         Some(full_erasure_value_kind(cx, &fe, expr.hir_id, expr.span, ty))
     } else {
@@ -2378,13 +2391,14 @@ fn full_erasure_value_kind<'tcx>(
     span: Span,
     ty: Ty<'tcx>,
 ) -> ExprKind<'tcx> {
+    let gd = &fe.ghost_detection;
     match ty.kind() {
         TyKind::Tuple(tys) if tys.is_empty() => ExprKind::Tuple { fields: Box::new([]) },
-        TyKind::Adt(adt_def, args) if adt_def.did() == fe.ghost_struct_def_id => {
-            mk_call_no_args_kind(cx, hir_id, span, fe.ghost_assume_new_fn_def_id, args)
+        TyKind::Adt(adt_def, args) if adt_def.did() == gd.ghost_struct_def_id => {
+            mk_call_no_args_kind(cx, hir_id, span, gd.ghost_assume_new_fn_def_id, args)
         }
-        TyKind::Adt(adt_def, args) if adt_def.did() == fe.tracked_struct_def_id => {
-            mk_call_no_args_kind(cx, hir_id, span, fe.tracked_assume_new_fn_def_id, args)
+        TyKind::Adt(adt_def, args) if adt_def.did() == gd.tracked_struct_def_id => {
+            mk_call_no_args_kind(cx, hir_id, span, gd.tracked_assume_new_fn_def_id, args)
         }
         _ => {
             let zeroed = cx
@@ -2419,18 +2433,18 @@ fn mk_call_no_args_kind<'tcx>(
 }
 
 /// Is the given expression ghost code, according to the full-erasure criteria?
-/// (See `FullErasureCtxt`.) Note that this only looks at the node itself;
+/// (See `FullErasureCtxt` and `GhostDetectionCtxt`.) Note that this only looks at the node itself;
 /// any subexpression of a ghost expression is also ghost code.
 fn is_ghost_expr<'tcx>(
     tcx: TyCtxt<'tcx>,
     typeck_results: &ty::TypeckResults<'tcx>,
-    fe: &FullErasureCtxt,
+    gd: &GhostDetectionCtxt,
     expr: &'tcx hir::Expr<'tcx>,
 ) -> bool {
-    if (fe.is_ghost_attrs)(tcx.hir_attrs(expr.hir_id)) {
+    if (gd.is_ghost_attrs)(tcx.hir_attrs(expr.hir_id)) {
         return true;
     }
-    matches!(expr_callee(typeck_results, expr), Some(def_id) if fe.erase_call_fns.contains(&def_id))
+    matches!(expr_callee(typeck_results, expr), Some(def_id) if gd.erase_call_fns.contains(&def_id))
 }
 
 /// The function called by the given expression, if it is a call to a known function
@@ -2452,19 +2466,23 @@ fn expr_callee<'tcx>(
 
 /// Is the entire body ghost code? This is true for ghost items (e.g., proof fns)
 /// and for closures that are nested inside ghost code.
-fn body_is_ghost<'tcx>(tcx: TyCtxt<'tcx>, fe: &FullErasureCtxt, local_def_id: LocalDefId) -> bool {
+fn body_is_ghost<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    gd: &GhostDetectionCtxt,
+    local_def_id: LocalDefId,
+) -> bool {
     let hir_id = tcx.local_def_id_to_hir_id(local_def_id);
     let typeck_results = tcx.typeck(local_def_id);
     let nodes = std::iter::once((hir_id, tcx.hir_node(hir_id))).chain(tcx.hir_parent_iter(hir_id));
     for (id, node) in nodes {
         match node {
             hir::Node::Expr(e) => {
-                if is_ghost_expr(tcx, typeck_results, fe, e) {
+                if is_ghost_expr(tcx, typeck_results, gd, e) {
                     return true;
                 }
             }
             hir::Node::LetStmt(_) => {
-                if (fe.is_ghost_attrs)(tcx.hir_attrs(id)) {
+                if (gd.is_ghost_attrs)(tcx.hir_attrs(id)) {
                     return true;
                 }
             }
@@ -2472,7 +2490,7 @@ fn body_is_ghost<'tcx>(tcx: TyCtxt<'tcx>, fe: &FullErasureCtxt, local_def_id: Lo
             | hir::Node::ImplItem(_)
             | hir::Node::TraitItem(_)
             | hir::Node::ForeignItem(_) => {
-                return (fe.is_ghost_attrs)(tcx.hir_attrs(id));
+                return (gd.is_ghost_attrs)(tcx.hir_attrs(id));
             }
             _ => {}
         }
@@ -2489,10 +2507,10 @@ pub(crate) fn ghost_enter_expr<'tcx>(
     if cx.verus_ctxt.ghost_expr_start.is_some() || cx.verus_ctxt.extra_thir.ghost_drops.ghost_body {
         return false;
     }
-    let Some(fe) = &cx.verus_ctxt.ghost_detection else {
+    let Some(gd) = &cx.verus_ctxt.ghost_detection else {
         return false;
     };
-    if is_ghost_expr(cx.tcx, cx.typeck_results, fe, expr) {
+    if is_ghost_expr(cx.tcx, cx.typeck_results, gd, expr) {
         cx.verus_ctxt.ghost_expr_start = Some(cx.thir.exprs.len());
         true
     } else {
@@ -2510,11 +2528,11 @@ pub(crate) fn ghost_enter_stmt<'tcx>(
     if cx.verus_ctxt.ghost_expr_start.is_some() || cx.verus_ctxt.extra_thir.ghost_drops.ghost_body {
         return false;
     }
-    let Some(fe) = &cx.verus_ctxt.ghost_detection else {
+    let Some(gd) = &cx.verus_ctxt.ghost_detection else {
         return false;
     };
     if matches!(stmt.kind, hir::StmtKind::Let(_))
-        && (fe.is_ghost_attrs)(cx.tcx.hir_attrs(stmt.hir_id))
+        && (gd.is_ghost_attrs)(cx.tcx.hir_attrs(stmt.hir_id))
     {
         cx.verus_ctxt.ghost_expr_start = Some(cx.thir.exprs.len());
         true
