@@ -424,3 +424,18 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] structural_eq_default_param_non_structural verus_code! {
+        use vstd::prelude::*;
+
+        struct Custom;
+
+        #[derive(PartialEq, StructuralEq)]
+        struct W<T = Custom> { x: T }
+
+        impl PartialEq for W<Custom> {
+            fn eq(&self, other: &Self) -> bool { true }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound `Custom: verus_builtin::Structural` is not satisfied")
+}
