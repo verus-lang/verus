@@ -1360,6 +1360,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] derive_regression_1575 verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Clone, Copy)]
         enum A { A, }
 

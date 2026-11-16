@@ -306,6 +306,7 @@ fn handle_autospec<'tcx>(
                     create_open_invariant_credit: false,
                     is_async: false,
                     is_drop: false,
+                    has_trivial_clone: false,
                 }),
                 decreases_len: 0,
                 returns: false,
@@ -1604,6 +1605,7 @@ fn make_attributes<'tcx>(
         create_open_invariant_credit: vattrs.create_open_invariant_credit,
         is_async: is_async,
         is_drop: is_drop,
+        has_trivial_clone: false, // set later, see rust_to_vir_impl::set_trivial_clone_attrs
     };
     Ok(Arc::new(fattrs))
 }
