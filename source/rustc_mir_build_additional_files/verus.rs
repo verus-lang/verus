@@ -127,6 +127,10 @@ pub struct VerusErasureCtxt {
 
     pub local_invariant_bodies: HashMap<HirId, LocalInvariantBody>,
 
+    /// Binders of variables that are not exec (i.e., spec or proof).
+    /// The MIR builder does not emit drops for these.
+    pub no_drop_vars: Arc<HashSet<HirId>>,
+
     /// Some DefIds from builtin that we'll need to handle directly
     pub erased_ghost_value_fn_def_id: DefId,
     pub shadow_ghost_value_fn_def_id: DefId,
@@ -321,6 +325,41 @@ pub(crate) struct ExtraThir {
     pub local_invs_for_node: HashMap<ExprId, Vec<LocalInvariantBody>>,
     /// Treat this call as having an inhabited return type (i.e., don't prune the CFG)
     pub force_treat_inhabited: HashSet<ExprId>,
+    /// Drop elision for ghost code (see `GhostDrops`)
+    pub ghost_drops: GhostDrops,
+}
+
+/// Ghost code never runs drop, so the MIR builder should not emit drops for
+/// ghost variables or for temporaries created by ghost code.
+#[derive(Default)]
+pub(crate) struct GhostDrops {
+    /// Binders of non-exec variables (from the VerusErasureCtxt)
+    pub no_drop_vars: Arc<HashSet<HirId>>,
+    /// The enclosing fn (used to map shadow vars to their original vars)
+    pub fn_local_def_id: Option<LocalDefId>,
+    /// THIR nodes that are ghost code
+    pub ghost_exprs: HashSet<ExprId>,
+    /// The entire body is ghost code (e.g., a proof fn, or a closure inside a proof block)
+    pub ghost_body: bool,
+}
+
+impl GhostDrops {
+    pub(crate) fn skip_var_drop(&self, var: LocalVarId) -> bool {
+        if self.ghost_body {
+            return true;
+        }
+        let Some(fn_local_def_id) = self.fn_local_def_id else {
+            return false;
+        };
+        // If this is a shadow var (see verus_time_travel_prevention.rs), it gets the same
+        // treatment as the original var.
+        let var = crate::verus_time_travel_prevention::original_local_var_id(fn_local_def_id, var);
+        self.no_drop_vars.contains(&var.0)
+    }
+
+    pub(crate) fn skip_temp_drop(&self, expr_id: ExprId) -> bool {
+        self.ghost_body || self.ghost_exprs.contains(&expr_id)
+    }
 }
 
 /// Per-body context (i.e., one for each function or closure).
@@ -335,6 +374,11 @@ pub(crate) struct VerusThirBuildCtxt {
     /// If this is set, we are building the THIR in full-erasure mode,
     /// and `ctxt` is always None.
     pub(crate) full_erasure: Option<Arc<FullErasureCtxt>>,
+    /// In normal (non-full-erasure) mode, this is used to identify ghost code
+    /// (using the same criteria as full erasure) so we can record ghost THIR nodes.
+    ghost_detection: Option<Arc<FullErasureCtxt>>,
+    /// If we are currently mirroring ghost code, the index of the first ExprId created for it
+    ghost_expr_start: Option<usize>,
 }
 
 impl VerusThirBuildCtxt {
@@ -353,9 +397,12 @@ impl VerusThirBuildCtxt {
                 extra_thir: ExtraThir {
                     local_invs_for_node: HashMap::new(),
                     force_treat_inhabited: HashSet::new(),
+                    ghost_drops: GhostDrops::default(),
                 },
                 local_def_id: local_def_id,
                 full_erasure,
+                ghost_detection: None,
+                ghost_expr_start: None,
             };
         }
 
@@ -366,6 +413,17 @@ impl VerusThirBuildCtxt {
 
         let do_time_travel_prevention = verus_aware && ctxt.is_some();
 
+        let ghost_detection = if ctxt.is_some() { get_full_erasure_ctxt() } else { None };
+        let ghost_drops = match (&ctxt, &ghost_detection) {
+            (Some(ctxt), Some(fe)) => GhostDrops {
+                no_drop_vars: ctxt.no_drop_vars.clone(),
+                fn_local_def_id: Some(fn_local_def_id),
+                ghost_exprs: HashSet::new(),
+                ghost_body: body_is_ghost(tcx, fe, local_def_id),
+            },
+            _ => GhostDrops::default(),
+        };
+
         VerusThirBuildCtxt {
             ctxt: ctxt,
             closure_overrides: HashMap::new(),
@@ -375,9 +433,12 @@ impl VerusThirBuildCtxt {
             extra_thir: ExtraThir {
                 local_invs_for_node: HashMap::new(),
                 force_treat_inhabited: HashSet::new(),
+                ghost_drops,
             },
             local_def_id: local_def_id,
             full_erasure: None,
+            ghost_detection,
+            ghost_expr_start: None,
         }
     }
 
@@ -392,6 +453,7 @@ impl VerusThirBuildCtxt {
     }
 
     pub(crate) fn finish(self) {
+        assert!(self.ghost_expr_start.is_none());
         let opt_map: &mut Option<HashMap<LocalDefId, Arc<ExtraThir>>> =
             &mut EXTRA_THIR.write().unwrap();
         let map = opt_map.get_or_insert_with(|| HashMap::new());
@@ -2269,26 +2331,13 @@ pub(crate) fn full_erasure_mirror_expr_pre<'tcx>(
 ) -> Option<ExprKind<'tcx>> {
     let fe = cx.verus_ctxt.full_erasure.clone()?;
 
-    let erase = if (fe.is_ghost_attrs)(cx.tcx.hir_attrs(expr.hir_id)) {
-        true
-    } else {
-        let callee = match &expr.kind {
-            hir::ExprKind::Call(fun, _args) => match cx.typeck_results.expr_ty(fun).kind() {
-                TyKind::FnDef(def_id, _) => Some(*def_id),
-                _ => None,
-            },
-            hir::ExprKind::MethodCall(..) => cx.typeck_results.type_dependent_def_id(expr.hir_id),
-            _ => None,
-        };
-        if let hir::ExprKind::Call(_, [verified, compiled]) = expr.kind
-            && callee == Some(fe.proof_with_callee_fn_def_id)
-        {
-            return Some(full_erasure_proof_with_callee(cx, &fe, expr, verified, compiled));
-        }
-        matches!(callee, Some(def_id) if fe.erase_call_fns.contains(&def_id))
-    };
+    if let hir::ExprKind::Call(_, [verified, compiled]) = expr.kind
+        && expr_callee(cx.typeck_results, expr) == Some(fe.proof_with_callee_fn_def_id)
+    {
+        return Some(full_erasure_proof_with_callee(cx, &fe, expr, verified, compiled));
+    }
 
-    if erase {
+    if is_ghost_expr(cx.tcx, cx.typeck_results, &fe, expr) {
         let ty = cx.typeck_results.expr_ty(expr);
         Some(full_erasure_value_kind(cx, &fe, expr.hir_id, expr.span, ty))
     } else {
@@ -2366,5 +2415,121 @@ fn mk_call_no_args_kind<'tcx>(
         args: Box::new([]),
         from_hir_call: false,
         fn_span: span,
+    }
+}
+
+/// Is the given expression ghost code, according to the full-erasure criteria?
+/// (See `FullErasureCtxt`.) Note that this only looks at the node itself;
+/// any subexpression of a ghost expression is also ghost code.
+fn is_ghost_expr<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    typeck_results: &ty::TypeckResults<'tcx>,
+    fe: &FullErasureCtxt,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> bool {
+    if (fe.is_ghost_attrs)(tcx.hir_attrs(expr.hir_id)) {
+        return true;
+    }
+    matches!(expr_callee(typeck_results, expr), Some(def_id) if fe.erase_call_fns.contains(&def_id))
+}
+
+/// The function called by the given expression, if it is a call to a known function
+fn expr_callee<'tcx>(
+    typeck_results: &ty::TypeckResults<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> Option<DefId> {
+    match &expr.kind {
+        hir::ExprKind::Call(fun, _args) => match typeck_results.expr_ty(fun).kind() {
+            TyKind::FnDef(def_id, _) => Some(*def_id),
+            _ => None,
+        },
+        hir::ExprKind::MethodCall(..) => typeck_results.type_dependent_def_id(expr.hir_id),
+        _ => None,
+    }
+}
+
+/*////// Ghost drop elision (see GhostDrops) */
+
+/// Is the entire body ghost code? This is true for ghost items (e.g., proof fns)
+/// and for closures that are nested inside ghost code.
+fn body_is_ghost<'tcx>(tcx: TyCtxt<'tcx>, fe: &FullErasureCtxt, local_def_id: LocalDefId) -> bool {
+    let hir_id = tcx.local_def_id_to_hir_id(local_def_id);
+    let typeck_results = tcx.typeck(local_def_id);
+    let nodes = std::iter::once((hir_id, tcx.hir_node(hir_id))).chain(tcx.hir_parent_iter(hir_id));
+    for (id, node) in nodes {
+        match node {
+            hir::Node::Expr(e) => {
+                if is_ghost_expr(tcx, typeck_results, fe, e) {
+                    return true;
+                }
+            }
+            hir::Node::LetStmt(_) => {
+                if (fe.is_ghost_attrs)(tcx.hir_attrs(id)) {
+                    return true;
+                }
+            }
+            hir::Node::Item(_)
+            | hir::Node::ImplItem(_)
+            | hir::Node::TraitItem(_)
+            | hir::Node::ForeignItem(_) => {
+                return (fe.is_ghost_attrs)(tcx.hir_attrs(id));
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Called when we start mirroring the given HIR expression.
+/// Returns true if this expression begins a region of ghost code.
+pub(crate) fn ghost_enter_expr<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> bool {
+    if cx.verus_ctxt.ghost_expr_start.is_some() || cx.verus_ctxt.extra_thir.ghost_drops.ghost_body {
+        return false;
+    }
+    let Some(fe) = &cx.verus_ctxt.ghost_detection else {
+        return false;
+    };
+    if is_ghost_expr(cx.tcx, cx.typeck_results, fe, expr) {
+        cx.verus_ctxt.ghost_expr_start = Some(cx.thir.exprs.len());
+        true
+    } else {
+        false
+    }
+}
+
+/// Called when we start mirroring the given statement.
+/// Returns true if this statement begins a region of ghost code
+/// (i.e., a `let` statement that declares ghost variables)
+pub(crate) fn ghost_enter_stmt<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    stmt: &'tcx hir::Stmt<'tcx>,
+) -> bool {
+    if cx.verus_ctxt.ghost_expr_start.is_some() || cx.verus_ctxt.extra_thir.ghost_drops.ghost_body {
+        return false;
+    }
+    let Some(fe) = &cx.verus_ctxt.ghost_detection else {
+        return false;
+    };
+    if matches!(stmt.kind, hir::StmtKind::Let(_))
+        && (fe.is_ghost_attrs)(cx.tcx.hir_attrs(stmt.hir_id))
+    {
+        cx.verus_ctxt.ghost_expr_start = Some(cx.thir.exprs.len());
+        true
+    } else {
+        false
+    }
+}
+
+/// Called after mirroring a node for which `ghost_enter_expr` or `ghost_enter_stmt`
+/// returned `entered`. Marks all THIR nodes created in the meantime as ghost.
+pub(crate) fn ghost_exit<'tcx>(cx: &mut ThirBuildCx<'tcx>, entered: bool) {
+    if entered {
+        let start = cx.verus_ctxt.ghost_expr_start.take().unwrap();
+        let end = cx.thir.exprs.len();
+        let ghost_exprs = &mut cx.verus_ctxt.extra_thir.ghost_drops.ghost_exprs;
+        ghost_exprs.extend((start..end).map(ExprId::from_usize));
     }
 }
