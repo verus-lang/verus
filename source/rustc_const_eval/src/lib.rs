@@ -15,17 +15,20 @@ extern crate either;
 extern crate rustc_abi;
 extern crate rustc_apfloat;
 extern crate rustc_ast;
+extern crate rustc_attr_ir;
 extern crate rustc_data_structures;
 extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_index;
 extern crate rustc_infer;
+extern crate rustc_lint_defs;
 extern crate rustc_macros;
 extern crate rustc_middle;
 extern crate rustc_mir_dataflow;
 extern crate rustc_mir_transform;
 extern crate rustc_session;
 extern crate rustc_span;
+extern crate rustc_structures;
 extern crate rustc_target;
 extern crate rustc_trait_selection;
 
@@ -49,7 +52,7 @@ mod ctfe_limit;
 mod promote_consts;
 #[path = "../../rustc_mir_transform/src/required_consts.rs"]
 mod required_consts;
-use crate::verus::{MirPass, PassPolicy};
+use crate::verus::{MirPass, PassCtx, PassPolicy};
 
 use std::sync::atomic::AtomicBool;
 

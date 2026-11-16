@@ -34,7 +34,7 @@ use crate::required_consts::RequiredConstsVisitor;
 /// needed by the files we copy from rustc_mir_transform.
 pub(crate) trait MirPass<'tcx> {
     #[allow(dead_code)]
-    fn policy(&self, sess: &rustc_session::Session) -> PassPolicy;
+    fn policy(&self, ctx: &PassCtx<'_>) -> PassPolicy;
 
     fn run_pass(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>);
 }
@@ -44,13 +44,21 @@ pub(crate) trait MirPass<'tcx> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum PassPolicy {
     Required,
-    Optional { generally_enabled: bool, optimization: bool },
+    Optional { enabled_by_default: bool },
 }
 
 impl PassPolicy {
-    pub(crate) fn optional_non_optimization(condition: bool) -> Self {
-        Self::Optional { generally_enabled: condition, optimization: false }
+    pub(crate) fn optional(enabled_by_default: bool) -> Self {
+        Self::Optional { enabled_by_default }
     }
+}
+
+/// Minimal version of `PassCtx` from rustc_mir_transform, needed by the signature of
+/// `MirPass::policy` in the files we copy from rustc_mir_transform.
+/// (We never construct it, since we never call `MirPass::policy`.)
+#[allow(dead_code)]
+pub(crate) struct PassCtx<'sess> {
+    session: &'sess rustc_session::Session,
 }
 
 /// Returns the LocalDefId if we should use full-erasure MIR for the given item.
