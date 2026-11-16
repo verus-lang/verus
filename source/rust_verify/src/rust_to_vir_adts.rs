@@ -547,6 +547,13 @@ pub(crate) fn check_item_external<'tcx>(
         return err_span(span, "`external_type_specification` can only be used with exec types");
     }
 
+    if ctxt.cmd_line_args.no_cheating && vattrs.external_body {
+        return err_span(
+            span,
+            "`external_type_specification` cannot be used with `external_body` when --no-cheating is enabled",
+        );
+    }
+
     // The proxy_adt_def should look like:
     //      struct X(Type);
     // where Type is some external Type that we need to look up
@@ -574,6 +581,13 @@ pub(crate) fn check_item_external<'tcx>(
             );
         }
     };
+
+    if ctxt.cmd_line_args.no_cheating && external_adt_def.destructor(ctxt.tcx).is_some() {
+        return err_span(
+            span,
+            "`external_type_specification` cannot be used for a type with a `Drop` impl when --no-cheating is enabled",
+        );
+    }
 
     if !vattrs.external_body && !external_adt_def.is_struct() && !external_adt_def.is_enum() {
         // Should be possible to do unions too, just need to implement the case for it below
