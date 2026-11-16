@@ -43,6 +43,36 @@ pub struct ParseResult {
     pub items: Vec<Item>,
     pub fields: Option<FieldsNamed>,
     pub generics: Option<Generics>,
+    pub prophetic: bool,
+}
+
+/// Parse the inner attributes at the top of the state machine body, e.g.,
+/// `X { #![verifier::prophetic] ... }`. Currently `verifier::prophetic` is the only
+/// supported inner attribute.
+fn parse_inner_attrs(input: ParseStream) -> parse::Result<bool> {
+    let inner_attrs = input.call(Attribute::parse_inner)?;
+    let mut prophetic = false;
+    for attr in inner_attrs.iter() {
+        let is_prophetic = match &attr.meta {
+            Meta::Path(path) => {
+                let segments =
+                    path.segments.iter().map(|e| e.ident.to_string()).collect::<Vec<_>>();
+                segments[..] == ["verifier", "prophetic"]
+            }
+            _ => false,
+        };
+        if !is_prophetic {
+            return Err(Error::new(
+                attr.span(),
+                "the only inner attribute allowed here is verifier::prophetic",
+            ));
+        }
+        if prophetic {
+            return Err(Error::new(attr.span(), "duplicate verifier::prophetic attribute"));
+        }
+        prophetic = true;
+    }
+    Ok(prophetic)
 }
 
 impl Parse for ParseResult {
@@ -88,6 +118,8 @@ impl Parse for ParseResult {
         let items_stream;
         let _ = braced!(items_stream in input);
 
+        let prophetic = parse_inner_attrs(&items_stream)?;
+
         let mut items = Vec::new();
         let mut fields_opt: Option<FieldsNamed> = None;
 
@@ -115,7 +147,7 @@ impl Parse for ParseResult {
             }
         }
 
-        return Ok(ParseResult { attrs, name, items, generics, fields: fields_opt });
+        return Ok(ParseResult { attrs, name, items, generics, fields: fields_opt, prophetic });
     }
 }
 
@@ -771,7 +803,7 @@ fn item_type_check_vis(span: Span, vis: &Visibility) -> parse::Result<()> {
 }
 
 pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<SMBundle> {
-    let ParseResult { attrs, name, generics, items, fields } = pr;
+    let ParseResult { attrs, name, generics, items, fields, prophetic } = pr;
 
     for attr in attrs.iter() {
         if !attr_is_polarity(attr) {
@@ -879,6 +911,7 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<
         concurrent,
         init_label,
         transition_label,
+        prophetic,
     };
 
     replace_self_sm(&mut sm);

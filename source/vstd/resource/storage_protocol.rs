@@ -1,5 +1,6 @@
 use super::super::prelude::*;
 use super::Loc;
+use super::trusted;
 
 verus! {
 
@@ -26,13 +27,11 @@ broadcast use {super::super::iset::group_iset_lemmas, super::super::imap::group_
 /// For applications, I generally advise using the
 /// [`tokenized_state_machine!` system](https://verus-lang.github.io/verus/state_machines/),
 /// rather than using this interface directly.
-#[verifier::external_body]
 #[verifier::accept_recursive_types(K)]
 #[verifier::accept_recursive_types(P)]
 #[verifier::accept_recursive_types(V)]
 pub tracked struct StorageResource<K, V, P> {
-    _p: core::marker::PhantomData<(K, V, P)>,
-    _send_sync: super::super::state_machine_internal::SyncSendIfSyncSend<IMap<K, V>>,
+    r: trusted::protocol::StorageResource<K, V, P>,
 }
 
 #[cfg(verus_keep_ghost)]
@@ -41,13 +40,11 @@ impl<K, V, P> !Copy for StorageResource<K, V, P> {
 
 }
 
-#[verifier::external_body]
 #[verifier::accept_recursive_types(K)]
 #[verifier::accept_recursive_types(P)]
 #[verifier::accept_recursive_types(V)]
 pub tracked struct CopyableStorageResource<K, V, P> {
-    _p: core::marker::PhantomData<(K, V, P)>,
-    _send_sync: super::super::state_machine_internal::SyncSendIfSyncSend<IMap<K, V>>,
+    r: trusted::protocol::CopyableStorageResource<K, V, P>,
 }
 
 impl<K, V, P> Copy for CopyableStorageResource<K, V, P> {
@@ -57,10 +54,7 @@ impl<K, V, P> Copy for CopyableStorageResource<K, V, P> {
 impl<K, V, P> Clone for CopyableStorageResource<K, V, P> {
     #[verifier::external_body]
     fn clone(&self) -> Self {
-        CopyableStorageResource {
-            _p: core::marker::PhantomData,
-            _send_sync: self._send_sync.clone(),
-        }
+        *self
     }
 }
 
@@ -161,27 +155,70 @@ pub open spec fn set_op<K, V, P: Protocol<K, V>>(s: ISet<(P, IMap<K, V>)>, t: P)
     s.map(|q: (P, IMap<K, V>)| (P::op(q.0, t), q.1))
 }
 
+/// Every [`Protocol`] is a [`Protocol`](trusted::protocol::Protocol) in the sense of the trusted interface.
+impl<K, V, P: Protocol<K, V>> trusted::protocol::Protocol<K, V> for P {
+    open spec fn op(self, other: Self) -> Self {
+        <P as Protocol<K, V>>::op(self, other)
+    }
+
+    open spec fn rel(self, s: IMap<K, V>) -> bool {
+        <P as Protocol<K, V>>::rel(self, s)
+    }
+
+    open spec fn unit() -> Self {
+        <P as Protocol<K, V>>::unit()
+    }
+
+    proof fn commutative(a: Self, b: Self) {
+        <P as Protocol<K, V>>::commutative(a, b);
+    }
+
+    proof fn associative(a: Self, b: Self, c: Self) {
+        <P as Protocol<K, V>>::associative(a, b, c);
+    }
+
+    proof fn op_unit(a: Self) {
+        <P as Protocol<K, V>>::op_unit(a);
+    }
+}
+
 impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
-    pub uninterp spec fn value(self) -> P;
+    pub closed spec fn value(self) -> P {
+        self.r.value()
+    }
 
-    pub uninterp spec fn loc(self) -> Loc;
+    pub closed spec fn loc(self) -> Loc {
+        self.r.loc()
+    }
 
-    pub axiom fn alloc(p: P, tracked s: IMap<K, V>) -> (tracked out: Self)
+    proof fn mk_ref<'a>(tracked r: &'a trusted::protocol::StorageResource<K, V, P>) -> (tracked res:
+        &'a Self)
+        ensures
+            res.r == r,
+    {
+        shr_ref_struct_wrap(r, &Self { r: arbitrary() }, "", "r")
+    }
+
+    pub proof fn alloc(p: P, tracked s: IMap<K, V>) -> (tracked out: Self)
         requires
             P::rel(p, s),
         ensures
             out.value() == p,
-    ;
+    {
+        StorageResource { r: trusted::protocol::StorageResource::alloc(p, s) }
+    }
 
-    pub axiom fn join(tracked a: Self, tracked b: Self) -> (tracked out: Self)
+    pub proof fn join(tracked a: Self, tracked b: Self) -> (tracked out: Self)
         requires
             a.loc() == b.loc(),
         ensures
             out.loc() == a.loc(),
             out.value() == P::op(a.value(), b.value()),
-    ;
+    {
+        StorageResource { r: trusted::protocol::StorageResource::join(a.r, b.r) }
+    }
 
-    pub axiom fn split(tracked self, a_value: P, b_value: P) -> (tracked out: (Self, Self))
+    pub proof fn split(tracked self, a_value: P, b_value: P) -> (tracked out: (Self, Self))
         requires
             self.value() == P::op(a_value, b_value),
         ensures
@@ -189,19 +226,24 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.1.loc() == self.loc(),
             out.0.value() == a_value,
             out.1.value() == b_value,
-    ;
+    {
+        let tracked (a, b) = self.r.split(a_value, b_value);
+        (StorageResource { r: a }, StorageResource { r: b })
+    }
 
     /// Since `inv` isn't closed under inclusion, validity for an element
     /// is defined as the inclusion-closure of invariant, i.e., an element
     /// is valid if there exists another element `x` that, added to it,
     /// meets the invariant.
-    pub axiom fn validate(tracked self: &Self) -> (out: (P, IMap<K, V>))
+    pub proof fn validate(tracked self: &Self) -> (out: (P, IMap<K, V>))
         ensures
             ({
                 let (q, t) = out;
                 P::rel(P::op(self.value(), q), t)
             }),
-    ;
+    {
+        trusted::protocol::StorageResource::validate(&self.r)
+    }
 
     // Helper lemma saying that unioning with an empty map is a no-op.
     proof fn lemma_union_prefer_right_empty_is_noop_forall()
@@ -314,15 +356,17 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         Self::exchange_nondeterministic_with_shared(selff, &unit, s, new_values)
     }
 
-    pub axiom fn guard(tracked p: &Self, s_value: IMap<K, V>) -> (tracked s: &IMap<K, V>)
+    pub proof fn guard(tracked p: &Self, s_value: IMap<K, V>) -> (tracked s: &IMap<K, V>)
         requires
             guards(p.value(), s_value),
         ensures
             s == s_value,
-    ;
+    {
+        trusted::protocol::StorageResource::guard(&p.r, s_value)
+    }
 
     // Operations with shared references
-    pub axiom fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
+    pub proof fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
         &'a Self)
         requires
             self.loc() == other.loc(),
@@ -330,17 +374,23 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.loc() == self.loc(),
             incl(self.value(), out.value()),
             incl(other.value(), out.value()),
-    ;
+    {
+        Self::mk_ref(self.r.join_shared(&other.r))
+    }
 
-    pub axiom fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
+    pub proof fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
         requires
             incl(target, self.value()),
         ensures
             out.loc() == self.loc(),
             out.value() == target,
-    ;
+    {
+        let c = choose|c| P::op(target, c) == self.value();
+        assert(<P as trusted::protocol::Protocol<K, V>>::op(target, c) == self.value());
+        Self::mk_ref(self.r.weaken(target))
+    }
 
-    pub axiom fn validate_with_shared(tracked self: &mut Self, tracked x: &Self) -> (res: (
+    pub proof fn validate_with_shared(tracked self: &mut Self, tracked x: &Self) -> (res: (
         P,
         IMap<K, V>,
     ))
@@ -352,7 +402,9 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
                 let (q, t) = res;
                 { P::rel(P::op(P::op(final(self).value(), x.value()), q), t) }
             }),
-    ;
+    {
+        trusted::protocol::StorageResource::validate_with_shared(&mut self.r, &x.r)
+    }
 
     // See `logic_exchange_with_extra_guard`
     // https://github.com/secure-foundations/leaf/blob/a51725deedecc88294057ac1502a7c7ff2104a69/src/guarding/protocol.v#L720
@@ -384,7 +436,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     // See `logic_exchange_with_extra_guard_nondeterministic`
     // https://github.com/secure-foundations/leaf/blob/a51725deedecc88294057ac1502a7c7ff2104a69/src/guarding/protocol.v#L834
     /// Most general kind of update, potentially depositing and withdrawing
-    pub axiom fn exchange_nondeterministic_with_shared(
+    pub proof fn exchange_nondeterministic_with_shared(
         tracked p: Self,
         tracked x: &Self,
         tracked s: IMap<K, V>,
@@ -402,17 +454,60 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
                 let (new_p, new_s) = out;
                 new_p.loc() == p.loc() && new_values.contains((new_p.value(), new_s))
             }),
-    ;
+    {
+        let ghost new_values0 = set_op(new_values, x.value());
+        let ghost f = |q: P, t1: IMap<K, V>|
+            choose|r: (P, IMap<K, V>, IMap<K, V>)|
+                {
+                    &&& #[trigger] new_values0.contains((r.0, r.1))
+                    &&& P::rel(P::op(r.0, q), r.2)
+                    &&& t1.dom().disjoint(s.dom())
+                    &&& r.2.dom().disjoint(r.1.dom())
+                    &&& t1.union_prefer_right(s) =~= r.2.union_prefer_right(r.1)
+                };
+        assert(trusted::protocol::set_op(new_values, x.value()) =~= new_values0);
+        let ghost a = P::op(p.value(), x.value());
+        assert forall|q: P, t1: IMap<K, V>| P::rel(P::op(a, q), t1) implies {
+            let (p2, s2, t2) = f(q, t1);
+            &&& new_values0.contains((p2, s2))
+            &&& P::rel(P::op(p2, q), t2)
+            &&& t1.dom().disjoint(s.dom())
+            &&& t2.dom().disjoint(s2.dom())
+            &&& t1.union_prefer_right(s) =~= t2.union_prefer_right(s2)
+        } by {
+            let (p2, s2, t2) = choose|p2: P, s2: IMap<K, V>, t2: IMap<K, V>|
+                #![all_triggers]
+                {
+                    &&& new_values0.contains((p2, s2))
+                    &&& P::rel(P::op(p2, q), t2)
+                    &&& t1.dom().disjoint(s.dom())
+                    &&& t2.dom().disjoint(s2.dom())
+                    &&& t1.union_prefer_right(s) =~= t2.union_prefer_right(s2)
+                };
+            assert(new_values0.contains((p2, s2)));
+        }
+        let tracked (r, s) =
+            trusted::protocol::StorageResource::exchange_nondeterministic_with_shared(
+            p.r,
+            &x.r,
+            s,
+            new_values,
+            f,
+        );
+        (StorageResource { r }, s)
+    }
 
     /// Wrap this resource in a type that implements `Copy`,
     /// given that the resource is duplicable.
-    pub axiom fn into_copyable(tracked self, p: P) -> (tracked r: CopyableStorageResource<K, V, P>)
+    pub proof fn into_copyable(tracked self, p: P) -> (tracked r: CopyableStorageResource<K, V, P>)
         requires
             P::op(P::op(self.value(), self.value()), p) == self.value(),
         ensures
             r.loc() == self.loc(),
             r.value() == self.value(),
-    ;
+    {
+        CopyableStorageResource { r: self.r.into_copyable(p) }
+    }
 }
 
 /// A variant of [`StorageResource`] that implements `Copy`.
@@ -420,16 +515,22 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
 /// Use [`Self::into_resource`] to get the underlying resource.
 impl<K, V, P: Protocol<K, V>> CopyableStorageResource<K, V, P> {
     /// The underlying value of the resource
-    pub uninterp spec fn value(self) -> P;
+    pub closed spec fn value(self) -> P {
+        self.r.value()
+    }
 
     /// The location of the resource
-    pub uninterp spec fn loc(self) -> Loc;
+    pub closed spec fn loc(self) -> Loc {
+        self.r.loc()
+    }
 
-    pub axiom fn into_resource(tracked self) -> (tracked r: StorageResource<K, V, P>)
+    pub proof fn into_resource(tracked self) -> (tracked r: StorageResource<K, V, P>)
         ensures
             r.loc() == self.loc(),
             r.value() == self.value(),
-    ;
+    {
+        StorageResource { r: self.r.into_resource() }
+    }
 }
 
 } // verus!

@@ -277,7 +277,6 @@ fn handle_autospec<'tcx>(
                 outer_ret: spec_ret_param,
                 item_kind: ItemKind::Function,
                 attrs: Arc::new(FunctionAttrsX {
-                    uses_ghost_blocks: vattrs.verus_macro,
                     inline: false,
                     broadcast_forall: false,
                     broadcast_forall_only: false,
@@ -305,6 +304,7 @@ fn handle_autospec<'tcx>(
                     exec_allows_no_decreases_clause: false,
                     tracked_swap: false,
                     tracked_take_option: false,
+                    create_open_invariant_credit: false,
                     is_async: false,
                     is_drop: false,
                 }),
@@ -1548,7 +1548,6 @@ fn make_attributes<'tcx>(
     ctxt: &Context<'tcx>,
     def_id: DefId,
     vattrs: &crate::attributes::VerifierAttrs,
-    uses_ghost_blocks: bool,
     print_zero_args: bool,
     print_as_method: bool,
     safety: Safety,
@@ -1564,7 +1563,6 @@ fn make_attributes<'tcx>(
         );
     }
     let fattrs = FunctionAttrsX {
-        uses_ghost_blocks,
         inline: vattrs.inline,
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
@@ -1601,29 +1599,19 @@ fn make_attributes<'tcx>(
         },
         tracked_swap: vattrs.tracked_swap,
         tracked_take_option: vattrs.tracked_take_option,
+        create_open_invariant_credit: vattrs.create_open_invariant_credit,
         is_async: is_async,
         is_drop: is_drop,
     };
     Ok(Arc::new(fattrs))
 }
 
-pub(crate) fn fixup_unerased_proxy_path(
-    path: &vir::ast::Path,
-    span: Span,
-) -> Result<vir::ast::Path, VirErr> {
-    let id = path.last_segment();
-    let prefix = "VERUS_UNERASED_PROXY__";
-    if id.name().is_some_and(|name| name.starts_with(&prefix)) {
-        let p = path.replace_last(id.map_name(|name| name[prefix.len()..].to_string()));
-        Ok(p)
-    } else {
-        crate::internal_err!(span, "bad use of `unerased_proxy` attribute")
-    }
-}
-
 pub(crate) struct FunctionInfo<'tcx> {
     pub function: vir::ast::FunctionStub,
     pub function_for_autospec: Option<vir::ast::FunctionStub>,
+    /// Auxiliary spec function generated for some automatically-derived functions
+    /// (see automatic_derive.rs)
+    pub autoderive_aux_function: Option<vir::ast::FunctionStub>,
 
     pub pre_header: PreHeader,
     pub def_id: DefId,
@@ -1668,12 +1656,14 @@ pub(crate) enum FunctionOrConstInfo<'tcx> {
 
 impl<'tcx> FunctionOrConstInfo<'tcx> {
     pub(crate) fn iter_stubs<'a>(&'a self) -> impl Iterator<Item = &'a vir::ast::FunctionStub> {
-        let (f, opt_f) = match self {
-            FunctionOrConstInfo::Function(f) => (&f.function, f.function_for_autospec.as_ref()),
-            FunctionOrConstInfo::Const(f) => (&f.function, f.function_for_autospec.as_ref()),
-            FunctionOrConstInfo::ForeignFunction(f) => (&f.function_stub, None),
+        let (f, opt_f, opt_aux) = match self {
+            FunctionOrConstInfo::Function(f) => {
+                (&f.function, f.function_for_autospec.as_ref(), f.autoderive_aux_function.as_ref())
+            }
+            FunctionOrConstInfo::Const(f) => (&f.function, f.function_for_autospec.as_ref(), None),
+            FunctionOrConstInfo::ForeignFunction(f) => (&f.function_stub, None, None),
         };
-        std::iter::once(f).chain(opt_f.into_iter())
+        std::iter::once(f).chain(opt_f.into_iter()).chain(opt_aux.into_iter())
     }
 }
 
@@ -1727,7 +1717,7 @@ pub(crate) fn check_item_fn<'tcx>(
     opaque_types: &mut OpaqueTypes,
     no_erasure_needed: &mut Vec<DefId>,
 ) -> Result<Option<Fun>, VirErr> {
-    let mut this_path = ctxt.def_id_to_vir_path(id);
+    let this_path = ctxt.def_id_to_vir_path(id);
 
     let is_verus_spec = this_path
         .segments
@@ -1746,46 +1736,6 @@ pub(crate) fn check_item_fn<'tcx>(
         let migration_attr = crate::attributes::migrate_postconditions_walk_parents(ctxt.tcx, id);
         migration_attr == Some(true)
     };
-
-    if vattrs.encoded_const || vattrs.encoded_static {
-        let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();
-        if fn_sig.inputs().skip_binder().len() != 0 {
-            return err_span(sig.span, "`encoded_const` must have 0 arguments");
-        }
-
-        let body_id = match body_id {
-            CheckItemFnEither::BodyId(body_id) => body_id,
-            CheckItemFnEither::ParamNames(_) => {
-                crate::internal_err!(
-                    sig.span,
-                    "`encoded_const` expected CheckItemFnEither::BodyId"
-                );
-            }
-        };
-
-        let ty = fn_sig.output().skip_binder();
-        let typ = ctxt.mid_ty_to_vir(id, sig.span, &ty, None)?;
-
-        let fun = check_item_const_or_static(
-            ctxt,
-            state,
-            infos,
-            sig.span,
-            id,
-            visibility,
-            module_path,
-            attrs,
-            &typ,
-            body_id,
-            vattrs.encoded_static,
-            self_generics,
-        )?;
-        return Ok(Some(fun));
-    }
-
-    if vattrs.unerased_proxy {
-        this_path = fixup_unerased_proxy_path(&this_path, sig.span)?;
-    }
 
     let external_trait_from_to = if let Some((to_trait_id, to_spec_name)) = external_trait {
         let from_trait_id = ctxt.tcx.parent(id);
@@ -2265,7 +2215,6 @@ pub(crate) fn check_item_fn<'tcx>(
         ctxt,
         id,
         &vattrs,
-        vattrs.verus_macro && !matches!(sig.sig, FnOrConstSigEnum::ConstVar(..)),
         n_params == 0,
         has_self_param,
         safety,
@@ -2344,6 +2293,13 @@ pub(crate) fn check_item_fn<'tcx>(
         func = fix_external_fn_specification_trait_method_decl_typs_stub(sig.span, func)?;
     }
 
+    let autoderive_aux_function = match (autoderive_action, &body_id) {
+        (Some(action), CheckItemFnEither::BodyId(_)) => {
+            crate::automatic_derive::make_aux_function_stub(ctxt, sig.span, action, &mut func, id)?
+        }
+        _ => None,
+    };
+
     let mut function = ctxt.spanned_new(sig.span, func);
 
     let autospec = handle_autospec(ctxt, sig.span, id, &vattrs, &function.x)?;
@@ -2356,10 +2312,14 @@ pub(crate) fn check_item_fn<'tcx>(
     if let Some(f) = &autospec.new_func {
         state.insert_fun_warn_config(ctxt, &f.x.name, id);
     }
+    if let Some(f) = &autoderive_aux_function {
+        state.insert_fun_warn_config(ctxt, &f.x.name, id);
+    }
 
     infos.push(FunctionOrConstInfo::Function(FunctionInfo {
         function,
         function_for_autospec: autospec.new_func,
+        autoderive_aux_function,
         pre_header,
 
         body_id: match body_id {
@@ -2409,6 +2369,7 @@ pub(crate) fn finish_function<'tcx>(
     let FunctionInfo {
         ref function,
         ref function_for_autospec,
+        ref autoderive_aux_function,
         ref pre_header,
         ref body_id,
         ref sig,
@@ -2647,14 +2608,18 @@ pub(crate) fn finish_function<'tcx>(
             };
 
             let bctx = bctx.as_ref().unwrap();
-            crate::automatic_derive::modify_derived_item(
+            let aux_function = crate::automatic_derive::modify_derived_item(
                 bctx,
                 def_id,
                 &inputs,
                 sig.span,
                 action,
                 &mut functionx,
+                autoderive_aux_function.as_ref(),
             )?;
+            if let Some(aux_function) = aux_function {
+                functions.push((aux_function, ErasureInfo::new()));
+            }
         }
     }
 
@@ -3386,12 +3351,9 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     is_static: bool,
     self_generics: Option<(&'tcx Generics, DefId)>,
 ) -> Result<Fun, VirErr> {
-    let mut path = ctxt.def_id_to_vir_path(id);
+    let path = ctxt.def_id_to_vir_path(id);
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
-    if vattrs.unerased_proxy {
-        path = fixup_unerased_proxy_path(&path, span)?;
-    }
 
     let name = Arc::new(FunX { path: path.clone() });
 
@@ -3399,6 +3361,13 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     assert!(!is_async);
 
     let mode_opt = crate::attributes::get_mode_opt(attrs);
+    if vattrs.publish == Some(AttrPublish::Open) && mode_opt == Some(Mode::Exec) {
+        return err_span(
+            span,
+            "const is marked `exec` mode but also has an internal `open` attribute (note: this can happen if `#[verus_spec(...)]` is used inside the `verus!` macro)",
+        );
+    }
+
     let (func_mode, body_mode, ret_mode) = if is_static {
         // All statics are exec
         // For consistency with const, require the user to mark it 'exec' explicitly
@@ -3449,7 +3418,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         ctxt,
         id,
         &vattrs,
-        vattrs.verus_macro,
         false,
         false,
         Safety::Safe,

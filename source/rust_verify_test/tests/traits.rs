@@ -4667,7 +4667,7 @@ test_verify_one_file! {
             // when we support general assoc consts, should be a mode violation:
             const C: u8 = f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support const items in traits, except for")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::f` with mode exec")
 }
 
 test_verify_one_file! {
@@ -4680,7 +4680,7 @@ test_verify_one_file! {
         impl T for bool {
             const C: u8 = Q;
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -4694,6 +4694,19 @@ test_verify_one_file! {
             const C: u8 = Q;
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const5 verus_code! {
+        spec const Q: bool = true;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8;
+        }
+        impl T for bool {
+            const C: u8 = if Q { 3 } else { 4 };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -4757,7 +4770,7 @@ test_verify_one_file! {
             // implicitly dual exec-spec mode:
             const C: u8 = Q;
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -5038,4 +5051,33 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] cannot_use_demoted_trait_generically_issue629 code! {
+        use vstd::prelude::*;
+
+        trait Tr {
+            fn foo(&self);
+        }
+
+        verus!{
+            #[verifier::external_body]
+            fn takes_trait<T: Tr>(t: &T) { t.foo() }
+
+            struct X { }
+
+            impl Tr for X {
+                fn foo(&self)
+                    requires false
+                {
+                }
+            }
+
+            fn test() {
+                let x = X{};
+                takes_trait(&x);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use external trait `test_crate::Tr` as a bound without declaring the trait")
 }

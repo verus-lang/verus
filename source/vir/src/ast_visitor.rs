@@ -609,7 +609,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
-            ExprX::OpenInvariant(e, b, body, ato) => {
+            ExprX::OpenInvariant(ce, e, b, body, ato) => {
+                let ce = self.visit_expr(ce)?;
                 let e = self.visit_expr(e)?;
 
                 let binder = self.visit_binder_typ(b)?;
@@ -623,7 +624,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 self.pop_scope();
 
                 R::ret(|| {
-                    expr_new(ExprX::OpenInvariant(R::get(e), R::get(binder), R::get(body), *ato))
+                    expr_new(ExprX::OpenInvariant(
+                        R::get(ce),
+                        R::get(e),
+                        R::get(binder),
+                        R::get(body),
+                        *ato,
+                    ))
                 })
             }
             ExprX::TryOpenAtomicUpdate(e, b, body) => {
@@ -764,6 +771,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::Old(e) => {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Old(R::get(e))))
+            }
+            ExprX::ProphecyDisallowed(reason, e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::ProphecyDisallowed(reason.clone(), R::get(e))))
             }
             ExprX::Await(e) => {
                 let e = self.visit_expr(e)?;
