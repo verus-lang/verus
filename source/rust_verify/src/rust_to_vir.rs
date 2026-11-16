@@ -777,8 +777,10 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     for info in infos.iter() {
         match &**info {
             FunctionOrConstInfo::Function(info) => {
+                // For a trait method declaration, the body is the VERUS_SPEC__ method's
+                let body_def_id = info.spec_def_id.unwrap_or(info.def_id);
                 let f = def_id_to_fun_name_for_erasure
-                    .insert(info.def_id, Some(info.function.x.name.clone()));
+                    .insert(body_def_id, Some(info.function.x.name.clone()));
                 assert!(f.is_none());
             }
             FunctionOrConstInfo::Const(info) => {

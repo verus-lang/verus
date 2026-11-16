@@ -352,6 +352,9 @@ pub(crate) fn split_trait_method_syn(
         });
         let pred = syn::parse_quote_spanned!(fun.sig.ident.span() => Self: ::core::marker::Sized);
         do_split_trait_method!(syn, fun, spec_fun, mk_rust_attr_syn, recv, pred);
+        // spec_fun holds only the specs of fun, so it has no return type or async-ness of its own
+        spec_fun.sig.output = syn::ReturnType::Default;
+        spec_fun.sig.asyncness = None;
         // We won't run visit_trait_item_fn_mut, so we need to add no_method_body here:
         let span = fun.sig.fn_token.span;
         let stmts = vec![Stmt::Expr(
