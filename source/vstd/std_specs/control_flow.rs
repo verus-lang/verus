@@ -61,6 +61,7 @@ pub trait ExFromResidual<R> {
 }
 
 /// We can provide stronger guarantees for types that obey these laws
+#[verifier::prophetic]
 pub open spec fn try_laws<R: Try>() -> bool {
     &&& R::branch_model_is_valid()
     &&& forall|output: R::Output, result: R| #[trigger]

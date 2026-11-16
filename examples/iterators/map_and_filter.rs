@@ -443,6 +443,7 @@ impl<
         }
     }
 
+    #[verifier::prophetic]
     open spec fn peek(&self, index: int) -> Option<Item> {
         match self.inner().peek(index) {
             Some(v) => Some(choose|x| self.func().ensures((v,), x)),
@@ -470,6 +471,7 @@ impl<Item, Iter: DoubleEndedIterator, F: FnMut(Iter::Item) -> Item> DoubleEndedI
 impl<Item, Iter: DoubleEndedIterator, F: FnMut(Iter::Item) -> Item>
     vstd::std_specs::iter::DoubleEndedIteratorSpecImpl for MapIterator<Item, Iter, F>
 {
+    #[verifier::prophetic]
     open spec fn peek_back(&self, index: int) -> Option<Item> {
         match self.inner().peek_back(index) {
             Some(v) => Some(choose|x| self.func().ensures((v,), x)),
@@ -977,6 +979,7 @@ proof fn lemma_filter_source<Iter: Iterator, F: FnMut(&Iter::Item) -> bool>(
         )));
 }
 
+#[verifier::prophetic]
 pub open spec fn filter_has_source<T, F: FnMut(&T) -> bool>(
     input: Seq<T>,
     input_produces: Seq<bool>,

@@ -690,6 +690,7 @@ test_verify_one_file! {
             fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> (r: usize)
                 ensures self.s(q, a, b, x)
                 ;
+            #[verifier::prophetic]
             spec fn s(&self, q: &Self, a: A, b: bool, x: Self::X) -> bool;
         }
 
@@ -701,6 +702,7 @@ test_verify_one_file! {
         }
 
         impl TSpecImpl<u8> for u32 {
+            #[verifier::prophetic]
             spec fn s(&self, q: &Self, a: u8, b: bool, x: u16) -> bool {
                 !call_ensures(Self::f, (self, q, a, b, x), 10)
             }

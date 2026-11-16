@@ -61,6 +61,10 @@ pub struct ContextX<'tcx> {
     pub(crate) crate_name: CrateId,
     pub(crate) name_def_id_map: Rc<RefCell<HashMap<Path, DefId>>>,
     pub(crate) next_read_kind_id: AtomicU64,
+    /// For verifier::external_trait_extension(TSpec via TSpecImpl), map TSpec's path to TSpecImpl's path
+    pub(crate) external_trait_extension_spec_to_impl: RefCell<HashMap<Path, Path>>,
+    /// Cache of TSpec DefId -> TSpecImpl DefId (None if TSpec is not an extension trait)
+    pub(crate) external_trait_extension_impl_def_ids: RefCell<HashMap<DefId, Option<DefId>>>,
 }
 
 /// Warnings and notes collected while translating HIR to VIR, waiting to be reported.
@@ -182,6 +186,8 @@ impl<'tcx> ContextX<'tcx> {
             crate_name,
             name_def_id_map: Rc::new(RefCell::new(HashMap::new())),
             next_read_kind_id: AtomicU64::new(0),
+            external_trait_extension_spec_to_impl: RefCell::new(HashMap::new()),
+            external_trait_extension_impl_def_ids: RefCell::new(HashMap::new()),
         }
     }
 

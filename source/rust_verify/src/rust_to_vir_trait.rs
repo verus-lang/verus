@@ -83,6 +83,9 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
                 let m = &mut external_info.external_trait_extension_impl_map;
                 assert!(!m.contains_key(imp));
                 m.insert(imp.clone(), spec.clone());
+                ctxt.external_trait_extension_spec_to_impl
+                    .borrow_mut()
+                    .insert(spec.clone(), imp.clone());
             }
         }
     }
@@ -105,7 +108,10 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
                                     .replace_last(vir::ast::Segment::T(Arc::new(imp.clone()), 0));
                                 let m = &mut external_info.external_trait_extension_impl_map;
                                 assert!(!m.contains_key(&imp));
-                                m.insert(imp, spec);
+                                m.insert(imp.clone(), spec.clone());
+                                ctxt.external_trait_extension_spec_to_impl
+                                    .borrow_mut()
+                                    .insert(spec, imp);
                             }
                         }
                         _ => {}

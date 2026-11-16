@@ -88,13 +88,13 @@ proof fn lemma_try_fold_prefix_requires<A, B, R: Try<Output = B>, F: FnMut(B, A)
     results: Seq<R>,
 )
     requires
-        try_fold_requires(items, produces, init, f),
-        try_fold_prefix(items, produces, init, f, bs, results),
+        try_laws::<R>() ==> try_fold_requires(items, produces, init, f),
+        try_laws::<R>() ==> try_fold_prefix(items, produces, init, f, bs, results),
         results.len() < items.len(),
         produces.len() == items.len(),
         produces.all(|p: bool| p),
     ensures
-        f.requires((bs.last(), items[results.len() as int])),
+        try_laws::<R>() ==> f.requires((bs.last(), items[results.len() as int])),
 {
 }
 
@@ -109,23 +109,32 @@ proof fn lemma_try_fold_prefix_extend<A, B, R: Try<Output = B>, F: FnMut(B, A) -
     next: B,
 )
     requires
-        try_fold_prefix(items, produces, init, f, bs, results),
+        try_laws::<R>() ==> try_fold_prefix(items, produces, init, f, bs, results),
         results.len() < items.len(),
         produces.len() == items.len(),
         produces.all(|p: bool| p),
-        f.requires((bs.last(), items[results.len() as int])),
+        try_laws::<R>() ==> f.requires((bs.last(), items[results.len() as int])),
         f.ensures((bs.last(), items[results.len() as int]), value),
-        value.branch_model() == ControlFlow::Continue(next),
+        try_laws::<R>() ==> value.branch_model() == ControlFlow::Continue(next),
     ensures
-        try_fold_prefix(items, produces, init, f, bs.push(next), results.push(value)),
+        try_laws::<R>() ==> try_fold_prefix(
+            items,
+            produces,
+            init,
+            f,
+            bs.push(next),
+            results.push(value),
+        ),
 {
-    assert forall|j: int| 0 <= j < results.len() + 1 implies f.requires(
-        (bs.push(next)[j], #[trigger] items[j]),
-    ) && f.ensures((bs.push(next)[j], items[j]), results.push(value)[j]) && results.push(
-        value,
-    )[j].branch_model() == ControlFlow::Continue(bs.push(next)[j + 1]) by {
-        if j == results.len() {
-            assert(bs[j] == bs.last());
+    if try_laws::<R>() {
+        assert forall|j: int| 0 <= j < results.len() + 1 implies f.requires(
+            (bs.push(next)[j], #[trigger] items[j]),
+        ) && f.ensures((bs.push(next)[j], items[j]), results.push(value)[j]) && results.push(
+            value,
+        )[j].branch_model() == ControlFlow::Continue(bs.push(next)[j + 1]) by {
+            if j == results.len() {
+                assert(bs[j] == bs.last());
+            }
         }
     }
 }
@@ -387,26 +396,22 @@ impl VerifiedIter {
         {
             let x = self.pop_front().unwrap();
             proof {
-                if try_laws::<R>() {
-                    lemma_try_fold_prefix_requires(input, produces, init, f, a, results);
-                }
+                lemma_try_fold_prefix_requires(input, produces, init, f, a, results);
             }
             let value = cb(acc, x);
             match value.branch() {
                 ControlFlow::Continue(next) => {
                     proof {
-                        if try_laws::<R>() {
-                            lemma_try_fold_prefix_extend(
-                                input,
-                                produces,
-                                init,
-                                f,
-                                a,
-                                results,
-                                value,
-                                next,
-                            );
-                        }
+                        lemma_try_fold_prefix_extend(
+                            input,
+                            produces,
+                            init,
+                            f,
+                            a,
+                            results,
+                            value,
+                            next,
+                        );
                         a = a.push(next);
                         results = results.push(value);
                     }
@@ -416,20 +421,18 @@ impl VerifiedIter {
                     let ret = R::from_residual(residual);
                     proof {
                         assert(self.production_flags() =~= produces.skip(results.len() as int + 1));
-                        if try_laws::<R>() {
-                            assert(value.branch_model() == ControlFlow::Break(residual));
-                            assert(ret.branch_model() == ControlFlow::Break(residual));
-                            assert(try_fold_prefix(input, produces, init, f, a, results));
-                            assert(try_fold_post(
-                                input,
-                                produces,
-                                init,
-                                f,
-                                ret,
-                                results.len() as int + 1,
-                                self.production_flags(),
-                            ));
-                        }
+                        assert(try_laws::<R>() ==> value.branch_model() == ControlFlow::Break(residual));
+                        assert(try_laws::<R>() ==> ret.branch_model() == ControlFlow::Break(residual));
+                        assert(try_laws::<R>() ==> try_fold_prefix(input, produces, init, f, a, results));
+                        assert(try_laws::<R>() ==> try_fold_post(
+                            input,
+                            produces,
+                            init,
+                            f,
+                            ret,
+                            results.len() as int + 1,
+                            self.production_flags(),
+                        ));
                     }
                     return ret;
                 },
@@ -438,18 +441,16 @@ impl VerifiedIter {
         let ret = R::from_output(acc);
         proof {
             assert(self.production_flags() =~= produces.skip(input.len() as int));
-            if try_laws::<R>() {
-                assert(try_fold_prefix(input, produces, init, f, a, results));
-                assert(try_fold_post(
-                    input,
-                    produces,
-                    init,
-                    f,
-                    ret,
-                    input.len() as int,
-                    self.production_flags(),
-                ));
-            }
+            assert(try_laws::<R>() ==> try_fold_prefix(input, produces, init, f, a, results));
+            assert(try_laws::<R>() ==> try_fold_post(
+                input,
+                produces,
+                init,
+                f,
+                ret,
+                input.len() as int,
+                self.production_flags(),
+            ));
         }
         ret
     }
@@ -625,26 +626,22 @@ impl VerifiedIter {
         {
             let x = self.pop_back().unwrap();
             proof {
-                if try_laws::<R>() {
-                    lemma_try_fold_prefix_requires(input, produces, init, f, a, results);
-                }
+                lemma_try_fold_prefix_requires(input, produces, init, f, a, results);
             }
             let value = cb(acc, x);
             match value.branch() {
                 ControlFlow::Continue(next) => {
                     proof {
-                        if try_laws::<R>() {
-                            lemma_try_fold_prefix_extend(
-                                input,
-                                produces,
-                                init,
-                                f,
-                                a,
-                                results,
-                                value,
-                                next,
-                            );
-                        }
+                        lemma_try_fold_prefix_extend(
+                            input,
+                            produces,
+                            init,
+                            f,
+                            a,
+                            results,
+                            value,
+                            next,
+                        );
                         a = a.push(next);
                         results = results.push(value);
                     }
@@ -656,20 +653,18 @@ impl VerifiedIter {
                         assert(self.production_flags().reverse() =~= produces.skip(
                             results.len() as int + 1,
                         ));
-                        if try_laws::<R>() {
-                            assert(value.branch_model() == ControlFlow::Break(residual));
-                            assert(ret.branch_model() == ControlFlow::Break(residual));
-                            assert(try_fold_prefix(input, produces, init, f, a, results));
-                            assert(try_fold_post(
-                                input,
-                                produces,
-                                init,
-                                f,
-                                ret,
-                                results.len() as int + 1,
-                                self.production_flags().reverse(),
-                            ));
-                        }
+                        assert(try_laws::<R>() ==> value.branch_model() == ControlFlow::Break(residual));
+                        assert(try_laws::<R>() ==> ret.branch_model() == ControlFlow::Break(residual));
+                        assert(try_laws::<R>() ==> try_fold_prefix(input, produces, init, f, a, results));
+                        assert(try_laws::<R>() ==> try_fold_post(
+                            input,
+                            produces,
+                            init,
+                            f,
+                            ret,
+                            results.len() as int + 1,
+                            self.production_flags().reverse(),
+                        ));
                     }
                     return ret;
                 },
@@ -678,18 +673,16 @@ impl VerifiedIter {
         let ret = R::from_output(acc);
         proof {
             assert(self.production_flags().reverse() =~= produces.skip(input.len() as int));
-            if try_laws::<R>() {
-                assert(try_fold_prefix(input, produces, init, f, a, results));
-                assert(try_fold_post(
-                    input,
-                    produces,
-                    init,
-                    f,
-                    ret,
-                    input.len() as int,
-                    self.production_flags().reverse(),
-                ));
-            }
+            assert(try_laws::<R>() ==> try_fold_prefix(input, produces, init, f, a, results));
+            assert(try_laws::<R>() ==> try_fold_post(
+                input,
+                produces,
+                init,
+                f,
+                ret,
+                input.len() as int,
+                self.production_flags().reverse(),
+            ));
         }
         ret
     }

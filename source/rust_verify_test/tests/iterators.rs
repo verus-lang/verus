@@ -1722,3 +1722,26 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] peek_on_concrete_type_uses_impl_propheticness verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        // Range's peek is not prophetic, even though IteratorSpec::peek is
+        spec fn f(r: core::ops::Range<u8>) -> Option<u8> {
+            IteratorSpec::peek(&r, 0)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] peek_on_generic_type_is_prophetic verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        spec fn f<I: Iterator>(i: I) -> Option<I::Item> {
+            IteratorSpec::peek(&i, 0)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
+}

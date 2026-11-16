@@ -1,10 +1,10 @@
 use crate::ast::{
-    AssertQueryMode, AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail,
-    DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionStub, InvAtomicity,
-    ItemKind, Label, LogicalOp, LoopSource, Mode, ModeCoercion, MoveExecToProofOkay, MultiOp,
-    MutRefFutureSourceName, OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place,
-    PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr,
-    UnfinalizedReadKind, UnwindSpec, VarIdent, VirErr,
+    AssertQueryMode, AutospecUsage, BinaryOp, BuiltinSpecFun, ByRef, CallTarget, CallTargetKind,
+    CtorUpdateTail, DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind,
+    FunctionStub, InvAtomicity, ItemKind, Label, LogicalOp, LoopSource, Mode, ModeCoercion,
+    MoveExecToProofOkay, MultiOp, MutRefFutureSourceName, OverflowBehavior, Path, Pattern,
+    PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
+    TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{
     get_field, is_unit, path_as_vstd_name, place_to_friendly_string, typ_to_diagnostic_str,
@@ -77,6 +77,7 @@ enum ProphReasonKind {
     MutRefFuture(MutRefFutureSourceName),
     AfterBorrow,
     HasResolved,
+    ClosureSpecFun(&'static str),
     SpecFunction(Span),
     Var(VarIdent, ProphVarReason),
 }
@@ -356,6 +357,10 @@ impl ProphReason {
             }
             ProphReasonKind::HasResolved => {
                 err = err.secondary_label(&root.span, "the `has_resolved` builtin is prophetic");
+            }
+            ProphReasonKind::ClosureSpecFun(name) => {
+                err = err
+                    .secondary_label(&root.span, format!("the `{:}` builtin is prophetic", name));
             }
             ProphReasonKind::SpecFunction(decl_span) => {
                 err = err.secondary_label(&root.span, "the result of this call is prophetic");
@@ -2127,7 +2132,7 @@ fn check_expr(
             Ok((Mode::Spec, proph))
         }
         ExprX::Call {
-            target: CallTarget::BuiltinSpecFun(_f, _typs, _impl_paths),
+            target: CallTarget::BuiltinSpecFun(f, _typs, _impl_paths),
             args: es,
             post_args: None,
             body,
@@ -2136,7 +2141,16 @@ fn check_expr(
             if typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot call spec function from exec mode"));
             }
-            let mut proph = Proph::No;
+            let builtin_name = match f {
+                BuiltinSpecFun::ClosureReq => "call_requires",
+                BuiltinSpecFun::ClosureEns => "call_ensures",
+                BuiltinSpecFun::ClosureOpensInvariants => "call_opens_invariants",
+                BuiltinSpecFun::DefaultEns => "default_ensures",
+            };
+            let mut proph = Proph::Yes(ProphReason {
+                span: expr.span.clone(),
+                kind: ProphReasonKind::ClosureSpecFun(builtin_name),
+            });
             for arg in es.iter() {
                 let p = check_expr_has_mode(
                     ctxt,
