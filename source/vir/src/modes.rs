@@ -3261,6 +3261,14 @@ fn check_expr(
             } else {
                 inner_mode
             };
+            if !*tracked && is_unit(&e1.typ) {
+                // A unit-valued ghost block (e.g. a proof block) carries no information
+                // in its value, so it can't leak a prophetic value.
+                // (Any effects that depend on prophetic values, such as assignments
+                // or calls to proof functions with tracked parameters, are checked
+                // separately via outer_proph.)
+                return Ok((mode.0, Proph::No));
+            }
             if mode.0 != Mode::Spec {
                 mode.1.check(
                     &expr.span,
