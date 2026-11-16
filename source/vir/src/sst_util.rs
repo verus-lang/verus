@@ -161,7 +161,7 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
     fa: FA,
     f_typ: FT,
 ) -> VarBinders<A> {
-    state.substs.push_scope(false);
+    state.substs.push_scope(true);
     state.free_vars.push_scope(true);
     state.fresh_var_blacklist.push_scope(true);
     let mut binders: Vec<VarBinder<A>> = Vec::new();
@@ -195,6 +195,11 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
                 .fresh_var_blacklist
                 .insert(unique.clone(), ())
                 .expect("subst_rename_binders fresh_var_blacklist");
+            if state.substs.contains_key(&unique) {
+                // the binder shadows a substituted variable, so stop substituting for it
+                let var = SpannedTyped::new(span, &f_typ(&b.a), ExpX::Var(unique.clone()));
+                state.substs.insert(unique, var).expect("subst_rename_binders substs");
+            }
             b.name.clone()
         };
         binders.push(Arc::new(VarBinderX { name, a: fa(&b.a) }));
@@ -327,7 +332,7 @@ pub(crate) fn subst_exp(
     let mut scope_substs: ScopeMap<UniqueIdent, Exp> = ScopeMap::new();
     let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
     let mut fresh_var_blacklist: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
-    scope_substs.push_scope(false);
+    scope_substs.push_scope(true);
     free_vars.push_scope(true);
     fresh_var_blacklist.push_scope(true);
     let mut exp_free_vars_map: HashMap<UniqueIdent, Typ> = HashMap::new();
