@@ -2767,3 +2767,47 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    // compiler-provided `Clone` of a tuple whose components' clones are not copies clones
+    // component-wise (vstd's `clone_tupleN`); a user `Clone` impl's postcondition carries over
+    #[test] test_builtin_clone_of_tuple_user_component verus_code! {
+        use vstd::prelude::*;
+        #[derive(Copy)]
+        pub struct X(pub u8);
+        impl Clone for X {
+            fn clone(&self) -> (r: X)
+                ensures r.0 == 0,
+            {
+                X(0)
+            }
+        }
+        fn f(a: (X, u8)) {
+            let b = a.clone();
+            assert(b.0.0 == 0);
+            assert(b.1 == a.1);
+            assert(b.0 == a.0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // tuples of non-`Copy` components, nested tuples
+    #[test] test_builtin_clone_of_tuple_non_copy verus_code! {
+        use vstd::prelude::*;
+        fn a(x: &(String, u8)) -> (r: (String, u8)) ensures r.1 == x.1, r.0@ == x.0@ { x.clone() }
+        fn b(x: &(Vec<u8>, u8)) -> (r: (Vec<u8>, u8)) ensures r.0@ == x.0@, r.1 == x.1 { x.clone() }
+        fn c(x: (String, (Vec<u8>, bool))) -> (r: (String, (Vec<u8>, bool)))
+            ensures r.0@ == x.0@, r.1.0@ == x.1.0@, r.1.1 == x.1.1,
+        {
+            broadcast use vstd::std_specs::clone::group_clone_tuple_axioms;
+            x.clone()
+        }
+        fn one(x: (String,)) -> (r: (String,)) ensures r.0@ == x.0@ { x.clone() }
+        fn wrong(x: &(String, u8)) -> (r: (String, u8))
+            ensures r.1 == 0, // FAILS
+        {
+            x.clone()
+        }
+    } => Err(err) => assert_one_fails(err)
+}
