@@ -965,3 +965,25 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] distinct_calls_not_contradictory
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        fn f(x: u8)
+            atomically (au) {
+                (a: ()) -> (b: ()),
+            },
+        {
+            assume(false);
+        }
+
+        fn test() {
+            f(1) atomically |upd| { upd(()); };
+            f(2) atomically |upd| { upd(()); };
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
