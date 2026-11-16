@@ -10,10 +10,12 @@ use crate::util::{err_span, err_span_vec, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::{ConstItemRhs, ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
+use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{AssocKind, GenericArgKind, PseudoCanonicalInput, TypingEnv};
 use rustc_span::def_id::DefId;
 use rustc_span::hygiene::MacroKind;
 use rustc_span::{ExpnKind, Span, sym};
+use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
@@ -443,6 +445,20 @@ pub(crate) fn translate_impl<'tcx>(
                 };
                 ctxt.tcx.type_of(def_id).skip_binder()
             };
+            let self_ty = ctxt.tcx.type_of(impl_def_id).skip_binder();
+            let typing_env = TypingEnv::non_body_analysis(ctxt.tcx, impl_def_id);
+            let (infcx, param_env) = ctxt.tcx.infer_ctxt().build_with_typing_env(typing_env);
+            if let rustc_middle::ty::TyKind::Adt(_, args) = self_ty.kind() {
+                for arg in args.types() {
+                    let t = infcx.type_implements_trait(trait_def_id, [arg], param_env);
+                    if !t.must_apply_modulo_regions() {
+                        return err_span_vec(
+                            item.span,
+                            "`Structural` requires all type arguments to be `Structural`",
+                        );
+                    }
+                }
+            }
             // TODO: this may be a bit of a hack: to query the TyCtxt for the StructuralEq impl it seems we need
             // a concrete type, so apply ! to all type parameters
             let ty_kind_applied_never = if let rustc_middle::ty::TyKind::Adt(def, substs) =
