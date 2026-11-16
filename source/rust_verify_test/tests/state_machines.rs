@@ -9783,3 +9783,33 @@ test_verify_one_file! {
         }}
     } => Err(err) => assert_vir_error_msg(err, "disallowed: constructor for an opaque datatype")
 }
+
+test_verify_one_file! {
+    #[test] use_in_transition_expr IMPORTS.to_string() + verus_code_str! {
+        pub mod sh {
+            #[allow(non_upper_case_globals)]
+            pub const pre: u64 = 5;
+        }
+        tokenized_state_machine!{ M {
+            fields { #[sharding(variable)] pub y: u64 }
+            transition!{ tr() {
+                update y = { use crate::sh::*; pre };
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "this kind of item is not allowed in a transition expression")
+}
+
+test_verify_one_file! {
+    #[test] stmt_macro_in_transition_expr IMPORTS.to_string() + verus_code_str! {
+        macro_rules! mk_pre { () => {
+            #[allow(non_upper_case_globals)]
+            const pre: u64 = 5;
+        } }
+        tokenized_state_machine!{ M {
+            fields { #[sharding(variable)] pub y: u64 }
+            transition!{ tr() {
+                update y = { mk_pre!(); pre };
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "macro not allowed in transition expression")
+}

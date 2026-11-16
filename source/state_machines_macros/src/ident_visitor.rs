@@ -9,7 +9,7 @@ use verus_syn::parse;
 use verus_syn::spanned::Spanned;
 use verus_syn::visit;
 use verus_syn::visit::Visit;
-use verus_syn::{Error, Expr, ExprMacro, Ident, Item, Macro, Pat, PatIdent, Path, Type};
+use verus_syn::{Error, Expr, Ident, Item, Macro, Pat, PatIdent, Path, Type};
 
 /// Error if any identifiers conflict with reserved IDs used by macro expanion.
 ///
@@ -270,6 +270,25 @@ impl<'ast> Visit<'ast> for IdentVisitor {
     }
 
     fn visit_item(&mut self, node: &'ast Item) {
+        let attrs = match node {
+            Item::Const(i) => &i.attrs,
+            Item::Static(i) => &i.attrs,
+            Item::Fn(i) => &i.attrs,
+            Item::Impl(i) => &i.attrs,
+            _ => {
+                self.errors.push(Error::new(
+                    node.span(),
+                    "this kind of item is not allowed in a transition expression",
+                ));
+                return;
+            }
+        };
+        for attr in attrs {
+            self.errors.push(Error::new(
+                attr.span(),
+                "attributes are not allowed on items in a transition expression",
+            ));
+        }
         // A nested item cannot see the outer `pre`, so treat any `pre` inside it
         // (e.g., `const pre`) like a declaration.
         let in_item = std::mem::replace(&mut self.in_item, true);
@@ -277,7 +296,7 @@ impl<'ast> Visit<'ast> for IdentVisitor {
         self.in_item = in_item;
     }
 
-    fn visit_expr_macro(&mut self, node: &'ast ExprMacro) {
+    fn visit_macro(&mut self, node: &'ast Macro) {
         self.errors
             .push(Error::new(node.span(), format!("macro not allowed in transition expression")));
     }
