@@ -1710,3 +1710,13 @@ impl fmt::Display for LoopSource {
         }
     }
 }
+
+/// The user-facing name of the builtin function corresponding to a BuiltinSpecFun
+pub fn builtin_spec_fun_name(f: &BuiltinSpecFun) -> &'static str {
+    match f {
+        BuiltinSpecFun::ClosureReq => "call_requires",
+        BuiltinSpecFun::ClosureEns => "call_ensures",
+        BuiltinSpecFun::ClosureOpensInvariants => "call_opens_invariants",
+        BuiltinSpecFun::DefaultEns => "default_ensures",
+    }
+}

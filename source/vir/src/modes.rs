@@ -1,10 +1,10 @@
 use crate::ast::{
-    AssertQueryMode, AutospecUsage, BinaryOp, BuiltinSpecFun, ByRef, CallTarget, CallTargetKind,
-    CtorUpdateTail, DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind,
-    FunctionStub, InvAtomicity, ItemKind, Label, LogicalOp, LoopSource, Mode, ModeCoercion,
-    MoveExecToProofOkay, MultiOp, MutRefFutureSourceName, OverflowBehavior, Path, Pattern,
-    PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
-    TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, UnwindSpec, VarIdent, VirErr,
+    AssertQueryMode, AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail,
+    DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionStub, InvAtomicity,
+    ItemKind, Label, LogicalOp, LoopSource, Mode, ModeCoercion, MoveExecToProofOkay, MultiOp,
+    MutRefFutureSourceName, OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place,
+    PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr,
+    UnfinalizedReadKind, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{
     get_field, is_unit, path_as_vstd_name, place_to_friendly_string, typ_to_diagnostic_str,
@@ -2141,15 +2141,9 @@ fn check_expr(
             if typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot call spec function from exec mode"));
             }
-            let builtin_name = match f {
-                BuiltinSpecFun::ClosureReq => "call_requires",
-                BuiltinSpecFun::ClosureEns => "call_ensures",
-                BuiltinSpecFun::ClosureOpensInvariants => "call_opens_invariants",
-                BuiltinSpecFun::DefaultEns => "default_ensures",
-            };
             let mut proph = Proph::Yes(ProphReason {
                 span: expr.span.clone(),
-                kind: ProphReasonKind::ClosureSpecFun(builtin_name),
+                kind: ProphReasonKind::ClosureSpecFun(crate::ast_util::builtin_spec_fun_name(f)),
             });
             for arg in es.iter() {
                 let p = check_expr_has_mode(
@@ -3261,8 +3255,8 @@ fn check_expr(
             } else {
                 inner_mode
             };
-            if !*tracked && is_unit(&e1.typ) {
-                // A unit-valued ghost block (e.g. a proof block) carries no information
+            if is_unit(&e1.typ) {
+                // A unit-valued Ghost/Tracked block (e.g. a proof block) carries no information
                 // in its value, so it can't leak a prophetic value.
                 // (Any effects that depend on prophetic values, such as assignments
                 // or calls to proof functions with tracked parameters, are checked
