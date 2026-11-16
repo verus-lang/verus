@@ -376,26 +376,7 @@ fn subst_exp_no_capture_check(
                 Some(t2) => Ok(t2.clone()),
                 None => Ok(t.clone()),
             },
-            TypX::Bool { .. }
-            | TypX::Int { .. }
-            | TypX::Real { .. }
-            | TypX::Float { .. }
-            | TypX::SpecFn { .. }
-            | TypX::AnonymousClosure { .. }
-            | TypX::FnDef { .. }
-            | TypX::Datatype { .. }
-            | TypX::Dyn { .. }
-            | TypX::Opaque { .. }
-            | TypX::Primitive { .. }
-            | TypX::Decorate { .. }
-            | TypX::Boxed { .. }
-            | TypX::Projection { .. }
-            | TypX::PointeeMetadata { .. }
-            | TypX::TypeId { .. }
-            | TypX::ConstInt { .. }
-            | TypX::ConstBool { .. }
-            | TypX::Air { .. }
-            | TypX::MutRef { .. } => Ok(t.clone()),
+            _ => Ok(t.clone()),
         }
     };
     crate::sst_visitor::exp_typ_visitor_map(
