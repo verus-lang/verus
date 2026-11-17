@@ -467,6 +467,14 @@ fn body_to_vir<'tcx>(
     for (param, vir_param) in body.params.iter().zip(params) {
         let ParamX { name, typ, mode: param_mode, .. } = &vir_param.x;
         let pat = peel_verus_param(param.pat);
+        if *param_mode != Mode::Exec {
+            // Record the binders so erasure knows not to emit drops for them
+            param.pat.walk_always(|p| {
+                if let PatKind::Binding(..) = p.kind {
+                    bctx.erasure_info.borrow_mut().ghost_param_binders.push(p.hir_id);
+                }
+            });
+        }
         let decl = param_pat_to_decl(&bctx, pat, name, typ, *param_mode)?;
         // exec code can only initialize ghost and tracked variables in proof blocks
         if decl.is_some() && mode == Mode::Exec && *param_mode != Mode::Exec {

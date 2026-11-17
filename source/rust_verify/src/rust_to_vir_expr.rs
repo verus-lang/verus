@@ -4510,6 +4510,9 @@ fn unwrap_parameter_to_vir<'tcx>(
             erasure_info.direct_var_modes.push((hir_id1, mode));
             erasure_info.direct_var_modes.push((hir_id2, mode));
             erasure_info.direct_var_modes.push((hir_id_y, Mode::Exec));
+            if mode != Mode::Exec {
+                erasure_info.ghost_param_binders.push(hir_id1);
+            }
             erasure_info.resolved_calls.push((
                 hir_id_get,
                 stmt2.span.data(),
