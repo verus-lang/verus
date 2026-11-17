@@ -904,6 +904,15 @@ pub(crate) fn redirect_calls_in_default_methods(
     {
         if callee_trait == caller_trait {
             if let Some(f_trait) = inherit_body_from {
+                if get_trait(f_trait) != get_trait(&callee) {
+                    // After trait_extensions::eliminate_trait_extensions merges TSpec into T,
+                    // a default method of T may call a method of TSpec (or vice-versa),
+                    // with callee_trait == caller_trait == T.
+                    // As before the merge, only redirect calls within the trait
+                    // that declares the default method.
+                    // (Trait method declarations are named after their original trait.)
+                    return Ok((callee, impl_paths));
+                }
                 let f_trait = &func_map[f_trait];
                 match &f_trait.x.kind {
                     FunctionKind::TraitMethodDecl { trait_path, has_default: true } => {
@@ -1547,20 +1556,6 @@ pub(crate) fn fix_missing_trigger_params_fn(
         Some(Arc::new(BindX::Let(Arc::new(binders))))
     };
     (substs, extra_trigger_terms)
-}
-
-pub fn external_trait_blanket_impls_to_air(ctx: &Ctx, imps: &Vec<TraitImpl>) -> Commands {
-    // If TSpec extends T, the generated blanket impl "impl<A: T> TSpec for A" yields
-    //   forall A. tr_bound%T(A) ==> tr_bound%TSpec(A)
-    // This is the converse of TSpec's supertrait axiom (see trait_bound_axioms),
-    // and like that axiom, it depends only on the traits, not on any other impls or functions,
-    // and it has no proof obligations (the blanket impl's methods are all external_body),
-    // so we emit it up front.
-    let mut commands: Vec<Command> = Vec::new();
-    for imp in imps.iter().filter(|imp| imp.x.external_trait_blanket) {
-        commands.extend(trait_impl_to_air(ctx, imp).iter().cloned());
-    }
-    Arc::new(commands)
 }
 
 pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {

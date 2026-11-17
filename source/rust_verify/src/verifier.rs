@@ -1412,10 +1412,6 @@ impl Verifier {
             ),
             CommandBatch::new("Trait-Bounds", vir::traits::trait_bound_axioms(ctx, &krate.traits)),
             CommandBatch::new(
-                "Trait-Extension-Blanket-Impls",
-                vir::traits::external_trait_blanket_impls_to_air(ctx, &krate.trait_impls),
-            ),
-            CommandBatch::new(
                 "Associated-Type-Impls",
                 vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls),
             ),
@@ -2082,6 +2078,7 @@ impl Verifier {
             self.args.report_long_running,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
+        let krate = vir::trait_extensions::eliminate_trait_extensions(&krate)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
         if self.args.log_all || self.args.log_args.log_vir_simple {

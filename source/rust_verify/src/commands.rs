@@ -158,20 +158,9 @@ impl<'a> OpGenerator<'a> {
         ops.extend(post_ops);
         for node in self.ctx.global.func_call_graph.get_scc_nodes(&scc_rep) {
             if let Node::TraitImpl(ImplPath::TraitImplPath(impl_path)) = node {
-                let mut impl_paths = vec![impl_path.clone()];
-                if let Some(extensions) = &self.ctx.global.trait_impl_to_extensions.get(&impl_path)
-                {
-                    impl_paths.extend(extensions.iter().cloned());
-                }
-                for i in &impl_paths {
-                    if let Some(imp) = self.trait_impl_map.get(i) {
-                        if imp.x.external_trait_blanket {
-                            // Emitted up front by external_trait_blanket_impls_to_air
-                            continue;
-                        }
-                        let cmds = vir::traits::trait_impl_to_air(&self.ctx, imp);
-                        ops.push(Op::context(ContextOp::TraitImpl, cmds, None));
-                    }
+                if let Some(imp) = self.trait_impl_map.get(&impl_path) {
+                    let cmds = vir::traits::trait_impl_to_air(&self.ctx, imp);
+                    ops.push(Op::context(ContextOp::TraitImpl, cmds, None));
                 }
             }
         }

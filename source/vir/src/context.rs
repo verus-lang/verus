@@ -63,9 +63,6 @@ pub struct GlobalCtx {
     pub func_call_sccs: Arc<Vec<Node>>,
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     pub(crate) datatype_graph_span_infos: Arc<Vec<Span>>,
-    pub trait_impl_to_extensions: Arc<HashMap<Path, Vec<Path>>>,
-    /// Map TSpec to T
-    pub(crate) extension_to_trait: Arc<HashMap<Path, Path>>,
     pub(crate) warning_ctx: Arc<WarningCtx>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
@@ -380,7 +377,6 @@ impl GlobalCtx {
 
         use crate::ast::TraitImpl;
         let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
-        let mut trait_impl_to_extensions: HashMap<Path, Vec<Path>> = HashMap::new();
         let mut trait_impl_from_extension: HashMap<Path, Path> = HashMap::new();
         let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
         let mut replace_with: HashMap<Node, Node> = HashMap::new();
@@ -417,10 +413,6 @@ impl GlobalCtx {
                 assert!(!trait_impl_from_extension.contains_key(&trait_impl.x.impl_path));
                 trait_impl_from_extension
                     .insert(trait_impl.x.impl_path.clone(), origin_impl.x.impl_path.clone());
-                trait_impl_to_extensions
-                    .entry(origin_impl.x.impl_path.clone())
-                    .or_default()
-                    .push(trait_impl.x.impl_path.clone());
             }
         }
         let mut func_call_graph: GraphBuilder<Node> =
@@ -749,8 +741,6 @@ impl GlobalCtx {
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
             datatype_graph_span_infos: Arc::new(span_infos),
-            extension_to_trait: Arc::new(extension_to_trait),
-            trait_impl_to_extensions: Arc::new(trait_impl_to_extensions),
             warning_ctx,
             qid_map,
             rlimit,
@@ -781,8 +771,6 @@ impl GlobalCtx {
             datatype_graph: self.datatype_graph.clone(),
             datatype_graph_span_infos: self.datatype_graph_span_infos.clone(),
             func_call_sccs: self.func_call_sccs.clone(),
-            extension_to_trait: self.extension_to_trait.clone(),
-            trait_impl_to_extensions: self.trait_impl_to_extensions.clone(),
             warning_ctx: self.warning_ctx.clone(),
             qid_map,
             rlimit: self.rlimit,
