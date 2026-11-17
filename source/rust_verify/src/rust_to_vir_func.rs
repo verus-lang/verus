@@ -2432,8 +2432,13 @@ pub(crate) fn finish_function<'tcx>(
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
 
-            let fn_sig = ctxt.tcx.fn_sig(def_id).skip_binder();
-            let inputs = fn_sig.inputs().skip_binder();
+            let inputs = match &sig.sig {
+                FnOrConstSigEnum::Fn(..) => {
+                    let fn_sig = ctxt.tcx.fn_sig(def_id).skip_binder();
+                    fn_sig.inputs().skip_binder().to_vec()
+                }
+                FnOrConstSigEnum::ConstVar(..) => vec![],
+            };
 
             let (mut vir_body, param_decls, bctx) = body_to_vir(
                 ctxt,
