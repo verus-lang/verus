@@ -90,6 +90,7 @@ pub struct ArgsX {
     pub no_erasure_check: bool,
     pub no_auto_recommends_check: bool,
     pub no_cheating: bool,
+    pub counterexample: bool,
     pub time: bool,
     pub time_expanded: bool,
     pub output_json: bool,
@@ -140,6 +141,7 @@ impl ArgsX {
             no_erasure_check: Default::default(),
             no_auto_recommends_check: Default::default(),
             no_cheating: Default::default(),
+            counterexample: Default::default(),
             time: Default::default(),
             time_expanded: Default::default(),
             output_json: Default::default(),
@@ -319,6 +321,7 @@ pub fn parse_args_with_imports(
     const OPT_NO_ERASURE_CHECK: &str = "no-erasure-check";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
     const OPT_NO_CHEATING: &str = "no-cheating";
+    const OPT_COUNTEREXAMPLE: &str = "counterexample";
     const OPT_TIME: &str = "time";
     const OPT_TIME_EXPANDED: &str = "time-expanded";
     const OPT_OUTPUT_JSON: &str = "output-json";
@@ -494,6 +497,13 @@ pub fn parse_args_with_imports(
         "",
         OPT_NO_CHEATING,
         "Do not allow assume, admit, verifier::external_body, and assume_specification; also reject options that skip or weaken checks",
+    );
+    opts.optflag(
+        "",
+        OPT_COUNTEREXAMPLE,
+        "On a failed function body check, print the values the solver's model gives the \
+         function's inputs (integer, bool and char parameters; length and first elements of \
+         slice and array parameters)",
     );
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
@@ -711,6 +721,7 @@ pub fn parse_args_with_imports(
         no_erasure_check: matches.opt_present(OPT_NO_ERASURE_CHECK),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
         no_cheating: matches.opt_present(OPT_NO_CHEATING),
+        counterexample: matches.opt_present(OPT_COUNTEREXAMPLE),
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
         time_expanded: matches.opt_present(OPT_TIME_EXPANDED),
         output_json: matches.opt_present(OPT_OUTPUT_JSON),

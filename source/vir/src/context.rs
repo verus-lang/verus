@@ -79,6 +79,8 @@ pub struct GlobalCtx {
     pub axiom_usage_info: bool,
     pub no_bv_simplify: bool,
     pub report_long_running: bool,
+    /// `--counterexample`: record the inputs of a failing function body query
+    pub counterexamples: bool,
 }
 
 // Context for verifying one function
@@ -763,6 +765,7 @@ impl GlobalCtx {
             axiom_usage_info,
             no_bv_simplify,
             report_long_running,
+            counterexamples: false,
         })
     }
 
@@ -795,6 +798,7 @@ impl GlobalCtx {
             axiom_usage_info: self.axiom_usage_info,
             no_bv_simplify: self.no_bv_simplify,
             report_long_running: self.report_long_running,
+            counterexamples: self.counterexamples,
         }
     }
 
