@@ -317,6 +317,16 @@ pub broadcast axiom fn axiom_new_strlit_view_id(id: int)
         strlit_view_id(#[trigger] strslice_new_strlit(id).view()) == id,
 ;
 
+/// A `str` is determined by its characters: `str` has no identity beyond its content (as
+/// `[T]` is extensional in its elements), so two `str` values with equal views are equal.
+/// Without this, `s == "lit"` in spec could not be established from the exec comparison
+/// `s == other`, whose specification is view equality.
+#[cfg(not(verus_verify_core))]
+pub broadcast axiom fn axiom_str_view_injective<'a>(a: &'a str, b: &'a str)
+    ensures
+        #[trigger] a@ == #[trigger] b@ ==> a == b,
+;
+
 #[cfg(not(verus_verify_core))]
 pub broadcast axiom fn axiom_str_literal_len<'a>(s: &'a str)
     ensures
@@ -332,6 +342,7 @@ pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
 #[cfg(all(not(feature = "alloc"), not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
     axiom_new_strlit_view_id,
+    axiom_str_view_injective,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
     is_ascii_spec_bytes,
@@ -341,6 +352,7 @@ pub broadcast group group_string_axioms {
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
     axiom_new_strlit_view_id,
+    axiom_str_view_injective,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
     to_string_from_display_ensures_for_str,
