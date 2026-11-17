@@ -2610,6 +2610,192 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] trailing_zeros_u128_usize verus_code! {
+        use vstd::prelude::*;
+
+        fn test_u128(x: u128)
+            requires x != 0,
+        {
+            let t = x.trailing_zeros();
+            assert(t < 128);
+            assert((x >> t as u128) & 1u128 == 1u128);
+            // the low bit is clear whenever there is at least one trailing zero
+            assert(t > 0 ==> (x >> 0u128) & 1u128 == 0u128);
+        }
+
+        fn test_u128_zero() {
+            let t = 0u128.trailing_zeros();
+            assert(t == 128);
+        }
+
+        fn test_usize(x: usize)
+            requires x != 0,
+        {
+            let t = x.trailing_zeros();
+            assert(t < usize::BITS);
+            assert((x >> t as usize) & 1usize == 1usize);
+        }
+
+        fn test_usize_zero() {
+            let t = 0usize.trailing_zeros();
+            assert(t == usize::BITS);
+        }
+
+        spec fn spec_tz(x: usize) -> u32 {
+            x.trailing_zeros()
+        }
+
+        proof fn test_usize_spec(x: usize)
+            requires x != 0,
+        {
+            assert(spec_tz(x) < usize::BITS);
+        }
+
+        fn test_wrong(x: u128)
+            requires x != 0,
+        {
+            let t = x.trailing_zeros();
+            assert(t == 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] leading_zeros_u128_usize verus_code! {
+        use vstd::prelude::*;
+
+        fn test_u128(x: u128)
+            requires x != 0,
+        {
+            let l = x.leading_zeros();
+            assert(l < 128);
+            assert((x >> sub(127u128, l as u128)) & 1u128 != 0u128);
+            assert(x >> sub(128u128, l as u128) == 0);
+        }
+
+        fn test_u128_top() {
+            let l = u128::MAX.leading_zeros();
+            assert((u128::MAX >> 127u128) & 1u128 == 1u128) by (bit_vector);
+            assert(l == 0);
+        }
+
+        fn test_usize(x: usize)
+            requires x != 0,
+        {
+            let l = x.leading_zeros();
+            assert(l < usize::BITS);
+            assert(x >> sub(usize::BITS as usize, l as usize) == 0);
+        }
+
+        fn test_usize_zero() {
+            let l = 0usize.leading_zeros();
+            assert(l == usize::BITS);
+        }
+
+        fn test_wrong(x: usize)
+            requires x != 0,
+        {
+            let l = x.leading_zeros();
+            assert(l == 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] count_ones verus_code! {
+        use vstd::prelude::*;
+
+        fn test_bounds(a: u8, b: u16, c: u32, d: u64, e: u128, f: usize) {
+            assert(a.count_ones() <= 8);
+            assert(b.count_ones() <= 16);
+            assert(c.count_ones() <= 32);
+            assert(d.count_ones() <= 64);
+            assert(e.count_ones() <= 128);
+            assert(f.count_ones() <= usize::BITS);
+        }
+
+        fn test_zero(a: u8, f: usize) {
+            let ca = a.count_ones();
+            assert(ca == 0 <==> a == 0);
+            let cf = f.count_ones();
+            assert(cf == 0 <==> f == 0);
+            assert(0u64.count_ones() == 0);
+        }
+
+        fn test_nonzero(x: u32)
+            requires x != 0,
+        {
+            let c = x.count_ones();
+            assert(c >= 1);
+        }
+
+        fn test_no_unwind(a: u8, b: u16, c: u32, d: u64, e: u128, f: usize)
+            no_unwind
+        {
+            let _ = a.count_ones();
+            let _ = b.count_ones();
+            let _ = c.count_ones();
+            let _ = d.count_ones();
+            let _ = e.count_ones();
+            let _ = f.count_ones();
+        }
+
+        fn test_wrong(x: u64)
+            requires x != 0,
+        {
+            let c = x.count_ones();
+            assert(c == 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] count_ones_values verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::bits::nat_count_ones;
+
+        fn test_small_values() {
+            assert(1u32.count_ones() == 1);
+            assert(0u8.count_ones() == 0);
+            assert(1u128.count_ones() == 1);
+            assert(1usize.count_ones() == 1);
+            let c = 1u64.count_ones();
+            assert(c == 1);
+        }
+
+        fn test_values_with_fuel() {
+            assert(4u16.count_ones() == 1) by {
+                reveal_with_fuel(nat_count_ones, 3);
+            }
+            let c = 7u32.count_ones();
+            assert(c == 3) by {
+                reveal_with_fuel(nat_count_ones, 3);
+            }
+        }
+
+        proof fn test_values_by_compute() {
+            assert(0xffu8.count_ones() == 8) by (compute);
+            assert(0xffff_ffff_ffff_ffffu64.count_ones() == 64) by (compute);
+            assert(0x8000_0000_0000_0000_0000_0000_0000_0001u128.count_ones() == 2) by (compute);
+        }
+
+        spec fn spec_count_ones(x: u8) -> u32 {
+            x.count_ones()
+        }
+
+        proof fn test_spec_values() {
+            assert(spec_count_ones(1) == 1);
+            assert(spec_count_ones(6) == 2) by (compute);
+        }
+
+        proof fn test_wrong() {
+            reveal_with_fuel(nat_count_ones, 2);
+            assert(2u32.count_ones() == 2); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] termination_impl_no_precondition_allowed verus_code! {
         use vstd::prelude::*;
 
