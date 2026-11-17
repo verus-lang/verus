@@ -112,25 +112,17 @@ impl<'tcx> BodyCtxt<'tcx> {
     }
 
     /// Schedule the drop in the given scope.
-    /// If the scope isn't on the stack, use the nearest enclosing scope that is.
-    /// (This can happen if we translate some HIR construct without traversing every
-    /// HIR node in it; in most cases, the skipped HIR nodes don't have any drops.)
+    /// Panics if the scope isn't on the stack.
     fn schedule_drop(&self, scope: Scope, local_or_temp: LocalOrTemp, span: Span, ty: Ty<'tcx>) {
         if !self.emits_drops() || !self.ty_needs_drop(ty) {
             return;
         }
-        let scope_tree = self.scope_tree();
         let mut drop_scopes = self.drop_scopes.borrow_mut();
-        let mut scope = Some(scope);
-        while let Some(s) = scope {
-            if let Some(ds) = drop_scopes.scopes.iter_mut().rev().find(|ds| ds.scope == s) {
-                ds.drops.push((local_or_temp, span));
-                return;
-            }
-            scope = scope_tree.opt_encl_scope(s);
+        if let Some(ds) = drop_scopes.scopes.iter_mut().rev().find(|ds| ds.scope == scope) {
+            ds.drops.push((local_or_temp, span));
+            return;
         }
-        // We didn't find any enclosing scope; this might happen, e.g., for a temporary
-        // extended to the end of the function body. In that case, we do nothing.
+        panic!("Verus Internal Error: schedule_drop failed to find scope {:?}", scope);
     }
 
     /// Schedule a drop for a temporary created from `expr`
