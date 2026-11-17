@@ -960,7 +960,7 @@ fn exec_closure_spec_requires(
     // If the closure has `|a0, a1, a2| requires f(a0, a1, a2)`
     // then we emit a spec of the form
     //
-    //      forall x :: f(x.0, x.1, x.2) ==> closure.requires(x)
+    //      forall x :: f(x.0, x.1, x.2) <==> closure.requires(x)
     //
     // with `closure.requires(x)` as the trigger
 
@@ -997,7 +997,7 @@ fn exec_closure_spec_requires(
         wrap_in_trigger(&mk_closure_req_call(state, span, params, closure_var, &tuple_var));
 
     let bool_typ = Arc::new(TypX::Bool);
-    let req_quant_body = mk_implies(span, &reqs_body, &closure_req_call);
+    let req_quant_body = mk_eq(span, &reqs_body, &closure_req_call);
 
     let forall = Quant { quant: air::ast::Quant::Forall };
     let binders = Arc::new(vec![Arc::new(VarBinderX { name: tuple_ident, a: tuple_typ })]);
@@ -1015,15 +1015,21 @@ fn exec_closure_spec_ensures(
     ret: &VarBinder<Typ>,
     ensures: &Vec<Expr>,
     default_ens: bool,
+    iff: bool,
 ) -> Result<Expr, VirErr> {
     // For ensures:
 
     // If the closure has `|a0, a1, a2| ensures |b| f(a0, a1, a2, b)`
     // then we emit a spec of the form
     //
-    //      forall x, y :: closure.ensures(x, y) ==> f(x.0, x.1, x.2, y)
+    //      forall x, y :: closure.ensures(x, y) <==> f(x.0, x.1, x.2, y)
     //
-    // with `closure.ensures(x)` as the trigger
+    // with `closure.ensures(x)` as the trigger.
+    //
+    // If `iff` is false, we emit `==>` instead of `<==>`.
+    // This is needed for trait methods, since impls can extend the ensures clauses;
+    // `<==>` for the trait method declaration would contradict the extended ensures
+    // of the impl.
 
     let (tuple_ident, tuple_var) = exec_closure_spec_param(state, span, params);
     let tuple_typ = tuple_var.typ.clone();
@@ -1064,7 +1070,11 @@ fn exec_closure_spec_ensures(
     ));
 
     let bool_typ = Arc::new(TypX::Bool);
-    let ens_quant_body = mk_implies(span, &closure_ens_call, &enss_body);
+    let ens_quant_body = if iff {
+        mk_eq(span, &closure_ens_call, &enss_body)
+    } else {
+        mk_implies(span, &closure_ens_call, &enss_body)
+    };
 
     let forall = Quant { quant: air::ast::Quant::Forall };
     let binders =
@@ -1143,7 +1153,7 @@ fn exec_closure_spec(
 
     if ensures.len() > 0 {
         let ens_forall =
-            exec_closure_spec_ensures(state, span, closure_var, params, ret, ensures, false)?;
+            exec_closure_spec_ensures(state, span, closure_var, params, ret, ensures, false, true)?;
         exprs.push(ens_forall);
     }
     if is_proof {
@@ -1291,6 +1301,9 @@ fn add_fndef_axioms_to_function(
         );
         closure_enss = Arc::new(vec![default_expr]);
     }
+    // Impls of trait methods may extend the ensures clauses,
+    // so for trait methods, the ensures only holds in one direction
+    let ens_iff = matches!(function.x.kind, FunctionKind::Static);
     for (default_ens, enss) in [(false, closure_enss), (true, default_enss)] {
         if enss.len() > 0 {
             let ens_forall = exec_closure_spec_ensures(
@@ -1301,6 +1314,7 @@ fn add_fndef_axioms_to_function(
                 &ret,
                 &*enss,
                 default_ens,
+                ens_iff,
             )?;
             fndef_axioms.push(ens_forall);
         }
