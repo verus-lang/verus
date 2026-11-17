@@ -2006,3 +2006,35 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_hash_set_clone_and_eq verus_code! {
+        use std::collections::HashSet;
+        use vstd::prelude::*;
+        fn test() {
+            let mut a = HashSet::<u32>::new();
+            a.insert(3);
+            a.insert(6);
+            let b = a.clone();
+            assert(b@ == a@);
+            let r = a == b;
+            assert(r);
+
+            let mut c = HashSet::<u32>::new();
+            c.insert(3);
+            let r2 = a == c;
+            assert(!r2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_tuple_keys_obey_key_model verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::obeys_key_model;
+        proof fn test() {
+            assert(obeys_key_model::<(u32, u64)>());
+            assert(obeys_key_model::<(u8, bool, i64)>());
+        }
+    } => Ok(())
+}
