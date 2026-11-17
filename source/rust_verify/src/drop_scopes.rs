@@ -29,7 +29,6 @@ use vir::ast::{
     BinaryOp, Expr, ExprX, LocalOrTemp, Mode, Place, PlaceX, Stmt, StmtX, VarIdent, VirErr,
 };
 use vir::ast_util::unit_typ;
-use vir::def::Spanned;
 
 struct DropScope {
     scope: Scope,
@@ -273,15 +272,7 @@ pub(crate) fn node_scope(hir_id: HirId) -> Scope {
 }
 
 pub(crate) fn drop_stmts(bctx: &BodyCtxt, drops: Vec<Expr>) -> Vec<Stmt> {
-    drops
-        .into_iter()
-        .map(|d| {
-            // The statement needs its own AstId
-            let mut span = d.span.clone();
-            span.id = bctx.ctxt.spans.get_next_span_id();
-            Spanned::new(span, StmtX::Expr(d))
-        })
-        .collect()
+    drops.into_iter().map(|d| bctx.ctxt.spanned_new_vir(&d.span, StmtX::Expr(d.clone()))).collect()
 }
 
 /// Return an expression that evaluates `e` and then executes the drops.
