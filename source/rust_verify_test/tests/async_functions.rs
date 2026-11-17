@@ -834,3 +834,76 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] closure_in_send_async_fn verus_code! {
+        use vstd::prelude::*;
+        fn need_send<T: Send>(t: T) {}
+        pub enum E { P(u8) }
+        fn ser(v: u8) -> Result<u8, u8> { Ok(v) }
+        pub async fn a1(x: u8) -> Result<u8, E> {
+            let y = ser(x).map_err(|e| E::P(e))?;
+            Ok(y)
+        }
+        pub async fn g1() { let _ = a1(1).await; }
+        pub fn d1() { need_send(g1()); need_send(a1(2)); }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] non_send_future_still_rejected verus_code! {
+        use vstd::prelude::*;
+        fn need_send<T: Send>(t: T) {}
+        async fn yield_now() {}
+        #[verifier::external_body]
+        fn rc() -> std::rc::Rc<u8> { std::rc::Rc::new(1) }
+        pub async fn holds_rc() -> u8 {
+            let r = rc();
+            yield_now().await;
+            let _ = r;
+            0
+        }
+        pub fn d1() { need_send(holds_rc()); }
+    } => Err(err) => assert!(err.errors.iter().any(|e| e.message.contains("cannot be sent between threads safely")))
+}
+
+test_verify_one_file! {
+    // `async fn` in a trait and its impl, with the trait outside verus! (as enum_dispatch
+    // generates): rustc compares the impl's future type with the trait's and needs its
+    // regions; the type_of_opaque override must not apply to it (it caused an ICE)
+    #[test] test_async_fn_in_trait_impl_no_ice code! {
+        use vstd::prelude::*;
+        trait Run {
+            async fn run(&self, x: &u8) -> u8;
+        }
+        verus! {
+            struct C;
+            impl Run for C {
+                async fn run(&self, x: &u8) -> u8 { *x }
+            }
+            async fn go(c: &C) -> u8 {
+                let y = 3u8;
+                c.run(&y).await
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // a verified `async fn` in a trait impl whose future is required to be `Send`
+    // (enum_dispatch-generated `Execute` impls in kraken-cli) used to crash like the free case
+    #[test] test_async_fn_in_trait_impl_send code! {
+        use vstd::prelude::*;
+        trait Execute { async fn execute(self, ctx: &Ctx) -> u8; }
+        verus! {
+            pub struct Ctx { pub n: u8 }
+            pub struct A { pub x: u8 }
+            impl Execute for A {
+                async fn execute(self, ctx: &Ctx) -> u8 { self.x }
+            }
+            #[verifier::external_body]
+            fn require_send<T: Send>(_t: T) {}
+            pub fn go(a: A, c: &Ctx) { require_send(a.execute(c)); }
+        }
+    } => Ok(())
+}
