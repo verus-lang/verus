@@ -886,3 +886,82 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] atomic_update_break_in_invariant_block verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        use vstd::atomic::*;
+
+        fn f<P: InvariantPredicate<(), ()>>(i: Tracked<&LocalInvariant<(), (), P>>)
+            atomically (au) {
+                () -> (),
+            },
+        {
+            loop
+                decreases 0int,
+            {
+                open_local_invariant!(i.borrow() => inner => {
+                    let _r = try_open_atomic_update!(au, x => { break; });
+                });
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
+}
+
+const EXTERNAL_BODY_ATOMIC_FUNCTION: &'static str = verus_code_str! {
+    use vstd::prelude::*;
+    use vstd::atomic::*;
+
+    pub tracked struct Token {
+        state: u16,
+    }
+
+    impl Token {
+        pub proof fn new() -> (tracked out: Self) {
+            Self { state: 250 }
+        }
+    }
+
+    #[verifier::external_body]
+    pub fn publish(slot: &mut u8, x: u8)
+        atomically (atomic_update) {
+            (old: Token) -> (new: Commit<Token>),
+            ensures
+                new@ == old,
+                x == 7,
+        },
+        requires x == 7,
+        ensures *final(slot) == x,
+    {
+        unimplemented!()
+    }
+};
+
+test_verify_one_file! {
+    #[test] external_body_atomic_spec_requires_fail
+    EXTERNAL_BODY_ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        fn test() {
+            let mut slot: u8 = 0;
+            let x: u8 = 3;
+            publish(&mut slot, x) atomically |update| { // FAILS
+                let tracked _t = update(Token::new());
+            };
+            assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] external_body_atomic_spec_requires_ensures_ok
+    EXTERNAL_BODY_ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        fn test() {
+            let mut slot: u8 = 0;
+            let x: u8 = 7;
+            publish(&mut slot, x) atomically |update| {
+                let tracked _t = update(Token::new());
+            };
+            assert(slot == 7);
+        }
+    } => Ok(())
+}

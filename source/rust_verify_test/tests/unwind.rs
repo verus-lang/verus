@@ -889,3 +889,20 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] header_after_statements_in_block verus_code! {
+        fn f(x: u8) -> (r: u8)
+            ensures
+                r == x,
+        {
+            {
+                if x == 0 {
+                    return 1;
+                }
+                verus_builtin::no_unwind();
+            }
+            x
+        }
+    } => Err(err) => assert_vir_error_msg(err, "invalid nested header block")
+}

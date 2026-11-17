@@ -1418,6 +1418,85 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_slice_rotate verus_code! {
+        use vstd::prelude::*;
+
+        fn test_rotate_left(s: &mut [u8])
+            requires
+                old(s)@ == seq![1u8, 2, 3, 4, 5],
+        {
+            s.rotate_left(2);
+            assert(s@ == seq![3u8, 4, 5, 1, 2]);
+            s.rotate_left(0);
+            assert(s@ == seq![3u8, 4, 5, 1, 2]);
+            s.rotate_left(5);
+            assert(s@ == seq![3u8, 4, 5, 1, 2]);
+        }
+
+        fn test_rotate_right(s: &mut [u8])
+            requires
+                old(s)@ == seq![1u8, 2, 3, 4, 5],
+        {
+            s.rotate_right(2);
+            assert(s@ == seq![4u8, 5, 1, 2, 3]);
+            s.rotate_right(0);
+            assert(s@ == seq![4u8, 5, 1, 2, 3]);
+            s.rotate_right(5);
+            assert(s@ == seq![4u8, 5, 1, 2, 3]);
+        }
+
+        fn test_empty(s: &mut [u8])
+            requires
+                old(s)@.len() == 0,
+        {
+            s.rotate_left(0);
+            s.rotate_right(0);
+            assert(s@.len() == 0);
+        }
+
+        fn test_array() {
+            let mut a = ['a', 'b', 'c', 'd', 'e', 'f'];
+            a.rotate_left(2);
+            assert(a@ == seq!['c', 'd', 'e', 'f', 'a', 'b']);
+            a.rotate_right(2);
+            assert(a@ == seq!['a', 'b', 'c', 'd', 'e', 'f']);
+        }
+
+        fn test_vec() {
+            let mut v: Vec<u32> = vec![1, 2, 3];
+            v.rotate_right(1);
+            assert(v@ == seq![3u32, 1, 2]);
+        }
+
+        fn test_generic<T>(s: &mut [T], m: usize)
+            requires
+                m <= old(s)@.len(),
+            ensures
+                final(s)@ == old(s)@,
+            no_unwind
+        {
+            s.rotate_left(m);
+            s.rotate_right(m);
+            assert(s@ =~= old(s)@);
+        }
+
+        fn test_out_of_bounds_left(s: &mut [u8])
+            requires
+                old(s)@.len() == 5,
+        {
+            s.rotate_left(6); // FAILS
+        }
+
+        fn test_out_of_bounds_right(s: &mut [u8])
+            requires
+                old(s)@.len() == 5,
+        {
+            s.rotate_right(6); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
     // GitHub issue #2968
     #[test] test_range_inclusive_exhausted_iter verus_code! {
         use core::ops::{Bound, RangeBounds};

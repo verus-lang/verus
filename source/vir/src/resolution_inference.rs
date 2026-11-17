@@ -2757,8 +2757,10 @@ impl<'a> LocalCollection<'a> {
                     }
                     Some(PlaceTree::Struct(_, _, variants)) => {
                         let indices = field_opr_to_indices(field_opr, &self.datatypes);
-                        fp.projections.push(Projection::StructField(indices));
                         let child: Option<&PlaceTree> = variants[indices.0][indices.1].as_ref();
+                        if child.is_some() {
+                            fp.projections.push(Projection::StructField(indices));
+                        }
                         (fp, child)
                     }
                 })

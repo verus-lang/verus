@@ -301,12 +301,14 @@ fn handle_autospec<'tcx>(
                     is_unsafe: false,
                     impls_cannot_extend_spec: false,
                     exec_assume_termination: false,
+                    assume_compatibility_with_trait_spec: false,
                     exec_allows_no_decreases_clause: false,
                     tracked_swap: false,
                     tracked_take_option: false,
                     create_open_invariant_credit: false,
                     is_async: false,
                     is_drop: false,
+                    has_trivial_clone: false,
                 }),
                 decreases_len: 0,
                 returns: false,
@@ -1590,6 +1592,7 @@ fn make_attributes<'tcx>(
         },
         impls_cannot_extend_spec: vattrs.impls_cannot_extend_spec,
         exec_assume_termination: vattrs.assume_termination,
+        assume_compatibility_with_trait_spec: vattrs.assume_compatibility_with_trait_spec,
         exec_allows_no_decreases_clause: if !is_trait_decl_no_default {
             crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents(
                 ctxt.tcx, def_id,
@@ -1602,6 +1605,7 @@ fn make_attributes<'tcx>(
         create_open_invariant_credit: vattrs.create_open_invariant_credit,
         is_async: is_async,
         is_drop: is_drop,
+        has_trivial_clone: false, // set later, see rust_to_vir_impl::set_trivial_clone_attrs
     };
     Ok(Arc::new(fattrs))
 }

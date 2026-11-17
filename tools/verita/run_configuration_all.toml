@@ -103,8 +103,11 @@ extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"i
 
 [[project]]
 name = "svsm"
-git_url = "https://github.com/ziqiaozhou/svsm.git"
-refspec = "origin/verita"
+#TODO: restore this when updates are merged into it:
+#git_url = "https://github.com/ziqiaozhou/svsm.git"
+#refspec = "origin/verita"
+git_url = "https://github.com/Chris-Hawblitzel/svsm.git"
+refspec = "origin/verita-fix1"
 cargo_verus = true
 extra_cargo_args = ["--features", "verus"]
 crate_roots = ["kernel"]
