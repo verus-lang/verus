@@ -79,4 +79,16 @@ fn exec_await<F: Future>(
     unimplemented!()
 }
 
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(F)]
+pub struct ExPollFn<F>(PollFn<F>);
+
+/// `poll_fn(f)` (`tokio::select!` builds its future with it). Nothing is said about the
+/// future, so awaiting it yields an unconstrained value.
+pub assume_specification<T, F: FnMut(&mut Context<'_>) -> Poll<T>>[ core::future::poll_fn ](
+    f: F,
+) -> PollFn<F>
+;
+
 } // verus!

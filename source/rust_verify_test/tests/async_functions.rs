@@ -834,3 +834,19 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file_with_options! {
+    #[test] poll_fn_future ["--edition 2024"] => verus_code! {
+        use vstd::prelude::*;
+        use core::task::{Context, Poll};
+        async fn f() -> u8 {
+            let p = core::future::poll_fn(|_cx: &mut Context<'_>| Poll::Ready(1u8));
+            p.await
+        }
+        async fn wrong() -> (r: u8)
+            ensures r == 1, // FAILS
+        {
+            core::future::poll_fn(|_cx: &mut Context<'_>| Poll::Ready(1u8)).await
+        }
+    } => Err(err) => assert_one_fails(err)
+}
