@@ -3559,7 +3559,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             Ok(ExprOrPlace::Place(vir))
         }
         ExprKind::If(cond, lhs, rhs) => {
-            let if_then_scope = bctx.if_then_scope(lhs.hir_id);
+            let if_then_scope = bctx.if_then_scope(expr);
             let cond = cond.peel_drop_temps();
             match cond.kind {
                 ExprKind::Let(_) => {
@@ -3753,7 +3753,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             // but we still need to enter their scopes, and the if_then_scope.
             let block_scope = node_scope(loop_block.hir_id);
             let if_scope = node_scope(if_expr.hir_id);
-            let if_then_scope = bctx.if_then_scope(body.hir_id);
+            let if_then_scope = bctx.if_then_scope(if_expr);
             bctx.push_drop_scope(block_scope);
             bctx.push_drop_scope(if_scope);
             let r: Result<_, VirErr> = (|| match &cond.peel_drop_temps().kind {

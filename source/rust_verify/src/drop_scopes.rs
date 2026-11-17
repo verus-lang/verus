@@ -243,16 +243,28 @@ impl<'tcx> BodyCtxt<'tcx> {
     }
 
     /// For the `if` expression whose then-branch has the given HirId,
-    /// the scope containing the condition and the then-branch
-    /// (`IfThenRescope` in edition 2024 and later, `IfThen` otherwise).
-    pub(crate) fn if_then_scope(&self, then_hir_id: HirId) -> Scope {
-        let local_id = then_hir_id.local_id;
-        let rescope = Scope { local_id, data: ScopeData::IfThenRescope };
-        if self.scope_tree().parent_map.contains_key(&rescope) {
-            rescope
-        } else {
-            Scope { local_id, data: ScopeData::IfThen }
-        }
+    /// get the scope containing the condition and the then-branch.
+    ///
+    /// This is `IfThenRescope` in edition >= 2024, `IfThen` otherwise.
+    /// (See `rustc_mir_build/src/thir/cx/expr.rs`)
+    pub(crate) fn if_then_scope(&self, if_hir_expr: &rustc_hir::Expr<'tcx>) -> Scope {
+        let rustc_hir::ExprKind::If(_, then, _) = &if_hir_expr.kind else { unreachable!() };
+        let then_hir_id = then.hir_id;
+        let then_scope = Scope {
+            local_id: then_hir_id.local_id,
+            data: {
+                if if_hir_expr.span.at_least_rust_2024() {
+                    ScopeData::IfThenRescope
+                } else {
+                    ScopeData::IfThen
+                }
+            },
+        };
+
+        // Confirm we made the right choice
+        assert!(self.scope_tree().parent_map.contains_key(&then_scope));
+
+        then_scope
     }
 }
 
