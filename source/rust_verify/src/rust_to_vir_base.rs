@@ -781,11 +781,6 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         TyKind::FnDef(..) => true,
         TyKind::Str => true,
 
-        // Note: before Rust 1.100, we excluded `!` here because the reservation impl
-        // "impl<T> From<!> for T" (rust-lang/rust#64715) conflicts with "impl<T> From<T> for T".
-        // Rust 1.100 removed that reservation impl (along with `#[rustc_reservation_impl]`)
-        // and made `core::convert::Infallible` an alias for `!`, so impls mentioning `!`
-        // (e.g., `impl<T> Residual<T> for Option<!>`) are now needed.
         TyKind::Never => true,
         TyKind::Alias(_, t) => match t.kind {
             AliasTyKind::Opaque { .. } | AliasTyKind::Free { .. } => false,
