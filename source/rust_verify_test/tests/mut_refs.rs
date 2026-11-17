@@ -5352,3 +5352,15 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] try_to_resolve_ghost_field_issue3488 [] => verus_code! {
+        use vstd::prelude::*;
+        pub tracked struct S { pub a: Vec<u8>, pub ghost g: &'static mut u64 }
+
+        proof fn f(tracked s: S) {
+            let tracked v = s.a;
+            assert(has_resolved(s.g)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
