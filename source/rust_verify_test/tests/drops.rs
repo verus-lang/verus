@@ -1966,7 +1966,8 @@ fn test_call_arg_drops_method_break() {
     assert_eq!(call_arg_drops(code), "A0");
 }
 
-/// The fields of constructors (tuples, tuple structs, and structs) are operands like call arguments
+/// The fields of constructors (tuples, tuple structs, and structs) and the elements
+/// of array literals are operands like call arguments
 #[test]
 fn test_ctor_arg_drops() {
     let code = verus_code! {
@@ -1976,9 +1977,10 @@ fn test_ctor_arg_drops() {
             let t = (mk(), if c { return; } else { mk() });
             let t = T(mk(), if c { return; } else { mk() });
             let s = S { a: mk(), b: if c { return; } else { mk() } };
+            let a = [mk(), mk(), if c { return; } else { mk() }];
         }
     };
-    assert_eq!(call_arg_drops(code), "A0 B0 C0");
+    assert_eq!(call_arg_drops(code), "A0 B0 C0 D1 D0");
 }
 
 /// The operands of overloaded operators, and the arguments of closure calls

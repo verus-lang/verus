@@ -2876,9 +2876,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             if bctx.ctxt.no_vstd {
                 return err_span(expr.span, "array literals are not supported with `--no-vstd`");
             }
-            let args: Result<Vec<vir::ast::Expr>, VirErr> =
-                exprs.iter().map(|e| expr_to_vir_consume(bctx, e)).collect();
-            mk_expr(ExprX::ArrayLiteral(Arc::new(args?)))
+            let exprs: Vec<&Expr<'tcx>> = exprs.iter().collect();
+            bctx.operands_to_vir(expr, &exprs, |span, args| {
+                let e = SpannedTyped::new(&span, &expr_typ()?, ExprX::ArrayLiteral(Arc::new(args)));
+                Ok(ExprOrPlace::Expr(e))
+            })
         }
         ExprKind::Repeat(e, _array_len) => {
             if bctx.ctxt.no_vstd {

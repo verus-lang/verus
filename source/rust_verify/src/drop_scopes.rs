@@ -45,7 +45,8 @@ pub(crate) struct DropScopes {
 /// Scopes temporarily removed from the stack (see `suspend_drop_scopes_from`)
 pub(crate) struct SuspendedDropScopes(Vec<DropScope>);
 
-/// The operands of an `ExprX::Call` or `ExprX::Ctor` node that is being translated
+/// The operands of an `ExprX::Call`, `ExprX::Ctor`, or `ExprX::ArrayLiteral` node
+/// that is being translated
 /// (see `begin_operands`)
 pub(crate) struct Operands {
     /// The scope of the HIR expression for the call or constructor
@@ -191,7 +192,7 @@ impl<'tcx> BodyCtxt<'tcx> {
     }
 
     /// Begin translating the operands of the call or constructor `expr`
-    /// (which will become a `ExprX::Call` or `ExprX::Ctor` node).
+    /// (which will become an `ExprX::Call`, `ExprX::Ctor`, or `ExprX::ArrayLiteral` node).
     ///
     /// Like rustc's MIR builder, after each by-value operand is evaluated, we schedule a drop of
     /// its temporary in the scope of `expr` (`schedule_operand_drop`). The call or constructor moves

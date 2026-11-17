@@ -701,11 +701,11 @@ The test sources were `/tmp/dropexp/{t,u,v}.rs` (scratch; the relevant code is r
 
 Known deviations and limitations:
 
-* Operand temporaries (§6.2) are modeled only for the operands of VIR `Call` and `Ctor` nodes
-  (function and method calls, overloaded binary operators, closure calls, tuples, and struct
-  constructors), as `LocalOrTemp::CallArg(node_id, idx)`: on an early exit from a later operand
-  (`f(mk(), return)`), the already-evaluated operands are dropped. Other operands (e.g., array
-  literal elements) are not modeled. `resolution_inference` ignores the `CallArg` drops.
+* Operand temporaries (§6.2) are modeled only for the operands of VIR `Call`, `Ctor`, and
+  `ArrayLiteral` nodes (function and method calls, overloaded binary operators, closure calls,
+  tuples, struct constructors, and array literals), as `LocalOrTemp::CallArg(node_id, idx)`:
+  on an early exit from a later operand (`f(mk(), return)`), the already-evaluated operands
+  are dropped. `resolution_inference` ignores the `CallArg` drops.
 * Unwinding paths have no drops (VIR has no place to put them).
 * `&&`/`||` operands in an `if` condition: MIR drops each operand's temporaries after branching on
   that operand; we drop them before. (Plain `if` condition temporaries are dropped at the start of
