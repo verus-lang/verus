@@ -360,8 +360,11 @@ impl GhostDrops {
         let Some(fn_local_def_id) = self.fn_local_def_id else {
             return false;
         };
-        // If this is a shadow var (see verus_time_travel_prevention.rs), it gets the same
-        // treatment as the original var.
+        // Shadow vars (see verus_time_travel_prevention.rs) are ghost, so they never need drops
+        if crate::verus_time_travel_prevention::is_any_shadow_var_id(fn_local_def_id, var) {
+            return true;
+        }
+        // For the other synthetic vars (`x_half1`), use the same treatment as the original var.
         let var = crate::verus_time_travel_prevention::original_local_var_id(fn_local_def_id, var);
         self.no_drop_vars.contains(&var.0)
     }
@@ -2539,6 +2542,11 @@ pub(crate) fn ghost_enter_stmt<'tcx>(
     } else {
         false
     }
+}
+
+/// Mark a single THIR node as ghost code (so the MIR builder emits no drops for it)
+pub(crate) fn mark_ghost_expr<'tcx>(cx: &mut ThirBuildCx<'tcx>, expr_id: ExprId) {
+    cx.verus_ctxt.extra_thir.ghost_drops.ghost_exprs.insert(expr_id);
 }
 
 /// Called after mirroring a node for which `ghost_enter_expr` or `ghost_enter_stmt`
