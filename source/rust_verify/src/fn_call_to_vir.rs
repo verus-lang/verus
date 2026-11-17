@@ -58,23 +58,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let rust_item = verus_items::get_rust_item(tcx, f);
     let verus_item = bctx.ctxt.get_verus_item(f);
 
-    if bctx.external_body
-        && !matches!(
-            verus_item,
-            Some(
-                VerusItem::Spec(
-                    SpecItem::Requires
-                        | SpecItem::Recommends
-                        | SpecItem::Ensures
-                        | SpecItem::Returns
-                        | SpecItem::OpensInvariantMask
-                        | SpecItem::NoUnwind
-                        | SpecItem::NoUnwindWhen
-                        | SpecItem::Decreases
-                ) | VerusItem::Directive(DirectiveItem::ExtraDependency)
-            )
-        )
-    {
+    if bctx.external_body && !verus_item.is_some_and(crate::pre_header::is_header_verus_item) {
         return Ok(bctx.spanned_typed_new(
             expr.span,
             &expr_typ()?,
