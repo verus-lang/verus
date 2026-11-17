@@ -565,6 +565,23 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<ExprOrPlace, VirErr> {
+    let (expr_or_place, drops) = expr_to_vir_inner_deferring_drops(bctx, expr)?;
+    if drops.len() == 0 {
+        Ok(expr_or_place)
+    } else {
+        // Terminating scopes are always in value contexts, so it's okay to consume here
+        let expr = expr.peel_drop_temps();
+        let e = expr_or_place.consume(bctx, bctx.types.expr_ty_adjusted(expr));
+        Ok(ExprOrPlace::Expr(append_drops(bctx, e, drops)))
+    }
+}
+
+/// Like `expr_to_vir_inner`, but if the expression is a terminating scope,
+/// return the drops for the end of that scope rather than appending them to the expression.
+fn expr_to_vir_inner_deferring_drops<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) -> Result<(ExprOrPlace, Vec<vir::ast::Expr>), VirErr> {
     let expr = expr.peel_drop_temps();
 
     if bctx.external_body {
@@ -572,11 +589,12 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         match &expr.kind {
             ExprKind::Block(..) | ExprKind::Call(..) | ExprKind::Closure(_) => {}
             _ => {
-                return Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
+                let e = bctx.spanned_typed_new(
                     expr.span,
                     &Arc::new(TypX::Bool),
                     ExprX::Block(Arc::new(vec![]), None),
-                )));
+                );
+                return Ok((ExprOrPlace::Expr(e), vec![]));
             }
         }
     }
@@ -586,16 +604,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     // Like rustc's MIR builder, we enter the expression's scope (which includes the
     // adjustments). If the expression is a terminating scope, then some temporaries
     // may be dropped when we leave this scope.
-    let (expr_or_place, drops) = bctx.in_drop_scope(node_scope(expr.hir_id), || {
+    bctx.in_drop_scope(node_scope(expr.hir_id), || {
         expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustments.len())
-    })?;
-    if drops.len() == 0 {
-        Ok(expr_or_place)
-    } else {
-        // Terminating scopes are always in value contexts, so it's okay to consume here
-        let e = expr_or_place.consume(bctx, bctx.types.expr_ty_adjusted(expr));
-        Ok(ExprOrPlace::Expr(append_drops(bctx, e, drops)))
-    }
+    })
 }
 
 pub(crate) fn expr_to_vir_consume<'tcx>(
@@ -616,7 +627,28 @@ pub(crate) fn expr_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<ExprOrPlace, VirErr> {
-    let mut vir_expr_or_place = expr_to_vir_inner(bctx, expr)?;
+    let vir_expr_or_place = expr_to_vir_inner(bctx, expr)?;
+    expr_attrs_to_vir(bctx, expr, vir_expr_or_place)
+}
+
+/// Like `expr_to_vir_consume`, but if the expression is a terminating scope,
+/// return the drops for the end of that scope rather than appending them to the expression.
+/// The caller is responsible for placing the drops.
+fn expr_to_vir_consume_deferring_drops<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) -> Result<(vir::ast::Expr, Vec<vir::ast::Expr>), VirErr> {
+    let (vir_expr_or_place, drops) = expr_to_vir_inner_deferring_drops(bctx, expr)?;
+    let vir_expr_or_place = expr_attrs_to_vir(bctx, expr, vir_expr_or_place)?;
+    Ok((vir_expr_or_place.consume(bctx, bctx.types.expr_ty_adjusted(expr)), drops))
+}
+
+/// Apply the attributes (triggers, proof notes) on `expr` to its translation
+fn expr_attrs_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    mut vir_expr_or_place: ExprOrPlace,
+) -> Result<ExprOrPlace, VirErr> {
     let attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
     for group in get_trigger(attrs)? {
         let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
@@ -3583,14 +3615,24 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
                 _ => {
                     // The condition and the then-branch are in the if_then_scope
-                    // (since the condition is a terminating scope, this is usually empty)
-                    let ((vir_cond, vir_lhs, failure_drops), then_drops) =
+                    // (since the condition is a terminating scope, this is usually empty).
+                    // Like rustc's MIR builder, we drop the condition's temporaries
+                    // after branching, at the start of each branch.
+                    let ((vir_cond, cond_drops, vir_lhs, failure_drops), then_drops) =
                         bctx.in_drop_scope(if_then_scope, || {
-                            let vir_cond = expr_to_vir_consume(bctx, cond)?;
+                            let (vir_cond, cond_drops) =
+                                expr_to_vir_consume_deferring_drops(bctx, cond)?;
                             let failure_drops = bctx.drops_for_exit_from(if_then_scope);
                             let vir_lhs = expr_to_vir_consume(bctx, lhs)?;
-                            Ok((vir_cond, vir_lhs, failure_drops))
+                            Ok((vir_cond, cond_drops, vir_lhs, failure_drops))
                         })?;
+                    // Each branch needs its own copies of the drops (with their own AstIds)
+                    let failure_drops: Vec<vir::ast::Expr> = cond_drops
+                        .iter()
+                        .map(|d| bctx.ctxt.spanned_typed_new_vir(&d.span, &d.typ, d.x.clone()))
+                        .chain(failure_drops.into_iter())
+                        .collect();
+                    let vir_lhs = prepend_drops(bctx, cond_drops, vir_lhs);
                     let vir_lhs = append_drops(bctx, vir_lhs, then_drops);
                     let vir_rhs = rhs.map(|e| expr_to_vir_consume(bctx, e)).transpose()?;
                     let vir_rhs = if failure_drops.len() == 0 {

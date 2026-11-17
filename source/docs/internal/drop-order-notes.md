@@ -705,7 +705,9 @@ Known deviations and limitations:
   so an early exit in the middle of an expression (`f(mk(), return)`) does not drop the
   already-evaluated operands.
 * Unwinding paths have no drops (VIR has no place to put them).
-* `if` condition temporaries are dropped before branching. MIR drops them at the start of both branches.
+* `&&`/`||` operands in an `if` condition: MIR drops each operand's temporaries after branching on
+  that operand; we drop them before. (Plain `if` condition temporaries are dropped at the start of
+  both branches, as in MIR.)
 * The false exit of a non-`let` `while` condition, and the failure path of a match guard, have no
   place for drops. Rustc's scoping rules mean those drops are always empty, except for let-chains and if-let guards.
 * VIR has its own temporaries (e.g., for `let` initializers, matched against the pattern) that MIR

@@ -15,8 +15,6 @@ use common::*;
 //    and MIR uses temporaries in some places where VIR doesn't (e.g., for reborrows).
 //  - Like MIR, we only drop values whose types need dropping, so `D` implements `Drop`
 //    (whereas integers, references, and `Option<u64>` don't need dropping).
-//  - MIR drops the temporaries of an `if` condition after branching (in both branches),
-//    whereas we drop them before branching.
 //  - MIR's drops of moved-from values are later removed by drop elaboration;
 //    we leave them in (they should be treated as no-ops when the value has been moved out).
 
@@ -558,8 +556,8 @@ bb3 (exit):
     );
 }
 
-/// The condition of an `if` is a terminating scope, so its temporaries are dropped
-/// before entering either branch.
+/// The condition of an `if` is a terminating scope. Like MIR, we drop its temporaries
+/// after branching, at the start of each branch.
 #[test]
 fn test_if_condition() {
     let code = verus_code! {
@@ -579,9 +577,9 @@ fn test_if_condition() {
 bb0 (entry):
     Overwrite(Temp_0)        // mk()
     Overwrite(Temp_1)        // &mk()
-    ScopeDrop(Temp_0)        // mk()
     -> bb1, bb2
 bb1:
+    ScopeDrop(Temp_0)        // mk()
     Overwrite(Temp_2)        // mk()
     MoveFrom(Temp_2)         // mk()
     Overwrite(a)
@@ -589,11 +587,47 @@ bb1:
     ScopeDrop(a)
     -> bb3
 bb2:
+    ScopeDrop(Temp_0)        // mk()
     Overwrite(Temp_3)        // mk()
     MoveFrom(Temp_3)         // mk()
     Overwrite(b)
     ScopeDrop(Temp_3)        // mk()
     ScopeDrop(b)
+    -> bb3
+bb3 (exit):
+"#,
+    );
+}
+
+/// Without an `else`, the condition's temporaries are still dropped on the false path.
+#[test]
+fn test_if_condition_no_else() {
+    let code = verus_code! {
+        fn test() {
+            if use_ref(&mk()) == 0 {
+                let a = mk();
+            }
+        }
+    };
+    check_cfg(
+        code,
+        "test",
+        &[],
+        r#"
+bb0 (entry):
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    -> bb1, bb2
+bb1:
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_2)        // mk()
+    MoveFrom(Temp_2)         // mk()
+    Overwrite(a)
+    ScopeDrop(Temp_2)        // mk()
+    ScopeDrop(a)
+    -> bb3
+bb2:
+    ScopeDrop(Temp_0)        // mk()
     -> bb3
 bb3 (exit):
 "#,
