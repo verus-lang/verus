@@ -3546,7 +3546,7 @@ fn check_expr(
         ExprX::AirStmt(_) => Ok((Mode::Exec, Proph::No)),
         ExprX::Drop(_) => {
             if outer_mode != Mode::Exec {
-                // Verus is responsible for inserting the drops, so this should be an internal
+                // Verus is responsible for inserting the drops, so this is an internal
                 // error rather than a user error.
                 return Err(internal_error(&expr.span, "drop statement outside exec context"));
             }

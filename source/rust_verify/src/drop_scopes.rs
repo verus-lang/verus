@@ -210,7 +210,7 @@ impl<'tcx> BodyCtxt<'tcx> {
         let Some(idx) = drop_scopes.scopes.iter().rposition(|ds| ds.scope == target) else {
             // This shouldn't happen, since we always enter the scope of a loop
             // before translating its body
-            return vec![];
+            panic!("drops_for_exit_to: cannot find scope");
         };
         self.mk_drops(
             drop_scopes.scopes[idx + 1..]
