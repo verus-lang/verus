@@ -1041,3 +1041,34 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] assoc_type_impl_mentions_private_datatype verus_code! {
+        // `impl TryFrom<Priv> for Pub` is reached from module `b` through `Pub` and
+        // `TryFrom::Error`, but `Priv` is not visible there (used to panic in sst_to_air)
+        use vstd::prelude::*;
+        mod a {
+            pub struct Pub { pub x: u8 }
+            struct Priv { x: u8 }
+            impl TryFrom<Priv> for Pub {
+                type Error = ();
+                #[verifier::external_body]
+                fn try_from(w: Priv) -> Result<Self, ()> { Ok(Pub { x: w.x }) }
+            }
+            impl TryFrom<u16> for Pub {
+                type Error = u16;
+                #[verifier::external_body]
+                fn try_from(w: u16) -> Result<Self, u16> {
+                    if w < 256 { Ok(Pub { x: w as u8 }) } else { Err(w) }
+                }
+            }
+        }
+        mod b {
+            use super::a::Pub;
+            fn f() {
+                let r = <Pub as TryFrom<u16>>::try_from(3u16);
+                let ghost e: Option<<Pub as TryFrom<u16>>::Error> = None;
+            }
+        }
+    } => Ok(())
+}
