@@ -2836,14 +2836,17 @@ fn param_names_for_async_func<'tcx>(
                 );
             }
             rustc_hir::StmtKind::Let(rustc_hir::LetStmt {
-                pat: rustc_hir::Pat { kind: rustc_hir::PatKind::Binding(_, id, ident, _), .. },
+                pat: rustc_hir::Pat { kind: rustc_hir::PatKind::Binding(bm, id, ident, _), .. },
                 init: Some(rustc_hir::Expr { kind: rustc_hir::ExprKind::Path(qpath), .. }),
                 ..
             }) => {
                 let pat = local_to_var(ident, id.local_id);
                 let init = qpath_to_ident(ctxt.tcx, &qpath)
                     .expect("internal error, async closure rebindings has no init value");
-                async_body_modes.insert(init.clone(), pat.clone());
+                // `async fn f(mut x: T)` becomes `fn f(x: T) { async move { let mut x = x; .. } }`:
+                // the `mut` is on the rebinding
+                let is_mut = bm.1 == rustc_middle::ty::Mutability::Mut;
+                async_body_modes.insert(init.clone(), (pat.clone(), is_mut));
             }
             _ => {}
         }
@@ -2854,11 +2857,11 @@ fn param_names_for_async_func<'tcx>(
         rewitten_params.push(Spanned::new(
             param.span.clone(),
             ParamX {
-                name: async_body_modes[&param.x.name].clone(),
+                name: async_body_modes[&param.x.name].0.clone(),
                 typ: param.x.typ.clone(),
                 mode: param.x.mode,
                 unwrapped_info: param.x.unwrapped_info.clone(),
-                user_mut: param.x.user_mut,
+                user_mut: param.x.user_mut || async_body_modes[&param.x.name].1,
             },
         ));
     }
