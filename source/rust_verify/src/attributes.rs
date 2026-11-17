@@ -232,13 +232,6 @@ pub(crate) enum AttrPublish {
     Uninterp,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub(crate) enum TrustAttribute {
-    Trusted,
-    TrustedSpec,
-    Untrusted,
-}
-
 #[derive(Debug, PartialEq)]
 pub(crate) enum Attr {
     // specify mode (spec, proof, exec)
@@ -362,8 +355,8 @@ pub(crate) enum Attr {
     InternalRevealFn,
     // Marks the auxiliary function constructed by spec const
     InternalConstBody,
-    // Marks code trusted or untrusted for --no-cheating
-    Trust(TrustAttribute, Span),
+    // Marks trusted code
+    Trusted,
     // global size_of
     SizeOfGlobal,
     // reveal item
@@ -906,17 +899,7 @@ pub(crate) fn parse_attrs(
                     }
                 },
                 VerusPrefix::None => match &attr {
-                    AttrTree::Fun(_, name, None) if name == "trusted" => {
-                        v.push(Attr::Trust(TrustAttribute::Trusted, span))
-                    }
-                    AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
-                        if name == "trusted" && arg == "spec" =>
-                    {
-                        v.push(Attr::Trust(TrustAttribute::TrustedSpec, span))
-                    }
-                    AttrTree::Fun(_, name, None) if name == "untrusted" => {
-                        v.push(Attr::Trust(TrustAttribute::Untrusted, span))
-                    }
+                    AttrTree::Fun(_, name, None) if name == "trusted" => v.push(Attr::Trusted),
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -940,43 +923,6 @@ pub(crate) fn parse_attrs_opt(
         Ok(attrs) => attrs,
         Err(_) => vec![],
     }
-}
-
-pub(crate) fn get_trust_attributes(
-    attrs: &[Attribute],
-) -> Result<Vec<(TrustAttribute, Span)>, VirErr> {
-    let mut trust_attrs = Vec::new();
-    for attr in attrs {
-        let Attribute::Unparsed(item) = attr else {
-            continue;
-        };
-        let [prefix, name] = &item.path.segments[..] else {
-            continue;
-        };
-        if prefix.as_str() != "verus" {
-            continue;
-        }
-        let tree = attr_args_to_tree(attr.span(), name.to_string(), &item.args)
-            .map_err(|_| vir_err_span_str(attr.span(), "invalid verus trust attribute"))?;
-        let trust = match &tree {
-            AttrTree::Fun(_, name, None) if name == "trusted" => TrustAttribute::Trusted,
-            AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
-                if name == "trusted" && arg == "spec" =>
-            {
-                TrustAttribute::TrustedSpec
-            }
-            AttrTree::Fun(_, name, None) if name == "untrusted" => TrustAttribute::Untrusted,
-            AttrTree::Fun(_, name, _) if name == "trusted" || name == "untrusted" => {
-                return err_span(
-                    attr.span(),
-                    "expected `#[verus::trusted]`, `#[verus::trusted(spec)]`, or `#[verus::untrusted]`",
-                );
-            }
-            _ => continue,
-        };
-        trust_attrs.push((trust, attr.span()));
-    }
-    Ok(trust_attrs)
 }
 
 pub(crate) fn parse_attrs_walk_parents<'tcx>(
@@ -1355,7 +1301,7 @@ pub(crate) fn get_external_attrs(
             Attr::SizeOfGlobal => es.size_of_global = true,
             Attr::ItemBroadcastUse => es.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
-            Attr::Trust(..) => {}
+            Attr::Trusted => {}
             Attr::ExternalAutoDerives(None) => {
                 es.external_auto_derives = AutoDerivesAttr::AllExternal
             }
@@ -1519,10 +1465,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
             Attr::InternalConstBody => vs.internal_const_body = true,
             Attr::BroadcastUseReveal => vs.broadcast_use_reveal = true,
-            Attr::Trust(TrustAttribute::Trusted | TrustAttribute::TrustedSpec, _) => {
-                vs.trusted = true
-            }
-            Attr::Trust(TrustAttribute::Untrusted, _) => {}
+            Attr::Trusted => vs.trusted = true,
             Attr::SizeOfGlobal => vs.size_of_global = true,
             Attr::ItemBroadcastUse => vs.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => vs.internal_get_field_many_variants = true,

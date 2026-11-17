@@ -418,11 +418,7 @@ verification results:: verified: 1 errors: 0
 ```
 
 It works!
-Now we've eliminated all the `assume`s, so we've completed the verification.
-To guarantee no stray `assume`s remain, Verus offers a [no-cheating
-mode](./tcb.md#no-cheating-mode) that enforces this.
-
-Here is the finished proof:
+Now we've eliminated all the `assume`s, so we've completed the verification:
 
 ```rust
 pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
