@@ -3551,7 +3551,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::Assign(lhs, rhs, _) => {
-            expr_assign_to_vir_innermost(bctx, expr.span, lhs, mk_expr, rhs, None)
+            expr_assign_to_vir_innermost(bctx, expr, lhs, rhs, None)
         }
         ExprKind::Field(lhs, name) => {
             let vir_lhs = expr_to_vir_place(bctx, lhs)?;
@@ -4207,7 +4207,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 return Ok(ExprOrPlace::Expr(e));
             }
 
-            expr_assign_to_vir_innermost(bctx, expr.span, lhs, mk_expr, rhs, Some(op))
+            expr_assign_to_vir_innermost(bctx, expr, lhs, rhs, Some(op))
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
         ExprKind::Type(..) => unsupported_err!(expr.span, format!("type expressions")),
@@ -4560,17 +4560,21 @@ fn binopkind_to_binaryop<'tcx>(
 
 fn expr_assign_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    span: Span,
+    expr: &Expr<'tcx>,
     lhs: &Expr<'tcx>,
-    mk_expr: impl Fn(ExprX) -> Result<ExprOrPlace, vir::messages::Message>,
     rhs: &Expr<'tcx>,
     op_kind: Option<&Spanned<AssignOpKind>>,
 ) -> Result<ExprOrPlace, vir::messages::Message> {
-    // The right-hand side is evaluated first
+    let span = expr.span;
+    // The right-hand side is evaluated first, into a temporary that is dropped if
+    // the evaluation of the place exits early
+    let operands = bctx.begin_operands(expr);
     let vir_rhs = expr_to_vir_consume(bctx, rhs)?;
+    bctx.schedule_assign_rhs_drop(&operands, rhs);
 
     let vir_lhs = expr_to_vir_place(bctx, lhs)?;
     let vir_lhs = simplify_place_by_cancelling(&vir_lhs);
+    let assign_span = bctx.end_operands(operands);
 
     let op = match op_kind {
         Some(op) => match assignop_kind_to_binaryop(bctx, op, span, lhs, rhs)? {
@@ -4587,13 +4591,15 @@ fn expr_assign_to_vir_innermost<'tcx>(
         None => None,
     };
 
-    mk_expr(ExprX::Assign {
+    let x = ExprX::Assign {
         place: vir_lhs,
         rhs: vir_rhs,
         op: op,
         resolve: false,
         typ: bctx.mid_ty_to_vir(lhs.span, &bctx.types.expr_ty_adjusted(lhs))?,
-    })
+    };
+    let typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?;
+    Ok(ExprOrPlace::Expr(SpannedTyped::new(&assign_span, &typ, x)))
 }
 
 /// `remainder` is the remainder scope opened by the `let` statement, which contains the

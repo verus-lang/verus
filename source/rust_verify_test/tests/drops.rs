@@ -1888,12 +1888,13 @@ bb0 (entry, exit):
     );
 }
 
-/// Run Verus on the code and return the `Drop(CallArg(id, idx))` nodes in the VIR,
-/// in order, as a space-separated list of `<node><idx>`, where each distinct node id
-/// is replaced by a letter (`A`, `B`, ...) in order of first appearance.
-/// (resolution_inference doesn't track the operand temporaries of calls and constructors,
-/// so these drops don't appear in the CFG.)
-fn call_arg_drops(code: String) -> String {
+/// Run Verus on the code and return the `Drop(CallArg(id, idx))` and `Drop(AssignRhs(id))`
+/// nodes in the VIR, in order, as a space-separated list of `<node><idx>` (with `idx` = `r`
+/// for `AssignRhs`), where each distinct node id is replaced by a letter (`A`, `B`, ...)
+/// in order of first appearance.
+/// (resolution_inference doesn't track the operand temporaries of calls, constructors,
+/// and assignments, so these drops don't appear in the CFG.)
+fn operand_drops(code: String) -> String {
     let test_dir = tempfile::tempdir().expect("temporary test directory");
     let entry_file = test_dir.path().join("test.rs");
     let log_dir = test_dir.path().join("log");
@@ -1906,11 +1907,17 @@ fn call_arg_drops(code: String) -> String {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
 
     let log = std::fs::read_to_string(log_dir.join("crate.vir")).expect("read vir log");
-    let re = regex::Regex::new(r"Drop\s+\(LocalOrTemp\s+CallArg\s+(\d+)\s+(\d+)\)").unwrap();
+    let re = regex::Regex::new(
+        r"Drop\s+\(LocalOrTemp\s+(?:CallArg\s+(\d+)\s+(\d+)|AssignRhs\s+(\d+))\)",
+    )
+    .unwrap();
     let mut ids: Vec<String> = vec![];
     let mut drops: Vec<String> = vec![];
     for cap in re.captures_iter(&log) {
-        let id = cap[1].to_string();
+        let (id, idx) = match cap.get(1) {
+            Some(id) => (id.as_str().to_string(), cap[2].to_string()),
+            None => (cap[3].to_string(), "r".to_string()),
+        };
         let n = match ids.iter().position(|i| *i == id) {
             Some(n) => n,
             None => {
@@ -1918,7 +1925,7 @@ fn call_arg_drops(code: String) -> String {
                 ids.len() - 1
             }
         };
-        drops.push(format!("{}{}", (b'A' + n as u8) as char, &cap[2]));
+        drops.push(format!("{}{}", (b'A' + n as u8) as char, idx));
     }
     drops.join(" ")
 }
@@ -1927,7 +1934,7 @@ fn call_arg_drops(code: String) -> String {
 /// on an early exit from a later argument, the earlier arguments are dropped
 /// in reverse order. Arguments whose types don't need dropping aren't dropped.
 #[test]
-fn test_call_arg_drops() {
+fn test_operand_drops() {
     let code = verus_code! {
         fn three(a: D, b: D, c: D) no_unwind {}
         fn num(a: u64, b: D) no_unwind {}
@@ -1937,7 +1944,7 @@ fn test_call_arg_drops() {
             three(mk(), mk(), mk());
         }
     };
-    assert_eq!(call_arg_drops(code), "A1 A0");
+    assert_eq!(operand_drops(code), "A1 A0");
 }
 
 /// For nested calls, the inner call's arguments are dropped first
@@ -1949,7 +1956,7 @@ fn test_call_arg_drops_nested() {
             two(mk(), two(mk(), if c { return; } else { mk() }));
         }
     };
-    assert_eq!(call_arg_drops(code), "A0 B0");
+    assert_eq!(operand_drops(code), "A0 B0");
 }
 
 /// Method receivers are call arguments; `break` drops them too
@@ -1963,7 +1970,7 @@ fn test_call_arg_drops_method_break() {
             }
         }
     };
-    assert_eq!(call_arg_drops(code), "A0");
+    assert_eq!(operand_drops(code), "A0");
 }
 
 /// The fields of constructors (tuples, tuple structs, and structs) and the elements
@@ -1980,7 +1987,7 @@ fn test_ctor_arg_drops() {
             let a = [mk(), mk(), if c { return; } else { mk() }];
         }
     };
-    assert_eq!(call_arg_drops(code), "A0 B0 C0 D1 D0");
+    assert_eq!(operand_drops(code), "A0 B0 C0 D1 D0");
 }
 
 /// The operands of overloaded operators, and the arguments of closure calls
@@ -1995,5 +2002,21 @@ fn test_call_arg_drops_operator_closure() {
             f(mk(), if c { return; } else { mk() });
         }
     };
-    assert_eq!(call_arg_drops(code), "A0 B0");
+    assert_eq!(operand_drops(code), "A0 B0");
+}
+
+/// The right-hand side of an assignment is evaluated before the place,
+/// and is dropped if the evaluation of the place exits early
+#[test]
+fn test_assign_rhs_drops() {
+    let code = verus_code! {
+        fn pick(a: &mut D, i: u64) -> &mut D no_unwind { a }
+        fn test(c: bool, a: &mut D, v: &mut Vec<D>) {
+            *pick(a, if c { return; } else { 0 }) = mk();
+            v[if c { return; } else { 0 }] = mk();
+            let mut x = mk();
+            x = mk();
+        }
+    };
+    assert_eq!(operand_drops(code), "Ar Br");
 }

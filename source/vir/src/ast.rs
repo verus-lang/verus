@@ -1361,6 +1361,12 @@ pub enum LocalOrTemp {
     /// operand and the call or construction, which moves the operand out of the temporary.
     /// (The drop is only reachable via an early exit, e.g., a `return` in a later operand.)
     CallArg(AstId, usize),
+    /// The temporary holding the right-hand side of an `ExprX::Assign` node (identified by its
+    /// AstId), between the evaluation of the right-hand side and the assignment,
+    /// which moves the value out of the temporary.
+    /// (The right-hand side is evaluated before the place, so the drop is only reachable via
+    /// an early exit from the evaluation of the place.)
+    AssignRhs(AstId),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]

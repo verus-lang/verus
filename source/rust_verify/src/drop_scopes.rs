@@ -45,7 +45,7 @@ pub(crate) struct DropScopes {
 /// Scopes temporarily removed from the stack (see `suspend_drop_scopes_from`)
 pub(crate) struct SuspendedDropScopes(Vec<DropScope>);
 
-/// The operands of an `ExprX::Call`, `ExprX::Ctor`, or `ExprX::ArrayLiteral` node
+/// The operands of an `ExprX::Call`, `ExprX::Ctor`, `ExprX::ArrayLiteral`, or `ExprX::Assign` node
 /// that is being translated
 /// (see `begin_operands`)
 pub(crate) struct Operands {
@@ -192,7 +192,9 @@ impl<'tcx> BodyCtxt<'tcx> {
     }
 
     /// Begin translating the operands of the call or constructor `expr`
-    /// (which will become an `ExprX::Call`, `ExprX::Ctor`, or `ExprX::ArrayLiteral` node).
+    /// (which will become an `ExprX::Call`, `ExprX::Ctor`, or `ExprX::ArrayLiteral` node),
+    /// or of the assignment `expr` (which will become an `ExprX::Assign` node; see
+    /// `schedule_assign_rhs_drop`).
     ///
     /// Like rustc's MIR builder, after each by-value operand is evaluated, we schedule a drop of
     /// its temporary in the scope of `expr` (`schedule_operand_drop`). The call or constructor moves
@@ -218,7 +220,22 @@ impl<'tcx> BodyCtxt<'tcx> {
         self.schedule_drop(operands.scope, lt, operand.span, ty);
     }
 
-    /// All the operands have been evaluated, and the call or constructor moves them;
+    /// Schedule a drop of the temporary for the right-hand side `rhs` of an assignment,
+    /// which has just been evaluated (before the place being assigned to).
+    pub(crate) fn schedule_assign_rhs_drop(
+        &self,
+        operands: &Operands,
+        rhs: &rustc_hir::Expr<'tcx>,
+    ) {
+        let ty = self.types.expr_ty_adjusted(rhs);
+        if !self.emits_drops() || !self.ty_needs_drop(ty) {
+            return;
+        }
+        let lt = LocalOrTemp::AssignRhs(operands.span.id);
+        self.schedule_drop(operands.scope, lt, rhs.span, ty);
+    }
+
+    /// All the operands have been evaluated, and the call, constructor, or assignment moves them;
     /// unschedule their drops, and return the span to use for the VIR node.
     pub(crate) fn end_operands(&self, operands: Operands) -> vir::messages::Span {
         let mut drop_scopes = self.drop_scopes.borrow_mut();
@@ -227,7 +244,10 @@ impl<'tcx> BodyCtxt<'tcx> {
             panic!("Verus Internal Error: end_operands failed to find scope {:?}", operands.scope);
         };
         let id = operands.span.id;
-        ds.drops.retain(|(lt, _)| !matches!(lt, LocalOrTemp::CallArg(id2, _) if *id2 == id));
+        ds.drops.retain(|(lt, _)| match lt {
+            LocalOrTemp::CallArg(id2, _) | LocalOrTemp::AssignRhs(id2) => *id2 != id,
+            _ => true,
+        });
         operands.span
     }
 

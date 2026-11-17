@@ -705,7 +705,9 @@ Known deviations and limitations:
   `ArrayLiteral` nodes (function and method calls, overloaded binary operators, closure calls,
   tuples, struct constructors, and array literals), as `LocalOrTemp::CallArg(node_id, idx)`:
   on an early exit from a later operand (`f(mk(), return)`), the already-evaluated operands
-  are dropped. `resolution_inference` ignores the `CallArg` drops.
+  are dropped. Likewise, the right-hand side of an assignment (evaluated before the place)
+  is `LocalOrTemp::AssignRhs(node_id)`, dropped on an early exit from the evaluation of the place
+  (`*f(return) = mk()`). `resolution_inference` ignores the `CallArg` and `AssignRhs` drops.
 * Unwinding paths have no drops (VIR has no place to put them).
 * `&&`/`||` operands in an `if` condition: MIR drops each operand's temporaries after branching on
   that operand; we drop them before. (Plain `if` condition temporaries are dropped at the start of
