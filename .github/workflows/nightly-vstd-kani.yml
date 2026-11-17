@@ -1,0 +1,76 @@
+# Nightly check of vstd `assume_specification` contracts against the real Rust std, with
+# Kani (a CBMC-based bounded model checker). See tools/vstd-kani/README.md.
+#
+# Kani brings its own nightly toolchain, so these harnesses run against Kani's std, not the
+# std of the toolchain Verus pins. `cargo test` in tools/vstd-kani replays the harness
+# predicates under the pinned toolchain; the `test` job below runs it.
+name: nightly-vstd-kani
+
+on:
+  schedule:
+    # 06:00 UTC, two hours before nightly-verita
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.repository == 'verus-lang/verus' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: checkout verus
+        uses: actions/checkout@v6
+
+      - name: cargo test (pinned toolchain)
+        working-directory: ./tools/vstd-kani
+        run: cargo test --release
+
+  kani:
+    if: github.repository == 'verus-lang/verus' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: checkout verus
+        uses: actions/checkout@v6
+
+      - name: install kani
+        run: |
+          # bump deliberately: a new Kani brings a new std
+          cargo install --locked kani-verifier --version 0.68.0
+          cargo kani setup
+          cargo kani --version
+
+      - name: check that the generated harnesses are up to date
+        run: |
+          python3 tools/vstd-kani/generate.py
+          git diff --exit-code -- tools/vstd-kani/src/generated.rs
+
+      - name: run kani harnesses
+        working-directory: ./tools/vstd-kani
+        shell: bash
+        run: |
+          # bound memory as well as time: a CBMC run can exhaust memory before any timeout
+          ( ulimit -v 12582912; timeout 4800 cargo kani --output-format terse ) 2>&1 | tee kani-run.log
+
+      - name: summarise
+        if: always()
+        working-directory: ./tools/vstd-kani
+        run: |
+          {
+            echo '## vstd Kani results'
+            echo ''
+            echo '```'
+            grep -E 'Complete -|Verification failed for' kani-run.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vstd-kani-results
+          path: ${{ github.workspace }}/tools/vstd-kani/kani-run.log
+          retention-days: 90
