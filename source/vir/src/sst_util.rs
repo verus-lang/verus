@@ -250,12 +250,14 @@ pub(crate) fn rebind_to_avoid(
         let mk_exp = |x: ExpX| SpannedTyped::new(&e.span, &e.typ, x);
         match &e.x {
             ExpX::Var(x) if must_rename(x, scope_map) => Ok(mk_exp(ExpX::Var(env.rename(x)))),
-            ExpX::VarLoc(x) if must_rename(x, scope_map) => Ok(mk_exp(ExpX::VarLoc(env.rename(x)))),
+            ExpX::VarLoc(x) if must_rename(x, scope_map) => {
+                panic!("rebind_to_avoid: found VarLoc referring to bound variable")
+            }
             ExpX::VarAt(x, a) if must_rename(x, scope_map) => {
-                Ok(mk_exp(ExpX::VarAt(env.rename(x), *a)))
+                panic!("rebind_to_avoid: found VarAt referring to bound variable")
             }
             ExpX::Old(_, x) if must_rename(x, scope_map) => {
-                panic!("cannot rename bound variable in Old")
+                panic!("rebind_to_avoid: found Old referring to bound variable")
             }
             ExpX::Bind(bnd, body) => {
                 let bndx = match &bnd.x {
