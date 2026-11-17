@@ -381,6 +381,7 @@ impl<'tcx> Query<'tcx> {
             let mut state = crate::rust_to_vir::State {
                 external_info: crate::rust_to_vir_impl::ExternalInfo::new(),
                 fun_warn_configs: HashMap::new(),
+                trivial_clone_impls: Vec::new(),
             };
             let mut infos: Vec<FunctionOrConstInfo<'tcx>> = Vec::new();
             let name = crate::rust_to_vir_func::check_item_const_or_static(
@@ -580,7 +581,9 @@ impl<'tcx> Query<'tcx> {
         }
 
         let other_vir_crates = self.get_other_vir_crates()?;
-        vir::traits::set_krate_dyn_compatibility(&other_vir_crates, &mut cratex);
+        let merged_traits = self.get_merged_traits()?;
+        vir::traits::set_krate_dyn_compatibility(&other_vir_crates, &merged_traits, &mut cratex)
+            .map_err(|e| self.emit_error(e))?;
         let krate = Arc::new(cratex);
 
         let mut krate = vir::ast_sort::sort_krate(&krate);

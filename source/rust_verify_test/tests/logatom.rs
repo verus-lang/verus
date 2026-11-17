@@ -886,3 +886,25 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] atomic_update_break_in_invariant_block verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        use vstd::atomic::*;
+
+        fn f<P: InvariantPredicate<(), ()>>(i: Tracked<&LocalInvariant<(), (), P>>)
+            atomically (au) {
+                () -> (),
+            },
+        {
+            loop
+                decreases 0int,
+            {
+                open_local_invariant!(i.borrow() => inner => {
+                    let _r = try_open_atomic_update!(au, x => { break; });
+                });
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
+}

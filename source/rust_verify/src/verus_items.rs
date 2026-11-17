@@ -904,6 +904,7 @@ pub(crate) enum RustItem {
     Sync,
     Any,
     Clone,
+    TrivialClone,
     StructuralPartialEq,
     Eq,
     PartialEq,
@@ -1006,6 +1007,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().destruct_trait() == Some(def_id) {
         return Some(RustItem::Destruct);
+    }
+    if tcx.lang_items().trivial_clone_trait() == Some(def_id) {
+        return Some(RustItem::TrivialClone);
     }
     if tcx.lang_items().partial_ord_trait() == Some(def_id) {
         return Some(RustItem::PartialOrd);

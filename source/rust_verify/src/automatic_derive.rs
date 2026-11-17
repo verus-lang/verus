@@ -512,6 +512,8 @@ fn mk_spec_function_stub(
                 impls_cannot_extend_spec: false,
                 is_drop: false,
                 create_open_invariant_credit: false,
+                has_trivial_clone: false,
+                assume_compatibility_with_trait_spec: false,
             }),
         },
     )

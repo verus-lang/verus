@@ -515,6 +515,7 @@ fn check_one_expr(
     emit: &mut EmitErrorState,
     warn_config: &Option<WarningConfig>,
 ) -> Result<(), VirErr> {
+    check_typ(ctxt, &expr.typ, &expr.span, emit)?;
     match &expr.x {
         ExprX::ConstVar(x, _) => {
             check_function_access(ctxt, x, disallow_private_access, &expr.span, emit)?;
@@ -942,6 +943,7 @@ fn check_one_place(
     _area: Area,
     emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
+    check_typ(ctxt, &place.typ, &place.span, emit)?;
     match &place.x {
         PlaceX::Field(
             FieldOpr { datatype: Dt::Path(path), variant: _, field: _, get_variant: _, check: _ },
@@ -1367,6 +1369,14 @@ fn check_function_inner(
         let msg = error(
             &function.span,
             "`#[verifier::assume_termination]` not allowed with `--no-cheating`",
+        );
+        emit.emit_deferred_err(msg);
+    }
+
+    if function.x.attrs.assume_compatibility_with_trait_spec && ctxt.no_cheating {
+        let msg = error(
+            &function.span,
+            "`#[verifier::assume_compatibility_with_trait_spec]` not allowed with `--no-cheating`",
         );
         emit.emit_deferred_err(msg);
     }
