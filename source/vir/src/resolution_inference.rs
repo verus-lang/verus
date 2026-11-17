@@ -1415,6 +1415,8 @@ impl<'a> Builder<'a> {
                 let temp_id = self.locals.ast_id_to_temp_id.get(ast_id)?;
                 LocalName::Temporary(*ast_id, *temp_id)
             }
+            // Operand temporaries of calls and constructors aren't tracked by the analysis
+            LocalOrTemp::CallArg(..) => return None,
         };
         let local = *self.locals.ident_to_idx.get(&name)?;
         Some(FlattenedPlace { local, projections: vec![] })

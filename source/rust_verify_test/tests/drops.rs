@@ -1887,3 +1887,111 @@ bb0 (entry, exit):
 "#,
     );
 }
+
+/// Run Verus on the code and return the `Drop(CallArg(id, idx))` nodes in the VIR,
+/// in order, as a space-separated list of `<node><idx>`, where each distinct node id
+/// is replaced by a letter (`A`, `B`, ...) in order of first appearance.
+/// (resolution_inference doesn't track the operand temporaries of calls and constructors,
+/// so these drops don't appear in the CFG.)
+fn call_arg_drops(code: String) -> String {
+    let test_dir = tempfile::tempdir().expect("temporary test directory");
+    let entry_file = test_dir.path().join("test.rs");
+    let log_dir = test_dir.path().join("log");
+    std::fs::write(&entry_file, format!("{}{}{}{}", FEATURE_PRELUDE, USE_PRELUDE, DEFS, code))
+        .expect("test source");
+
+    let log_dir_option = format!("--log-dir={}", log_dir.display());
+    let options = ["--no-verify", "--log-vir", &log_dir_option];
+    let output = run_verus(&options, test_dir.path(), &entry_file, true, false);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+
+    let log = std::fs::read_to_string(log_dir.join("crate.vir")).expect("read vir log");
+    let re = regex::Regex::new(r"Drop\s+\(LocalOrTemp\s+CallArg\s+(\d+)\s+(\d+)\)").unwrap();
+    let mut ids: Vec<String> = vec![];
+    let mut drops: Vec<String> = vec![];
+    for cap in re.captures_iter(&log) {
+        let id = cap[1].to_string();
+        let n = match ids.iter().position(|i| *i == id) {
+            Some(n) => n,
+            None => {
+                ids.push(id);
+                ids.len() - 1
+            }
+        };
+        drops.push(format!("{}{}", (b'A' + n as u8) as char, &cap[2]));
+    }
+    drops.join(" ")
+}
+
+/// The arguments of a call live in temporaries until the call moves them;
+/// on an early exit from a later argument, the earlier arguments are dropped
+/// in reverse order. Arguments whose types don't need dropping aren't dropped.
+#[test]
+fn test_call_arg_drops() {
+    let code = verus_code! {
+        fn three(a: D, b: D, c: D) no_unwind {}
+        fn num(a: u64, b: D) no_unwind {}
+        fn test(c: bool) {
+            three(mk(), mk(), if c { return; } else { mk() });
+            num(5, if c { return; } else { mk() });
+            three(mk(), mk(), mk());
+        }
+    };
+    assert_eq!(call_arg_drops(code), "A1 A0");
+}
+
+/// For nested calls, the inner call's arguments are dropped first
+#[test]
+fn test_call_arg_drops_nested() {
+    let code = verus_code! {
+        fn two(a: D, b: D) -> D no_unwind { a }
+        fn test(c: bool) {
+            two(mk(), two(mk(), if c { return; } else { mk() }));
+        }
+    };
+    assert_eq!(call_arg_drops(code), "A0 B0");
+}
+
+/// Method receivers are call arguments; `break` drops them too
+#[test]
+fn test_call_arg_drops_method_break() {
+    let code = verus_code! {
+        impl D { fn consume(self, b: D) no_unwind {} }
+        fn test() {
+            loop {
+                mk().consume(if cond() { break; } else { mk() });
+            }
+        }
+    };
+    assert_eq!(call_arg_drops(code), "A0");
+}
+
+/// The fields of constructors (tuples, tuple structs, and structs) are operands like call arguments
+#[test]
+fn test_ctor_arg_drops() {
+    let code = verus_code! {
+        struct T(D, D);
+        struct S { a: D, b: D }
+        fn test(c: bool) {
+            let t = (mk(), if c { return; } else { mk() });
+            let t = T(mk(), if c { return; } else { mk() });
+            let s = S { a: mk(), b: if c { return; } else { mk() } };
+        }
+    };
+    assert_eq!(call_arg_drops(code), "A0 B0 C0");
+}
+
+/// The operands of overloaded operators, and the arguments of closure calls
+/// (which are fields of a tuple), are operands too
+#[test]
+fn test_call_arg_drops_operator_closure() {
+    let code = verus_code! {
+        impl std::ops::Add for D { type Output = D; fn add(self, o: D) -> D { o } }
+        fn test(c: bool) {
+            let d = mk() + (if c { return; } else { mk() });
+            let f = |a: D, b: D| {};
+            f(mk(), if c { return; } else { mk() });
+        }
+    };
+    assert_eq!(call_arg_drops(code), "A0 B0");
+}

@@ -1356,6 +1356,11 @@ pub enum LocalOrTemp {
     Local(VarIdent),
     /// A temporary, identified by the AstId (`span.id`) of the `PlaceX::Temporary` node
     Temp(AstId),
+    /// The temporary holding the operand with the given index of an `ExprX::Call` or `ExprX::Ctor`
+    /// node (identified by its AstId), between the evaluation of the operand and the call
+    /// or construction, which moves the operand out of the temporary.
+    /// (The drop is only reachable via an early exit, e.g., a `return` in a later operand.)
+    CallArg(AstId, usize),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]

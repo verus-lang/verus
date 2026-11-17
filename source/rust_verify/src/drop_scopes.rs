@@ -45,6 +45,15 @@ pub(crate) struct DropScopes {
 /// Scopes temporarily removed from the stack (see `suspend_drop_scopes_from`)
 pub(crate) struct SuspendedDropScopes(Vec<DropScope>);
 
+/// The operands of an `ExprX::Call` or `ExprX::Ctor` node that is being translated
+/// (see `begin_operands`)
+pub(crate) struct Operands {
+    /// The scope of the HIR expression for the call or constructor
+    scope: Scope,
+    /// The span (and AstId) for the VIR node
+    span: vir::messages::Span,
+}
+
 impl<'tcx> BodyCtxt<'tcx> {
     fn scope_tree(&self) -> &'tcx ScopeTree {
         self.ctxt.tcx.region_scope_tree(self.fun_id.expect_local())
@@ -179,6 +188,64 @@ impl<'tcx> BodyCtxt<'tcx> {
             rustc_middle::ty::TypingMode::non_body_analysis(),
         );
         ty.needs_drop(self.ctxt.tcx, typing_env)
+    }
+
+    /// Begin translating the operands of the call or constructor `expr`
+    /// (which will become a `ExprX::Call` or `ExprX::Ctor` node).
+    ///
+    /// Like rustc's MIR builder, after each by-value operand is evaluated, we schedule a drop of
+    /// its temporary in the scope of `expr` (`schedule_operand_drop`). The call or constructor moves
+    /// the operands out of their temporaries, so we unschedule these drops when all operands
+    /// have been evaluated (`end_operands`). Thus the drops only appear on early exits
+    /// from the later operands.
+    pub(crate) fn begin_operands(&self, expr: &rustc_hir::Expr<'tcx>) -> Operands {
+        Operands { scope: node_scope(expr.hir_id), span: self.ctxt.spans.to_air_span(expr.span) }
+    }
+
+    /// Schedule a drop of the temporary for operand number `idx`, which has just been evaluated
+    pub(crate) fn schedule_operand_drop(
+        &self,
+        operands: &Operands,
+        idx: usize,
+        operand: &rustc_hir::Expr<'tcx>,
+    ) {
+        let ty = self.types.expr_ty_adjusted(operand);
+        if !self.emits_drops() || !self.ty_needs_drop(ty) {
+            return;
+        }
+        let lt = LocalOrTemp::CallArg(operands.span.id, idx);
+        self.schedule_drop(operands.scope, lt, operand.span, ty);
+    }
+
+    /// All the operands have been evaluated, and the call or constructor moves them;
+    /// unschedule their drops, and return the span to use for the VIR node.
+    pub(crate) fn end_operands(&self, operands: Operands) -> vir::messages::Span {
+        let mut drop_scopes = self.drop_scopes.borrow_mut();
+        let Some(ds) = drop_scopes.scopes.iter_mut().rev().find(|ds| ds.scope == operands.scope)
+        else {
+            panic!("Verus Internal Error: end_operands failed to find scope {:?}", operands.scope);
+        };
+        let id = operands.span.id;
+        ds.drops.retain(|(lt, _)| !matches!(lt, LocalOrTemp::CallArg(id2, _) if *id2 == id));
+        operands.span
+    }
+
+    /// Translate the operands of the call or constructor `expr`, scheduling drops for them
+    /// (see `begin_operands`), and build the VIR node from them with `mk`.
+    pub(crate) fn operands_to_vir<T>(
+        &self,
+        expr: &rustc_hir::Expr<'tcx>,
+        operands: &[&rustc_hir::Expr<'tcx>],
+        mk: impl FnOnce(vir::messages::Span, Vec<Expr>) -> Result<T, VirErr>,
+    ) -> Result<T, VirErr> {
+        let ops = self.begin_operands(expr);
+        let mut vir_operands = vec![];
+        for (i, operand) in operands.iter().enumerate() {
+            vir_operands.push(crate::rust_to_vir_expr::expr_to_vir_consume(self, operand)?);
+            self.schedule_operand_drop(&ops, i, operand);
+        }
+        let span = self.end_operands(ops);
+        mk(span, vir_operands)
     }
 
     /// Schedule a drop for a local variable in the given scope, which must be on the stack.

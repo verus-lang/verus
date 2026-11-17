@@ -67,7 +67,7 @@ use crate::rust_to_vir_base::{
     typ_of_expr_adjusted, typ_of_node_unadjusted,
 };
 use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
-use crate::util::{err_span, vec_map_result};
+use crate::util::err_span;
 use crate::verus_items::{
     self, CompilableOprItem, DummyCaptureItem, OpenAtomicUpdateItem, OpenInvariantBlockItem,
     RustItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem,
@@ -770,21 +770,20 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     let variant_name = str_ident(&ctor.variant_def.ident(tcx).as_str());
     let vir_path = bctx.ctxt.def_id_to_vir_path(ctor.adt_def_id);
 
+    let args: Vec<&Expr<'tcx>> = args_slice.iter().collect();
+    let (span, vir_args) = bctx.operands_to_vir(expr, &args, |span, args| Ok((span, args)))?;
     let vir_fields = Arc::new(
-        args_slice
+        vir_args
             .iter()
             .enumerate()
-            .map(|(i, e)| -> Result<_, VirErr> {
-                let vir = expr_to_vir_consume(bctx, e)?;
-                Ok(ident_binder(&positional_field_ident(i), &vir))
-            })
-            .collect::<Result<Vec<_>, _>>()?,
+            .map(|(i, vir)| ident_binder(&positional_field_ident(i), vir))
+            .collect::<Vec<_>>(),
     );
     let mut erasure_info = bctx.erasure_info.borrow_mut();
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
     erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call, bctx.in_ghost));
     let exprx = ExprX::Ctor(Dt::Path(vir_path), variant_name, vir_fields, None);
-    let e = bctx.spanned_typed_new(expr.span, &expr_typ, exprx);
+    let e = SpannedTyped::new(&span, &expr_typ, exprx);
     erasure_info.ctor_hir_vir_ids.push((Some(expr.hir_id), e.span.id));
     Ok(e)
 }
@@ -2722,10 +2721,16 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     // We currently don't encode this as a mutation on the caller's side, though.
                     // So here, we pretend to dereference the object if it's a mut reference.
                     let fun_ty = bctx.types.expr_ty_adjusted(fun);
+                    // For a non-static call, the operands of the Call node are the function
+                    // and a tuple of the arguments, whose operands are the arguments
+                    let call_operands = bctx.begin_operands(expr);
                     let vir_fun = expr_to_vir_consume(bctx, fun)?;
+                    bctx.schedule_operand_drop(&call_operands, 0, fun);
 
                     let args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
-                    let vir_args = vec_map_result(&args, |arg| expr_to_vir_consume(bctx, arg))?;
+                    let (tup_span, vir_args) =
+                        bctx.operands_to_vir(expr, &args, |span, args| Ok((span, args)))?;
+                    let call_span = bctx.end_operands(call_operands);
                     let expr_typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?;
 
                     let proof_fn = crate::rust_to_vir_base::try_get_proof_fn_modes(
@@ -2749,8 +2754,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
                         // non-static calls are translated into a static call to
                         // `exec_nonstatic_call` which is defined in the vstd lib.
-                        let span = bctx.ctxt.spans.to_air_span(expr.span.clone());
-                        let tup = vir::ast_util::mk_tuple(&span, &Arc::new(vir_args));
+                        let tup = vir::ast_util::mk_tuple(&tup_span, &Arc::new(vir_args));
                         let helper_fun = vir::def::nonstatic_call_fun(is_proof_fun);
                         let ret_typ = expr_typ.clone();
 
@@ -2848,8 +2852,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         ));
                     }
 
-                    Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
-                        expr.span,
+                    Ok(ExprOrPlace::Expr(SpannedTyped::new(
+                        &call_span,
                         &expr_typ,
                         ExprX::Call {
                             target,
@@ -2862,9 +2866,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::Tup(exprs) => {
-            let args: Result<Vec<vir::ast::Expr>, VirErr> =
-                exprs.iter().map(|e| expr_to_vir_consume(bctx, e)).collect();
-            mk_expr(mk_tuple_x(&Arc::new(args?)))
+            let exprs: Vec<&Expr<'tcx>> = exprs.iter().collect();
+            bctx.operands_to_vir(expr, &exprs, |span, args| {
+                let e = SpannedTyped::new(&span, &expr_typ()?, mk_tuple_x(&Arc::new(args)));
+                Ok(ExprOrPlace::Expr(e))
+            })
         }
         ExprKind::Array(exprs) => {
             if bctx.ctxt.no_vstd {
@@ -3283,8 +3289,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             )?))
         }
         ExprKind::Binary(op, lhs, rhs) => {
+            // For an overloaded operator, the operands are the arguments of a call
+            let operands = bctx.begin_operands(expr);
             let lhs_vir = expr_to_vir_consume(bctx, lhs)?;
+            bctx.schedule_operand_drop(&operands, 0, lhs);
             let rhs_vir = expr_to_vir_consume(bctx, rhs)?;
+            let call_span = bctx.end_operands(operands);
 
             let op_vir = binopkind_to_binaryop(bctx, op, expr.span, lhs, rhs)?;
             if let Some(op_vir) = op_vir {
@@ -3331,14 +3341,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 .types
                 .type_dependent_def_id(expr.hir_id)
                 .expect("cannot get the function definition id for a unary op");
-            Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::call_overloaded_method(
+            let call = crate::fn_call_to_vir::call_overloaded_method(
                 bctx,
                 expr.span,
                 expr_typ()?,
                 fn_def_id,
                 Arc::new(vec![lhs_vir, rhs_vir]),
                 bctx.types.node_args(expr.hir_id),
-            )?))
+            )?;
+            Ok(ExprOrPlace::Expr(SpannedTyped::new(&call_span, &call.typ, call.x.clone())))
         }
         ExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, expr.hir_id);
@@ -3943,11 +3954,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Struct(qpath, fields, struct_tail) => {
             // The fields are evaluated before the struct_tail
+            let operands = bctx.begin_operands(expr);
             let vir_fields = Arc::new(
                 fields
                     .iter()
-                    .map(|f| -> Result<_, VirErr> {
+                    .enumerate()
+                    .map(|(i, f)| -> Result<_, VirErr> {
                         let vir = expr_to_vir_consume(bctx, f.expr)?;
+                        bctx.schedule_operand_drop(&operands, i, f.expr);
                         let ident = field_ident_from_rust(f.ident.as_str());
                         Ok(ident_binder(&ident, &vir))
                     })
@@ -3966,6 +3980,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
                 _ => None,
             };
+            let span = bctx.end_operands(operands);
 
             let res = bctx.types.qpath_res(qpath, expr.hir_id);
             let ty = bctx.types.node_type(expr.hir_id);
@@ -3987,7 +4002,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 bctx.in_ghost,
             ));
             let x = ExprX::Ctor(Dt::Path(path), variant_name, vir_fields, update);
-            let e = bctx.spanned_typed_new(expr.span, &expr_typ()?, x);
+            let e = SpannedTyped::new(&span, &expr_typ()?, x);
             erasure_info.ctor_hir_vir_ids.push((Some(expr.hir_id), e.span.id));
             Ok(ExprOrPlace::Expr(e))
         }
