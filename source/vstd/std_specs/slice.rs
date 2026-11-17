@@ -790,10 +790,28 @@ pub assume_specification<'a, T>[ <[T]>::chunks ](s: &'a [T], chunk_size: usize) 
 // Since Rust 1.81, std's sorts may panic if the order is not total ("user-provided comparison
 // function does not correctly implement a total order"), so each sort requires one.
 
-/// Sorting permutes the slice; with a lawful `Ord`, the result is sorted by `cmp_spec`.
-pub open spec fn sorted_by_cmp<T: Ord>(s: Seq<T>) -> bool {
-    forall |i: int, j: int| #![trigger s[i], s[j]] 0 <= i < j < s.len() ==>
-        OrdSpec::cmp_spec(&s[i], &s[j]) != Ordering::Greater
+/// `a` is not after `b` in `Ord`'s order
+pub open spec fn cmp_le<T: Ord>(a: T, b: T) -> bool {
+    OrdSpec::cmp_spec(&a, &b) != Ordering::Greater
+}
+
+/// `s` is sorted by `le` (as `relations::sorted_by`, with triggers on the elements, so that a
+/// fact about `s[i]` and `s[j]` is enough to learn their order)
+pub open spec fn sorted_by_le<T>(s: Seq<T>, le: spec_fn(T, T) -> bool) -> bool {
+    &&& forall|i: int, j: int| #![trigger s[i], s[j]] 0 <= i < j < s.len() ==> le(s[i], s[j])
+    &&& super::super::relations::sorted_by(s, le)
+}
+
+/// `a` is not after `b` in `compare`'s order (for an element pair `compare` was called on)
+pub open spec fn compare_le<T, F: FnMut(&T, &T) -> Ordering>(compare: F, a: T, b: T) -> bool {
+    forall|o: Ordering| #[trigger] call_ensures(compare, (&a, &b), o) ==> o != Ordering::Greater
+}
+
+/// `a`'s key is not after `b`'s in `K`'s order
+pub open spec fn key_le<T, K: Ord, F: FnMut(&T) -> K>(f: F, a: T, b: T) -> bool {
+    forall|ka: K, kb: K|
+        #[trigger] call_ensures(f, (&a,), ka) && #[trigger] call_ensures(f, (&b,), kb)
+            ==> OrdSpec::cmp_spec(&ka, &kb) != Ordering::Greater
 }
 
 /// `compare` is a total order on the elements of `s` (antisymmetric, transitive, and
@@ -833,7 +851,7 @@ pub assume_specification<T: Ord>[ <[T]>::sort ](s: &mut [T])
     ensures
         final(s)@.len() == old(s)@.len(),
         final(s)@.to_multiset() == old(s)@.to_multiset(),
-        <T as OrdSpec>::obeys_cmp_spec() ==> sorted_by_cmp(final(s)@),
+        <T as OrdSpec>::obeys_cmp_spec() ==> sorted_by_le(final(s)@, |a: T, b: T| cmp_le(a, b)),
 ;
 
 pub assume_specification<T: Ord>[ <[T]>::sort_unstable ](s: &mut [T])
@@ -843,7 +861,7 @@ pub assume_specification<T: Ord>[ <[T]>::sort_unstable ](s: &mut [T])
     ensures
         final(s)@.len() == old(s)@.len(),
         final(s)@.to_multiset() == old(s)@.to_multiset(),
-        <T as OrdSpec>::obeys_cmp_spec() ==> sorted_by_cmp(final(s)@),
+        <T as OrdSpec>::obeys_cmp_spec() ==> sorted_by_le(final(s)@, |a: T, b: T| cmp_le(a, b)),
 ;
 
 /// The comparator may be called on any two elements.
@@ -857,6 +875,7 @@ pub assume_specification<T, F: FnMut(&T, &T) -> Ordering>[ <[T]>::sort_by::<F> ]
     ensures
         final(s)@.len() == old(s)@.len(),
         final(s)@.to_multiset() == old(s)@.to_multiset(),
+        sorted_by_le(final(s)@, |a: T, b: T| compare_le(compare, a, b)),
 ;
 
 pub assume_specification<T, F: FnMut(&T, &T) -> Ordering>[ <[T]>::sort_unstable_by::<F> ](s: &mut [T], compare: F)
@@ -868,6 +887,7 @@ pub assume_specification<T, F: FnMut(&T, &T) -> Ordering>[ <[T]>::sort_unstable_
     ensures
         final(s)@.len() == old(s)@.len(),
         final(s)@.to_multiset() == old(s)@.to_multiset(),
+        sorted_by_le(final(s)@, |a: T, b: T| compare_le(compare, a, b)),
 ;
 
 #[cfg(feature = "alloc")]
@@ -880,6 +900,7 @@ pub assume_specification<T, K: Ord, F: FnMut(&T) -> K>[ <[T]>::sort_by_key::<K, 
     ensures
         final(s)@.len() == old(s)@.len(),
         final(s)@.to_multiset() == old(s)@.to_multiset(),
+        <K as OrdSpec>::obeys_cmp_spec() ==> sorted_by_le(final(s)@, |a: T, b: T| key_le(f, a, b)),
 ;
 
 pub assume_specification<T, K: Ord, F: FnMut(&T) -> K>[ <[T]>::sort_unstable_by_key::<K, F> ](s: &mut [T], f: F)
@@ -891,6 +912,7 @@ pub assume_specification<T, K: Ord, F: FnMut(&T) -> K>[ <[T]>::sort_unstable_by_
     ensures
         final(s)@.len() == old(s)@.len(),
         final(s)@.to_multiset() == old(s)@.to_multiset(),
+        <K as OrdSpec>::obeys_cmp_spec() ==> sorted_by_le(final(s)@, |a: T, b: T| key_le(f, a, b)),
 ;
 
 } // verus!

@@ -2773,6 +2773,27 @@ test_verify_one_file! {
         fn by_key(v: &mut Vec<(u8, u8)>) ensures final(v)@.len() == old(v)@.len() {
             v.sort_by_key(|p: &(u8, u8)| -> (k: u8) ensures k == p.0 { p.0 });
         }
+        fn by_sorted_by_compare(v: &mut Vec<u8>)
+            requires old(v)@.len() == 2,
+            ensures final(v)@[0] >= final(v)@[1],
+        {
+            // sorted by the comparator's order (here: descending); calling the comparator on
+            // two elements shows what it says about them
+            let c = |a: &u8, b: &u8| -> (o: Ordering) ensures o == (*b).cmp_spec(a) { b.cmp(a) };
+            v.sort_by(c);
+            let o = c(&v[0], &v[1]);
+            assert(o != Ordering::Greater);
+        }
+        fn by_key_sorted(v: &mut Vec<(u8, u8)>)
+            requires old(v)@.len() == 2,
+            ensures final(v)@[0].0 <= final(v)@[1].0,
+        {
+            let f = |p: &(u8, u8)| -> (k: u8) ensures k == p.0 { p.0 };
+            v.sort_by_key(f);
+            let k0 = f(&v[0]);
+            let k1 = f(&v[1]);
+            assert(k0 <= k1);
+        }
         fn by_not_sorted(v: &mut Vec<u8>) requires old(v)@.len() == 2 {
             // only the comparator's order is known, not `<=`
             v.sort_by(|a: &u8, b: &u8| -> (o: Ordering) ensures o == (*b).cmp_spec(a) { b.cmp(a) });
