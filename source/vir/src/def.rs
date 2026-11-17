@@ -995,6 +995,10 @@ pub struct CommandsWithContextX {
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
+    /// `--counterexample`: (description, AIR expression) pairs to evaluate in the model of
+    /// a failed query, describing the function's inputs. Definitional only: they are
+    /// evaluated with `get-value` and never asserted.
+    pub observations: Arc<Vec<(String, air::ast::Expr)>>,
 }
 
 impl CommandsWithContextX {
@@ -1011,6 +1015,7 @@ impl CommandsWithContextX {
             commands,
             prover_choice,
             skip_recommends,
+            observations: Arc::new(vec![]),
         })
     }
 }

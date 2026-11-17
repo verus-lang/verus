@@ -3239,5 +3239,529 @@ pub(crate) fn body_stm_to_air(
         }
     }
     ctx.notify(|obs| obs.on_function_lowered());
+    if ctx.global.counterexamples {
+        // every query of the body (the body itself and each loop) has the parameters as
+        // constants
+        let obs = Arc::new(counterexample_observations(ctx, func_span, params));
+        for command in &mut state.commands {
+            Arc::make_mut(command).observations = obs.clone();
+        }
+    }
     Ok(state.commands)
+}
+
+/// `--counterexample`: AIR expressions over a function's parameters whose values in a
+/// model describe the inputs of the failing run: integer, bool and char parameters, and for
+/// slice and array parameters of those, the length and the first elements. They are only
+/// evaluated (`get-value`), never asserted.
+fn counterexample_observations(ctx: &Ctx, span: &Span, params: &Pars) -> Vec<(String, Expr)> {
+    const MAX_ELEMS: u64 = 16;
+    let mut out = vec![];
+    let ectx = ExprCtxt::new();
+    let scalar = |t: &Typ| matches!(&*undecorate_typ(t), TypX::Int(_) | TypX::Bool);
+    for p in params.iter() {
+        let name = crate::def::user_local_name(&p.x.name).to_string();
+        let var = SpannedTyped::new(span, &p.x.typ, ExpX::Var(p.x.name.clone()));
+        let t = undecorate_typ(&p.x.typ);
+        let t = match &*t {
+            TypX::Boxed(x) => undecorate_typ(x),
+            _ => t,
+        };
+        let marker = |kind: &str| -> (String, Expr) {
+            (format!("@param:{name}:{kind}"), air::ast_util::mk_true())
+        };
+        match &*t {
+            TypX::Int(_) | TypX::Bool => {
+                out.push(marker("scalar"));
+                if let Ok(e) = exp_to_expr(ctx, &var, &ectx) {
+                    let boxed = matches!(&*undecorate_typ(&p.x.typ), TypX::Boxed(_));
+                    let e = if boxed { try_unbox(ctx, e.clone(), &t).unwrap_or(e) } else { e };
+                    out.push((name, e));
+                }
+            }
+            TypX::Primitive(prim @ (Primitive::Slice | Primitive::Array), targs)
+                if !targs.is_empty() && scalar(&targs[0]) =>
+            {
+                let kind =
+                    if *prim == Primitive::Slice { ArrayKind::Slice } else { ArrayKind::Array };
+                let is_ref =
+                    matches!(&*p.x.typ, TypX::Decorate(crate::ast::TypDecoration::Ref, _, _));
+                out.push(marker(match (kind, is_ref) {
+                    (ArrayKind::Slice, _) => "slice",
+                    (ArrayKind::Array, true) => "array_ref",
+                    (ArrayKind::Array, false) => "array",
+                }));
+                // post-poly SST: the container is boxed
+                let var = if matches!(&*undecorate_typ(&p.x.typ), TypX::Boxed(_)) {
+                    var.clone()
+                } else {
+                    SpannedTyped::new(
+                        span,
+                        &Arc::new(TypX::Boxed(t.clone())),
+                        ExpX::UnaryOpr(UnaryOpr::Box(t.clone()), var.clone()),
+                    )
+                };
+                let int_typ = Arc::new(TypX::Int(IntRange::Int));
+                let len = SpannedTyped::new(
+                    span,
+                    &int_typ,
+                    ExpX::Unary(UnaryOp::Length(kind), var.clone()),
+                );
+                if let Ok(e) = exp_to_expr(ctx, &len, &ectx) {
+                    out.push((format!("{name}.len()"), e.clone()));
+                    // prefer a model with a short container (see `smt_get_model`)
+                    out.push((
+                        "@bound".to_string(),
+                        Arc::new(air::ast::ExprX::Binary(
+                            air::ast::BinaryOp::Le,
+                            e.clone(),
+                            air::ast_util::mk_nat(MAX_ELEMS as usize),
+                        )),
+                    ));
+                }
+                let elem = &targs[0];
+                for k in 0..MAX_ELEMS {
+                    let idx = SpannedTyped::new(
+                        span,
+                        &int_typ,
+                        ExpX::Const(crate::ast_util::const_int_from_u128(k as u128)),
+                    );
+                    let idx = SpannedTyped::new(
+                        span,
+                        &Arc::new(TypX::Boxed(int_typ.clone())),
+                        ExpX::UnaryOpr(UnaryOpr::Box(int_typ.clone()), idx),
+                    );
+                    let ix = SpannedTyped::new(
+                        span,
+                        &Arc::new(TypX::Boxed(elem.clone())),
+                        ExpX::Binary(crate::sst::BinaryOp::Index(kind), var.clone(), idx),
+                    );
+                    if let Ok(e) = exp_to_expr(ctx, &ix, &ectx) {
+                        let e = try_unbox(ctx, e.clone(), elem).unwrap_or(e);
+                        // the element is a value of its type (the model need not say so
+                        // for elements the query does not constrain)
+                        if let TypX::Int(r) = &*undecorate_typ(elem) {
+                            let (lo, hi) = int_range_bounds(ctx, *r);
+                            for (b, is_lo) in [(lo, true), (hi, false)] {
+                                if let Some(b) = b {
+                                    let c = air::ast_util::mk_nat(0usize);
+                                    let _ = c;
+                                    let bn = Arc::new(air::ast::ExprX::Const(
+                                        air::ast::Constant::Nat(Arc::new(b.to_string())),
+                                    ));
+                                    let bn = if b < 0 {
+                                        Arc::new(air::ast::ExprX::Multi(
+                                            air::ast::MultiOp::Sub,
+                                            Arc::new(vec![
+                                                air::ast_util::mk_nat(0usize),
+                                                Arc::new(air::ast::ExprX::Const(
+                                                    air::ast::Constant::Nat(Arc::new(
+                                                        (-b).to_string(),
+                                                    )),
+                                                )),
+                                            ]),
+                                        ))
+                                    } else {
+                                        bn
+                                    };
+                                    let cmp = if is_lo {
+                                        air::ast::ExprX::Binary(
+                                            air::ast::BinaryOp::Le,
+                                            bn,
+                                            e.clone(),
+                                        )
+                                    } else {
+                                        air::ast::ExprX::Binary(
+                                            air::ast::BinaryOp::Le,
+                                            e.clone(),
+                                            bn,
+                                        )
+                                    };
+                                    out.push(("@bound".to_string(), Arc::new(cmp)));
+                                }
+                            }
+                        }
+                        out.push((format!("{name}[{k}]"), e));
+                    }
+                }
+            }
+            TypX::MutRef(inner) if scalar(inner) => {
+                // `&mut x`: the referent's value at entry
+                out.push(marker("mutref"));
+                let cur = SpannedTyped::new(
+                    span,
+                    &Arc::new(TypX::Boxed(inner.clone())),
+                    ExpX::Unary(UnaryOp::MutRefCurrent, var.clone()),
+                );
+                if let Ok(e) = exp_to_expr(ctx, &cur, &ectx) {
+                    let e = try_unbox(ctx, e.clone(), inner).unwrap_or(e);
+                    out.push((name, e));
+                }
+            }
+            _ => {
+                // structured inputs: datatypes field by field, views of strings and vectors, and the
+                // uninterpreted spec views of opaque types (`mant(d)`)
+                out.push(marker("value"));
+                if matches!(&*p.x.typ, TypX::MutRef(_)) {
+                    // a structured `&mut` parameter: read at its current value, like a value
+                    // parameter, but the call has to pass a mutable reference
+                    out.push((format!("@mutref:{name}"), air::ast_util::mk_true()));
+                }
+                if let Ok(e) = exp_to_expr(ctx, &var, &ectx) {
+                    let native = match &*p.x.typ {
+                        // `&mut x`: the referent at entry, which the encoding keeps boxed
+                        TypX::MutRef(inner) => cx_native(
+                            ctx,
+                            Arc::new(air::ast::ExprX::Apply(
+                                Arc::new(crate::def::MUT_REF_CURRENT.to_string()),
+                                Arc::new(vec![e]),
+                            )),
+                            inner,
+                            true,
+                        ),
+                        _ => cx_native(ctx, e, &p.x.typ, false),
+                    };
+                    if let Some((e, t)) = native {
+                        let mut budget = 400usize;
+                        observe_value(ctx, &name, e, &t, 0, &mut budget, &mut out);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The native AIR expression of a value of type `typ` given as `e`: unboxed when `typ` is boxed or the
+/// value is (`poly`). None when the type has no native form (a type parameter).
+fn cx_native(ctx: &Ctx, e: Expr, typ: &Typ, poly: bool) -> Option<(Expr, Typ)> {
+    let t = undecorate_typ(typ);
+    match &*t {
+        TypX::Boxed(inner) => {
+            let inner = undecorate_typ(inner);
+            try_unbox(ctx, e, &inner).map(|e| (e, inner))
+        }
+        TypX::TypParam(_) | TypX::Projection { .. } | TypX::Dyn(..) | TypX::Opaque { .. } => None,
+        TypX::MutRef(_) => None,
+        _ if poly => {
+            if typ_is_poly(ctx, &t) {
+                None
+            } else {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    try_unbox(ctx, e.clone(), &t)
+                }))
+                .ok()
+                .flatten()
+                .map(|e| (e, t.clone()))
+            }
+        }
+        _ => Some((e, t)),
+    }
+}
+
+/// Strings, `str` and vectors: values read through their `Seq` view.
+fn cx_is_seq_like(t: &Typ) -> bool {
+    match &**t {
+        TypX::Primitive(Primitive::StrSlice, _) => true,
+        TypX::Datatype(Dt::Path(p), _, _) => {
+            let n = crate::ast_util::path_as_friendly_rust_name(p);
+            n == "alloc::string::String"
+                || n == "alloc::vec::Vec"
+                || n == "std::string::String"
+                || n == "std::vec::Vec"
+        }
+        _ => false,
+    }
+}
+
+/// A call of the vstd function `fun` (built with `crate::fun!`)
+fn cx_vstd_apply(ctx: &Ctx, fun: Fun, args: Vec<Expr>) -> Expr {
+    ident_apply(&suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &fun)), &args)
+}
+
+/// `--counterexample`: observations of a structured value `e` (native AIR form) of type `typ` at `path`:
+/// `@type:<path>=<type>` markers, integer and bool leaves, `<path> is <Variant>` tests, the view length and
+/// first elements of strings and vectors, and `<path>.<f>()` for the uninterpreted spec functions of one
+/// argument of an opaque type. Bounded in depth and number; nothing is asserted.
+fn observe_value(
+    ctx: &Ctx,
+    path: &str,
+    e: Expr,
+    typ: &Typ,
+    depth: usize,
+    budget: &mut usize,
+    out: &mut Vec<(String, Expr)>,
+) {
+    const MAX_ELEMS: usize = 16;
+    if *budget == 0 || depth > 4 {
+        return;
+    }
+    *budget -= 1;
+    let t = undecorate_typ(typ);
+    let ty_str = crate::ast_util::typ_to_diagnostic_str(&t);
+    out.push((format!("@type:{path}={ty_str}"), air::ast_util::mk_true()));
+    let bound = |out: &mut Vec<(String, Expr)>, e: &Expr, lo: i128, hi: i128| {
+        let num = |v: i128| -> Expr {
+            let n = Arc::new(air::ast::ExprX::Const(air::ast::Constant::Nat(Arc::new(
+                v.abs().to_string(),
+            ))));
+            if v < 0 {
+                Arc::new(air::ast::ExprX::Multi(
+                    air::ast::MultiOp::Sub,
+                    Arc::new(vec![mk_nat(0usize), n]),
+                ))
+            } else {
+                n
+            }
+        };
+        out.push((
+            "@bound".to_string(),
+            Arc::new(air::ast::ExprX::Binary(air::ast::BinaryOp::Le, num(lo), e.clone())),
+        ));
+        out.push((
+            "@bound".to_string(),
+            Arc::new(air::ast::ExprX::Binary(air::ast::BinaryOp::Le, e.clone(), num(hi))),
+        ));
+    };
+    match &*t {
+        TypX::Int(_) | TypX::Bool => out.push((path.to_string(), e)),
+        TypX::Datatype(dt @ Dt::Path(_), targs, _)
+        | TypX::Datatype(dt @ Dt::Tuple(_), targs, _)
+            if ctx.datatype_is_transparent.get(dt).copied().unwrap_or(false)
+                && ctx.datatype_map.contains_key(dt) =>
+        {
+            let d = &ctx.datatype_map[dt];
+            let many = d.x.variants.len() > 1;
+            // the re-check for a small model also asks that the value agrees with its boxed round trip, as the
+            // theory's axioms say (a model of a query with quantifiers need not satisfy them): the query often
+            // reads a field through `unbox(box(x))`, and the model's value for it is then the reported one
+            if let Some(b) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                try_box(ctx, e.clone(), &t)
+            }))
+            .ok()
+            .flatten()
+            {
+                if let Some(ub) = try_unbox(ctx, b, &t) {
+                    out.push(("@bound".to_string(), mk_eq(&ub, &e)));
+                }
+            }
+            for v in d.x.variants.iter() {
+                if many {
+                    let name = ctx.name_ctxt.is_variant_ident(dt, &v.name);
+                    out.push((
+                        format!("{path} is {}", v.name),
+                        Arc::new(ExprX::Apply(name, Arc::new(vec![e.clone()]))),
+                    ));
+                }
+            }
+            // every field's type first, whatever the budget: a struct is built from all its fields
+            for v in d.x.variants.iter() {
+                for f in v.fields.iter() {
+                    let actual = if d.x.typ_params.len() == targs.len() {
+                        subst_typ_for_datatype(&d.x.typ_params, targs, &f.a.0)
+                    } else {
+                        f.a.0.clone()
+                    };
+                    let fpath = if many {
+                        format!("{path}.{}.{}", v.name, f.name)
+                    } else {
+                        format!("{path}.{}", f.name)
+                    };
+                    let fty = crate::ast_util::typ_to_diagnostic_str(&undecorate_typ(&actual));
+                    out.push((format!("@type:{fpath}={fty}"), air::ast_util::mk_true()));
+                }
+            }
+            // scalar fields first: a large compound field must not use up the budget before them
+            let leaf = |f: &crate::ast::Field| {
+                matches!(&*undecorate_typ(&f.a.0), TypX::Int(_) | TypX::Bool)
+            };
+            for v in d.x.variants.iter() {
+                let mut fields: Vec<&crate::ast::Field> = v.fields.iter().collect();
+                fields.sort_by_key(|f| !leaf(f));
+                for f in fields {
+                    if *budget == 0 {
+                        return;
+                    }
+                    let ftyp = &f.a.0;
+                    let actual = if d.x.typ_params.len() == targs.len() {
+                        subst_typ_for_datatype(&d.x.typ_params, targs, ftyp)
+                    } else {
+                        ftyp.clone()
+                    };
+                    // the datatype's own selector (`D./V/?f`): the model evaluates it, while the declared accessor
+                    // `D./V/f` is an uninterpreted function the model may leave open
+                    let sel = ctx.name_ctxt.variant_field_ident_internal(
+                        &encode_dt_as_path(dt),
+                        &v.name,
+                        &f.name,
+                        true,
+                    );
+                    let fe = ident_apply(&sel, &vec![e.clone()]);
+                    let fpath = if many {
+                        format!("{path}.{}.{}", v.name, f.name)
+                    } else {
+                        format!("{path}.{}", f.name)
+                    };
+                    if leaf(f) || matches!(&*undecorate_typ(&actual), TypX::Int(_) | TypX::Bool) {
+                        // the query reads a field through the declared accessor, which an axiom equates with the
+                        // selector; a model of a query with quantifiers need not satisfy that axiom, so both are
+                        // reported (`<path>~sel` the selector) and a reader takes the one the model determines
+                        let acc = apply_field(ctx, e.clone(), &t, dt, &v.name, &f.name);
+                        let ae = cx_native(ctx, acc, &actual, typ_is_poly(ctx, ftyp)).map(|x| x.0);
+                        let se = cx_native(ctx, fe, &actual, typ_is_poly(ctx, ftyp)).map(|x| x.0);
+                        if let (Some(ae), Some(se)) = (&ae, &se) {
+                            // the accessor's axiom, for the small model (see above)
+                            out.push(("@bound".to_string(), mk_eq(ae, se)));
+                        }
+                        if let Some(ae) = ae {
+                            out.push((fpath.clone(), ae));
+                        }
+                        if let Some(se) = se {
+                            out.push((format!("{fpath}~sel"), se));
+                        }
+                        out.push((
+                            format!(
+                                "@type:{fpath}={}",
+                                crate::ast_util::typ_to_diagnostic_str(&undecorate_typ(&actual))
+                            ),
+                            air::ast_util::mk_true(),
+                        ));
+                        *budget = budget.saturating_sub(1);
+                    } else if let Some((fe, ft)) =
+                        cx_native(ctx, fe, &actual, typ_is_poly(ctx, ftyp))
+                    {
+                        observe_value(ctx, &fpath, fe, &ft, depth + 1, budget, out);
+                    }
+                }
+            }
+        }
+        TypX::Datatype(_, targs, _) | TypX::Primitive(Primitive::StrSlice, targs)
+            if cx_is_seq_like(&t) =>
+        {
+            // strings and vectors: through the view, a `Seq`
+            let elem = match &*t {
+                TypX::Datatype(_, _, _) if !targs.is_empty() => targs[0].clone(),
+                _ => Arc::new(TypX::Int(IntRange::Char)),
+            };
+            let Some(boxed) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                try_box(ctx, e.clone(), &t)
+            }))
+            .ok()
+            .flatten() else {
+                return;
+            };
+            let mut vargs = typ_to_ids(ctx, &t);
+            vargs.push(boxed);
+            let view = cx_vstd_apply(
+                ctx,
+                crate::fun!(crate::ast::CrateId::Vstd => "view", "View"; "view"),
+                vargs,
+            );
+            let mut largs = typ_to_ids(ctx, &elem);
+            largs.push(view.clone());
+            let len = cx_vstd_apply(
+                ctx,
+                crate::fun!(crate::ast::CrateId::Vstd => "seq", "Seq"; "len"),
+                largs,
+            );
+            out.push((format!("{path}@.len()"), len.clone()));
+            out.push((
+                "@bound".to_string(),
+                Arc::new(air::ast::ExprX::Binary(air::ast::BinaryOp::Le, len, mk_nat(MAX_ELEMS))),
+            ));
+            let scalar = matches!(&*undecorate_typ(&elem), TypX::Int(_) | TypX::Bool);
+            // elements that are themselves structured: the first few only
+            let n_elems = if scalar { MAX_ELEMS } else { 3 };
+            for k in 0..n_elems {
+                if *budget == 0 {
+                    return;
+                }
+                let mut iargs = typ_to_ids(ctx, &elem);
+                iargs.push(view.clone());
+                iargs.push(ident_apply(&str_ident(crate::def::BOX_INT), &vec![mk_nat(k)]));
+                let ie = cx_vstd_apply(
+                    ctx,
+                    crate::fun!(crate::ast::CrateId::Vstd => "seq", "Seq"; "index"),
+                    iargs,
+                );
+                let ipath = format!("{path}@[{k}]");
+                if scalar {
+                    let Some(ue) = try_unbox(ctx, ie, &undecorate_typ(&elem)) else { return };
+                    *budget -= 1;
+                    if let TypX::Int(r) = &*undecorate_typ(&elem) {
+                        // printable ASCII for characters, the type's range for integers: inputs that can be
+                        // written down (only the small re-check assumes this)
+                        let (lo, hi) = if *r == IntRange::Char {
+                            (Some(32), Some(126))
+                        } else {
+                            int_range_bounds(ctx, *r)
+                        };
+                        if let (Some(lo), Some(hi)) = (lo, hi) {
+                            bound(out, &ue, lo, hi);
+                        }
+                    }
+                    out.push((ipath, ue));
+                } else if let Some((ue, et)) = cx_native(ctx, ie, &elem, true) {
+                    observe_value(ctx, &ipath, ue, &et, depth + 1, budget, out);
+                }
+            }
+        }
+        TypX::Datatype(_, _, _) => {
+            // an opaque type: the uninterpreted spec functions of one argument of this type (a spec crate's
+            // `mant(d)`, `scale(d)`): what the proof can know about the value
+            let mut views: Vec<&crate::ast::Function> = ctx
+                .func_map
+                .values()
+                .filter(|f| {
+                    f.x.mode == Mode::Spec
+                        && f.x.params.len() == 1
+                        && f.x.typ_params.is_empty()
+                        && f.x.body.is_none()
+                        && matches!(f.x.kind, crate::ast::FunctionKind::Static)
+                        && crate::ast_util::types_equal(&undecorate_typ(&f.x.params[0].x.typ), &t)
+                        && matches!(
+                            &*undecorate_typ(&f.x.outer_ret.x.typ),
+                            TypX::Int(_) | TypX::Bool
+                        )
+                })
+                .collect();
+            views.sort_by_key(|f| crate::ast_util::fun_as_friendly_rust_name(&f.x.name));
+            // a spec function takes its arguments boxed
+            let Some(arg) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                try_box(ctx, e.clone(), &t)
+            }))
+            .ok()
+            .flatten() else {
+                return;
+            };
+            for f in views.into_iter().take(6) {
+                let name = suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &f.x.name));
+                let short =
+                    f.x.name.path.segments.last().map(|s| s.to_string()).unwrap_or_default();
+                let full = crate::ast_util::fun_as_friendly_rust_name(&f.x.name);
+                out.push((format!("@view:{path}.{short}()={full}"), air::ast_util::mk_true()));
+                out.push((format!("{path}.{short}()"), ident_apply(&name, &vec![arg.clone()])));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Integer bounds of a range, for `--counterexample` (`usize`/`isize` at the configured
+/// width, 64 bits if unspecified).
+fn int_range_bounds(ctx: &Ctx, r: IntRange) -> (Option<i128>, Option<i128>) {
+    let w: u32 = match ctx.global.arch {
+        crate::ast::ArchWordBits::Exactly(b) => b,
+        _ => 64,
+    };
+    match r {
+        IntRange::Int => (None, None),
+        IntRange::Nat => (Some(0), None),
+        IntRange::Char => (Some(0), Some(0x10FFFF)),
+        IntRange::U(b) if b < 127 => (Some(0), Some((1i128 << b) - 1)),
+        IntRange::I(b) if b < 127 => (Some(-(1i128 << (b - 1))), Some((1i128 << (b - 1)) - 1)),
+        IntRange::USize => (Some(0), Some((1i128 << w) - 1)),
+        IntRange::ISize => (Some(-(1i128 << (w - 1))), Some((1i128 << (w - 1)) - 1)),
+        _ => (None, None),
+    }
 }
