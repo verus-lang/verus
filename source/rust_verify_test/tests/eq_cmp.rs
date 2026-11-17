@@ -424,3 +424,48 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] test_string_cmp verus_code! {
+        use vstd::prelude::*;
+        use vstd::laws_cmp::*;
+        use vstd::std_specs::cmp::OrdSpec;
+
+        fn lt(a: &String, b: &String) -> (r: bool)
+            ensures
+                r == (vstd::string::char_seq_cmp(a@, b@) == core::cmp::Ordering::Less),
+        {
+            match a.cmp(b) {
+                core::cmp::Ordering::Less => true,
+                _ => false,
+            }
+        }
+
+        fn str_lt(a: &str, b: &str) -> (r: bool)
+            ensures
+                r == (vstd::string::char_seq_cmp(a@, b@) == core::cmp::Ordering::Less),
+        {
+            match a.cmp(b) {
+                core::cmp::Ordering::Less => true,
+                _ => false,
+            }
+        }
+
+        proof fn total() {
+            assert(obeys_cmp::<String>());
+        }
+
+        proof fn antisym(a: String, b: String)
+            requires
+                a.cmp_spec(&b) == core::cmp::Ordering::Less,
+        {
+            reveal(obeys_partial_cmp_spec_properties);
+            reveal(obeys_cmp_ord);
+            assert(b.cmp_spec(&a) == core::cmp::Ordering::Greater);
+        }
+
+        proof fn canary(a: String, b: String) {
+            assert(a.cmp_spec(&b) == core::cmp::Ordering::Less); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
