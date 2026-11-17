@@ -28,7 +28,7 @@ jobs:
         build: [macos, macos-x86_64, linux, linux-arm64, windows, windows-arm64]
         include:
           - build: macos
-            os: macos-14
+            os: macos-15
             release_name: verus-arm64-macos
           - build: macos-x86_64
             os: macos-15-intel
