@@ -888,7 +888,7 @@ pub fn verify_crates_with_deps(
                 .map(|n| {
                     deps.iter()
                         .find(|(d, _, _)| d == n)
-                        .unwrap_or_else(|| panic!("crate {crate_name}: unknown dependency {n}"))
+                        .unwrap_or_else(|| panic!("crate {}: unknown dependency {n}", crate_name))
                         .clone()
                 })
                 .collect(),
