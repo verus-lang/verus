@@ -45,7 +45,7 @@ pub enum UsageInfo {
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid(UsageInfo),
-    Invalid(Option<Model>, Option<ArcDynMessage>, Option<AssertId>),
+    Invalid(Option<Box<Model>>, Option<ArcDynMessage>, Option<AssertId>),
     Canceled,
     TypeError(TypeError),
     UnexpectedOutput(String),

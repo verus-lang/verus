@@ -855,7 +855,7 @@ fn smt_get_model(
     }
 
     context.state = ContextState::FoundInvalid(infos, Some(air_model.clone()));
-    ValidityResult::Invalid(Some(air_model), Some(e), discovered_assert_id.unwrap())
+    ValidityResult::Invalid(Some(Box::new(air_model)), Some(e), discovered_assert_id.unwrap())
 }
 
 pub(crate) fn smt_check_query<'ctx>(
