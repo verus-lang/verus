@@ -191,6 +191,8 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.99.1
+          # 32-bit target for cargo-tests/verified/isize_discriminant_32bit
+          targets: thumbv7m-none-eabi
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
