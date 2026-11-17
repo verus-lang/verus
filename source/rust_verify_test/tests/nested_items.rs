@@ -438,3 +438,13 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "impl or static items in ghost code")
 }
+
+test_verify_one_file! {
+    #[test] test_trait_impl_in_external_body verus_code! {
+        trait T {
+            proof fn f() ensures false;
+        }
+        struct S;
+        pub uninterp spec fn hide() -> [u8; { impl T for S { proof fn f() {} } 1 }];
+    } => Err(err) => assert_vir_error_msg(err, "a trait impl nested in an `external_body` item must be marked `#[verifier::external]`")
+}
