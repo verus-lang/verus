@@ -1,4 +1,5 @@
-//! Eliminate `external_trait_extension` traits before ast_simplify.
+//! Eliminate `external_trait_extension` traits before building the GlobalCtx
+//! (and hence before recursion/termination checking and ast_simplify).
 //!
 //! For `#[verifier::external_trait_extension(TSpec via TSpecImpl)]` on a trait `T`,
 //! the VIR crate contains:
@@ -8,7 +9,7 @@
 //! - a blanket impl `impl<A: T> TSpec for A` (marked `external_trait_blanket`).
 //!
 //! Since `TSpec` and `T` are equivalent (each implies the other),
-//! everything after ast_simplify can treat them as a single trait.
+//! everything after this pass can treat them as a single trait.
 //! This pass:
 //! - merges `TSpec`'s methods into `T` and removes `TSpec`,
 //! - merges each impl of `TSpec` into its paired impl of `T`
@@ -17,12 +18,9 @@
 //! - replaces all remaining references to `TSpec` with `T`
 //!   and all references to impls of `TSpec` with the paired impls of `T`.
 //!
-//! Note: ast_simplify rebuilds the GlobalCtx (including the call graph) from the crate
-//! produced by this pass, so the call graph must come out the same as the call graph
-//! built by the earlier GlobalCtx::new, which merges TSpec into T on the fly
-//! (see Node replace_with in GlobalCtx::new).
-//! One subtlety is the special case in redirect_calls_in_default_methods for calls
-//! within a single impl of TSpec (see preserve_intra_impl_calls).
+//! Since TSpec is merged into T, the call graph treats TSpec and T as a single trait,
+//! and an impl of TSpec and its paired impl of T as a single impl.
+//! One subtlety is calls within a single impl of TSpec (see preserve_intra_impl_calls).
 
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, CallTarget, CallTargetKind, Expr, ExprX, Fun, Function,
@@ -318,11 +316,9 @@ impl AstVisitor<Rewrite, VirErr, NoScoper> for EliminateExtensions {
 /// to the blanket impl, which we treat as dynamic calls to the TSpec method declaration,
 /// with impl_paths that include O.
 /// Since I is merged with O, a call from I's method f to TSpec's method g would then
-/// create a cycle f --> O --> f in the call graph.
-/// redirect_calls_in_default_methods avoids this for calls within a single impl of TSpec
-/// by redirecting the call to I's implementation of g and omitting O from the impl_paths.
-/// Once I is merged into O, the call graph can no longer recognize these calls,
-/// so we encode the redirection directly in the crate:
+/// create a spurious cycle f --> O --> f in the call graph.
+/// Since this is really a call within a single impl (as if rustc had resolved it to
+/// I's implementation of g), we encode this directly in the crate:
 /// - omit O from the impl_paths of the call
 /// - add I's implementation of g to f's extra_dependencies
 fn preserve_intra_impl_calls(
@@ -425,7 +421,6 @@ pub fn eliminate_trait_extensions(krate: &Krate) -> Result<Krate, VirErr> {
         if ti.x.external_trait_blanket {
             blanket_impls.insert(ti.x.impl_path.clone());
         } else if let Some(t) = extension_to_trait.get(&ti.x.trait_path) {
-            // (Any error here has already been reported by GlobalCtx::new)
             let origin = crate::traits::find_trait_impl_from_extension(ti, &trait_impl_map, t)?;
             impl_to_origin.insert(ti.x.impl_path.clone(), origin.x.impl_path.clone());
         }

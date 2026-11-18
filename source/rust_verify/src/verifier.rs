@@ -2062,6 +2062,7 @@ impl Verifier {
             None
         };
 
+        let krate = vir::trait_extensions::eliminate_trait_extensions(&krate)?;
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             self.crate_id.clone().expect("crate_id"),
@@ -2078,7 +2079,6 @@ impl Verifier {
             self.args.report_long_running,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
-        let krate = vir::trait_extensions::eliminate_trait_extensions(&krate)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
         if self.args.log_all || self.args.log_args.log_vir_simple {

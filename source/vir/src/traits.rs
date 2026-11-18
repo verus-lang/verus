@@ -840,7 +840,7 @@ fn synthesize_extension_impls(
                 paired.insert(origin.x.impl_path.clone());
             }
             Err(_) => {
-                // The error is reported elsewhere (see Ctx::new);
+                // The error is reported elsewhere (see trait_extensions::eliminate_trait_extensions);
                 // to be conservative, treat all possible candidates as paired.
                 // (TODO: report that error here instead?)
                 for imp in ti.x.trait_typ_arg_impls.x.iter() {
@@ -883,7 +883,6 @@ pub(crate) fn redirect_calls_in_default_methods(
     func_map: &HashMap<Fun, Function>,
     trait_map: &HashMap<Path, Trait>,
     trait_impl_map: &HashMap<(Fun, Path), Fun>,
-    trait_impl_from_extension: &HashMap<Path, Path>,
     function: &Function,
     span: &Span,
     callee: Fun,
@@ -895,7 +894,6 @@ pub(crate) fn redirect_calls_in_default_methods(
         FunctionKind::TraitMethodImpl {
             trait_path: caller_trait,
             impl_path: caller_impl,
-            trait_typ_args: caller_trait_typ_args,
             inherit_body_from,
             ..
         },
@@ -975,45 +973,6 @@ pub(crate) fn redirect_calls_in_default_methods(
                         span,
                         "call from provided method to same trait with different type arguments is not allowed",
                     ));
-                }
-            }
-
-            // Similar to default methods, we also have a special case to allow
-            // calls within an impl of a trait extension, for which we don't have precise
-            // impl_paths from rustc in general.
-            // (By default, demote_one_expr replaces these calls with Dynamic, which is sound
-            // but imprecise.)
-            if let Some(origin_impl) = trait_impl_from_extension.get(caller_impl) {
-                // We handle only the case where the traits and trait args are the same
-                if callee_trait != caller_trait {
-                    return Ok((callee, impl_paths));
-                }
-                for i in 0..caller_trait_typ_args.len() {
-                    if !crate::ast_util::types_equal(&caller_trait_typ_args[i], &ts[i]) {
-                        return Ok((callee, impl_paths));
-                    }
-                }
-
-                let key = (callee.clone(), caller_impl.clone());
-                if let Some(callee) = trait_impl_map.get(&key) {
-                    let f2 = &func_map[callee];
-                    let FunctionKind::TraitMethodImpl {
-                        trait_path: callee_trait,
-                        impl_path: callee_impl,
-                        ..
-                    } = &f2.x.kind
-                    else {
-                        panic!("expected TraitMethodImpl")
-                    };
-                    assert!(callee_trait == caller_trait);
-                    assert!(caller_impl == callee_impl);
-                    // This is a call within a single impl of the trait extension;
-                    // we can compute more precise impl_paths and callee for this case
-                    let origin_trail_impl = ImplPath::TraitImplPath(origin_impl.clone());
-                    let filter = |p: &ImplPath| p != &origin_trail_impl;
-                    let impl_paths =
-                        Arc::new(impl_paths.iter().filter(|p| filter(*p)).cloned().collect());
-                    return Ok((callee.clone(), impl_paths));
                 }
             }
         }

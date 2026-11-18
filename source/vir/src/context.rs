@@ -307,29 +307,6 @@ pub struct FuncCallGraphLogFiles {
     pub nostd_simplified: File,
 }
 
-// A wrapper around Graph that adds functionality to merge nodes as the graph is built
-pub(crate) struct GraphBuilder<T: std::cmp::Eq + std::hash::Hash + Clone> {
-    pub(crate) graph: Graph<T>,
-    // Whenever we see node: T, replace it with replace_with[node]
-    // This merges node and replace_with[node] together into a single node.
-    pub(crate) replace_with: HashMap<T, T>,
-}
-
-impl<T: std::cmp::Eq + std::hash::Hash + Clone> GraphBuilder<T> {
-    pub(crate) fn replace(&self, value: T) -> T {
-        if let Some(value) = self.replace_with.get(&value) { value.clone() } else { value }
-    }
-    pub(crate) fn add_node(&mut self, value: T) {
-        let value = self.replace(value);
-        self.graph.add_node(value);
-    }
-    pub(crate) fn add_edge(&mut self, src: T, dst: T) {
-        let src = self.replace(src);
-        let dst = self.replace(dst);
-        self.graph.add_edge(src, dst);
-    }
-}
-
 impl GlobalCtx {
     pub fn new(
         krate: &Krate,
@@ -375,48 +352,15 @@ impl GlobalCtx {
             trait_map.insert(tr.x.name.clone(), tr.clone());
         }
 
-        use crate::ast::TraitImpl;
-        let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
-        let mut trait_impl_from_extension: HashMap<Path, Path> = HashMap::new();
-        let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
-        let mut replace_with: HashMap<Node, Node> = HashMap::new();
+        // Note: external_trait_extension traits have already been eliminated
+        // (see trait_extensions::eliminate_trait_extensions)
         for t in &krate.traits {
-            // If TSpec extends T with spec functions, merge TSpec into T
-            if let Some((extension, _)) = &t.x.external_trait_extension {
-                let t_node = Node::Trait(t.x.name.clone());
-                let extension_node = Node::Trait(extension.clone());
-                assert!(!replace_with.contains_key(&extension_node));
-                replace_with.insert(extension_node, t_node);
-                assert!(!extension_to_trait.contains_key(extension));
-                extension_to_trait.insert(extension.clone(), t.x.name.clone());
-            }
+            assert!(t.x.external_trait_extension.is_none());
         }
-        for trait_impl in &krate.trait_impls {
-            assert!(!trait_impl_map.contains_key(&trait_impl.x.impl_path));
-            trait_impl_map.insert(trait_impl.x.impl_path.clone(), trait_impl.clone());
+        for t in &krate.trait_impls {
+            assert!(!t.x.external_trait_blanket);
         }
-        for trait_impl in &krate.trait_impls {
-            if trait_impl.x.external_trait_blanket {
-                continue;
-            }
-            // If TSpec extends T with spec functions,
-            // merge 'impl TSpec for typ' into 'impl T for typ'.
-            if let Some(t) = extension_to_trait.get(&trait_impl.x.trait_path) {
-                let origin_impl =
-                    crate::traits::find_trait_impl_from_extension(trait_impl, &trait_impl_map, t)?;
-                let extension_node =
-                    Node::TraitImpl(ImplPath::TraitImplPath(trait_impl.x.impl_path.clone()));
-                let origin_node =
-                    Node::TraitImpl(ImplPath::TraitImplPath(origin_impl.x.impl_path.clone()));
-                assert!(!replace_with.contains_key(&extension_node));
-                replace_with.insert(extension_node, origin_node);
-                assert!(!trait_impl_from_extension.contains_key(&trait_impl.x.impl_path));
-                trait_impl_from_extension
-                    .insert(trait_impl.x.impl_path.clone(), origin_impl.x.impl_path.clone());
-            }
-        }
-        let mut func_call_graph: GraphBuilder<Node> =
-            GraphBuilder { graph: Graph::new(), replace_with };
+        let mut func_call_graph: Graph<Node> = Graph::new();
         let crate_node = Node::Crate(crate_name.clone());
         func_call_graph.add_node(crate_node.clone());
 
@@ -466,9 +410,6 @@ impl GlobalCtx {
             }
         }
         for t in &krate.trait_impls {
-            if t.x.external_trait_blanket {
-                continue;
-            }
             // Heuristic: put trait impls first, because they are likely to precede
             // many functions that rely on them.
             func_call_graph
@@ -519,7 +460,6 @@ impl GlobalCtx {
                 &func_map,
                 &trait_map,
                 &trait_impl_map,
-                &trait_impl_from_extension,
                 &reveal_group_set,
                 &mut func_call_graph,
                 &mut span_infos,
@@ -583,7 +523,7 @@ impl GlobalCtx {
         // In the final call graph, we add the edge Fun(f4) --> TraitImpl,
         // based on the fact that f4 calls one of { f1, f3 },
         // but the TraitImpl does not depend on f4.
-        let mut preliminary_call_graph = func_call_graph.graph.clone();
+        let mut preliminary_call_graph = func_call_graph.clone();
         preliminary_call_graph.compute_sccs();
         let preliminary_sccs = preliminary_call_graph.sort_sccs();
         let order: HashMap<Node, usize> =
@@ -599,9 +539,8 @@ impl GlobalCtx {
                         if let Some(trait_impl) = method_impl_map.get(f1) {
                             let impl_path = ImplPath::TraitImplPath(trait_impl.clone());
                             let trait_impl = Node::TraitImpl(impl_path);
-                            let trait_impl = func_call_graph.replace(trait_impl);
                             // Do we already have f4 --> trait_impl?
-                            for ti in get_edges_from(&func_call_graph.graph, &node_f4) {
+                            for ti in get_edges_from(&func_call_graph, &node_f4) {
                                 if *ti == trait_impl {
                                     continue 'f1;
                                 }
@@ -619,7 +558,6 @@ impl GlobalCtx {
             }
         }
         // Now make the final call graph with the extra edges
-        let mut func_call_graph = func_call_graph.graph;
         func_call_graph.compute_sccs();
         let func_call_sccs = func_call_graph.sort_sccs();
 
