@@ -1752,23 +1752,45 @@ fn invariant_block_to_vir<'tcx>(
         return malformed_inv_block_err(expr);
     }
 
-    let (vir_body, block_hir_id) = match mid_stmt.kind {
-        StmtKind::Expr(e @ Expr { kind: ExprKind::Block(body, None), .. }) => {
-            assert!(!is_invariant_block(bctx, e)?);
-            let ((vir_stmts, vir_expr, mut drops), mut stmt_drops) =
-                bctx.in_drop_scope(node_scope(mid_stmt.hir_id), || block_to_vir_parts(bctx, body))?;
-            drops.append(&mut stmt_drops);
-            // NOTE: we use body.span here instead of e.span
-            // body.span leads to better error messages
-            // (e.g., the "Cannot show invariant holds at end of block" error)
-            // (e.span or mid_stmt.span would expose macro internals)
-            let vir_body = block_with_drops(bctx, &body.span, vir_stmts, vir_expr, drops);
-            (vir_body, body.hir_id)
-        }
-        _ => {
-            return malformed_inv_block_err(expr);
-        }
+    let StmtKind::Expr(mid_e @ Expr { kind: ExprKind::Block(mid_body, None), .. }) = mid_stmt.kind
+    else {
+        return malformed_inv_block_err(expr);
     };
+    assert!(!is_invariant_block(bctx, mid_e)?);
+    let block_hir_id = mid_body.hir_id;
+
+    // We skip over the macro's block and statements in the HIR,
+    // but we still need to enter their scopes, as rustc does:
+    // the block's scope, the remainder scope of the `let` (open_stmt),
+    // and the scope of each statement.
+    // The temporaries of the arguments are dropped at the end of open_stmt,
+    // before the body executes.
+    let block_scope = node_scope(body.hir_id);
+    let remainder = Scope {
+        local_id: body.hir_id.local_id,
+        data: ScopeData::Remainder(FirstStatementIndex::from_usize(0)),
+    };
+    let ((vir_credit_arg, vir_inv_arg, vir_body), block_drops) =
+        bctx.in_drop_scopes(&[block_scope, remainder], || {
+            let ((vir_credit_arg, vir_inv_arg), open_drops) =
+                bctx.in_drop_scope(node_scope(open_stmt.hir_id), || {
+                    let vir_credit_arg = expr_to_vir_consume(bctx, &credit_arg)?;
+                    let vir_inv_arg = expr_to_vir_consume(bctx, &inv_arg)?;
+                    Ok((vir_credit_arg, vir_inv_arg))
+                })?;
+            let ((vir_stmts, vir_expr, mut drops), mut stmt_drops) = bctx
+                .in_drop_scope(node_scope(mid_stmt.hir_id), || {
+                    block_to_vir_parts(bctx, mid_body)
+                })?;
+            drops.append(&mut stmt_drops);
+            // NOTE: we use mid_body.span here instead of mid_e.span
+            // mid_body.span leads to better error messages
+            // (e.g., the "Cannot show invariant holds at end of block" error)
+            // (mid_e.span or mid_stmt.span would expose macro internals)
+            let vir_body = block_with_drops(bctx, &mid_body.span, vir_stmts, vir_expr, drops);
+            let vir_body = prepend_drops(bctx, open_drops, vir_body);
+            Ok((vir_credit_arg, vir_inv_arg, vir_body))
+        })?;
 
     if matches!(atomicity, InvAtomicity::NonAtomic) {
         let mut erasure_info = bctx.erasure_info.borrow_mut();
@@ -1781,9 +1803,6 @@ fn invariant_block_to_vir<'tcx>(
         );
     }
 
-    let vir_credit_arg = expr_to_vir_consume(bctx, &credit_arg)?;
-    let vir_inv_arg = expr_to_vir_consume(bctx, &inv_arg)?;
-
     let name = pat_to_var(inner_pat)?;
     let inner_ty = typ_of_node_unadjusted(bctx, inner_pat.span, &inner_hir)?;
     let vir_binder = Arc::new(VarBinderX { name, a: inner_ty });
@@ -1793,6 +1812,7 @@ fn invariant_block_to_vir<'tcx>(
         &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
         ExprX::OpenInvariant(vir_credit_arg, vir_inv_arg, vir_binder, vir_body, atomicity),
     );
+    let mid_exp = append_drops(bctx, mid_exp, block_drops);
     Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
         expr.span,
         &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
@@ -2011,13 +2031,33 @@ fn open_au_block_to_vir<'tcx>(
         return malformed_au_block_err(expr, line!());
     }
 
-    let ((vir_stmts, vir_expr, mut drops), mut stmt_drops) =
-        bctx.in_drop_scope(node_scope(mid_stmt.hir_id), || block_to_vir_parts(bctx, body_block))?;
-    drops.append(&mut stmt_drops);
-
-    let vir_body = block_with_drops(bctx, &body_block.span, vir_stmts, vir_expr, drops);
-
-    let au_vir_arg = expr_to_vir_consume(bctx, au_arg)?;
+    // We skip over the macro's block and statements in the HIR,
+    // but we still need to enter their scopes, as rustc does:
+    // the block's scope, the remainder scope of each `let`, and the scope of each statement.
+    // The temporaries of the argument are dropped at the end of open_stmt,
+    // before the body executes.
+    let remainder = |i: usize| Scope {
+        local_id: block.hir_id.local_id,
+        data: ScopeData::Remainder(FirstStatementIndex::from_usize(i)),
+    };
+    let ((au_vir_arg, vir_body), block_drops) =
+        bctx.in_drop_scopes(&[node_scope(block.hir_id), remainder(0)], || {
+            let (au_vir_arg, open_drops) = bctx
+                .in_drop_scope(node_scope(open_stmt.hir_id), || {
+                    expr_to_vir_consume(bctx, au_arg)
+                })?;
+            let (((vir_stmts, vir_expr, mut drops), mut stmt_drops), mut remainder_drops) = bctx
+                .in_drop_scopes(&[remainder(1), remainder(2)], || {
+                    bctx.in_drop_scope(node_scope(mid_stmt.hir_id), || {
+                        block_to_vir_parts(bctx, body_block)
+                    })
+                })?;
+            drops.append(&mut stmt_drops);
+            drops.append(&mut remainder_drops);
+            let vir_body = block_with_drops(bctx, &body_block.span, vir_stmts, vir_expr, drops);
+            let vir_body = prepend_drops(bctx, open_drops, vir_body);
+            Ok((au_vir_arg, vir_body))
+        })?;
     let au_vir_binder = Arc::new(VarBinderX {
         name: pat_to_var(x_pat)?,
         a: typ_of_node_unadjusted(bctx, x_pat.span, x_bind)?,
@@ -2028,6 +2068,7 @@ fn open_au_block_to_vir<'tcx>(
         &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
         ExprX::TryOpenAtomicUpdate(au_vir_arg, au_vir_binder, vir_body),
     );
+    let mid_exp = append_drops(bctx, mid_exp, block_drops);
 
     Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
         expr.span,

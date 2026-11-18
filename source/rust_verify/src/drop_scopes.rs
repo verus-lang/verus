@@ -97,6 +97,24 @@ impl<'tcx> BodyCtxt<'tcx> {
         Ok((r?, drops))
     }
 
+    /// Run `f` inside the given scopes (outermost first), then pop the scopes and return
+    /// their drops (in the order they should execute).
+    pub(crate) fn in_drop_scopes<R>(
+        &self,
+        scopes: &[Scope],
+        f: impl FnOnce() -> Result<R, VirErr>,
+    ) -> Result<(R, Vec<Expr>), VirErr> {
+        for scope in scopes {
+            self.push_drop_scope(*scope);
+        }
+        let r = f();
+        let mut drops = vec![];
+        for scope in scopes.iter().rev() {
+            drops.append(&mut self.pop_drop_scope(*scope));
+        }
+        Ok((r?, drops))
+    }
+
     /// Temporarily remove the given scope, and all scopes inside it, from the stack.
     /// This is used when we need to translate code that is lexically inside a scope,
     /// but which rustc treats as being outside it (e.g., the `else` block of a let-else).

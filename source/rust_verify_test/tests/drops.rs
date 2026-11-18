@@ -1798,6 +1798,99 @@ bb0 (entry, exit):
     );
 }
 
+/// The temporaries in the arguments of `open_atomic_invariant!` are dropped
+/// before the body executes
+#[test]
+fn test_open_atomic_invariant_arg_temps() {
+    let code = verus_code! {
+        use vstd::invariant::*;
+        #[verifier::external_body]
+        proof fn mk_box() -> (tracked b: Option<Box<u8>>) { unimplemented!() }
+        proof fn pick<'a, T>(tracked v: &Option<Box<u8>>, tracked x: &'a T) -> (tracked r: &'a T) {
+            x
+        }
+        fn test<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>) {
+            open_atomic_invariant!(pick(&mk_box(), i.borrow()) => inner => {
+                let a = D { x: 0 };
+            });
+        }
+    };
+    check_cfg(
+        code,
+        "test",
+        &[],
+        r#"
+bb0 (entry, exit):
+    Overwrite(i)
+    Overwrite(Temp_0)        // mk_box()
+    Overwrite(Temp_1)        // &mk_box()
+    Overwrite(Temp_2)        // &i
+    Overwrite(Temp_3)        // pick(&&mk_box(), &&i)
+    Overwrite(inner)
+    ScopeDrop(Temp_0)        // mk_box()
+    Overwrite(Temp_4)        // D { x: 0 }
+    MoveFrom(Temp_4)         // D { x: 0 }
+    Overwrite(a)
+    ScopeDrop(Temp_4)        // D { x: 0 }
+    ScopeDrop(a)
+    MoveFrom(inner)
+"#,
+    );
+}
+
+/// The temporaries in the argument of `try_open_atomic_update!` are dropped
+/// before the body executes
+#[test]
+fn test_open_atomic_update_arg_temps() {
+    let code = verus_code! {
+        use vstd::atomic::*;
+        use vstd::prelude::*;
+        pub tracked struct Token { state: u16 }
+        #[verifier::external_body]
+        proof fn mk_box() -> (tracked b: Option<Box<u8>>) { unimplemented!() }
+        proof fn pick<T>(tracked v: &Option<Box<u8>>, tracked x: T) -> (tracked r: T)
+            ensures r == x
+        {
+            x
+        }
+        fn test<F>(_callback: F)
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(pick(&mk_box(), atomic_update), token => {
+                let a = D { x: 0 };
+                Tracked(Commit(token))
+            });
+        }
+    };
+    check_cfg(
+        code,
+        "test",
+        &[],
+        r#"
+bb0 (entry, exit):
+    Overwrite(_callback)
+    Overwrite(atomic_update)
+    Overwrite(Temp_0)        // mk_box()
+    Overwrite(Temp_1)        // &mk_box()
+    MoveFrom(atomic_update)
+    Overwrite(token)
+    ScopeDrop(Temp_0)        // mk_box()
+    Overwrite(Temp_2)        // D { x: 0 }
+    MoveFrom(Temp_2)         // D { x: 0 }
+    Overwrite(a)
+    ScopeDrop(Temp_2)        // D { x: 0 }
+    MoveFrom(token)
+    ScopeDrop(a)
+    MoveFrom(token)
+    Overwrite(Temp_3)        // { ... }
+    ScopeDrop(_callback)
+"#,
+    );
+}
+
 /// Closures have their own scopes; closure params are dropped after the closure body.
 #[test]
 fn test_closure() {
