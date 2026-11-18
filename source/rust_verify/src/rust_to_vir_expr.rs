@@ -4680,7 +4680,7 @@ pub(crate) fn is_ignorable_dummy_capture_operation<'tcx>(
     expr: &Expr<'tcx>,
 ) -> bool {
     match &expr.kind {
-        ExprKind::Call(fun, _) => match &fun.kind {
+        ExprKind::Call(fun, args) => match &fun.kind {
             ExprKind::Path(QPath::Resolved(
                 None,
                 rustc_hir::Path { res: Res::Def(_, fun_id), .. },
@@ -4691,7 +4691,10 @@ pub(crate) fn is_ignorable_dummy_capture_operation<'tcx>(
                     Some(VerusItem::DummyCapture(
                         DummyCaptureItem::New | DummyCaptureItem::Consume
                     ))
-                )
+                ) && args.iter().all(|arg| match &arg.kind {
+                    ExprKind::Path(QPath::Resolved(None, p)) => matches!(p.res, Res::Local(_)),
+                    _ => false,
+                })
             }
             _ => false,
         },
