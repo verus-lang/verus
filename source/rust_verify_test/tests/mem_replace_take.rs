@@ -38,6 +38,12 @@ test_verify_one_file! {
             assert(p.0 == 1);
             assert(p.1 == old_p.1);
         }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] mem_replace_returns_old_value_not_new verus_code! {
+        use vstd::prelude::*;
 
         fn test_wrong() {
             let mut x: u32 = 5;
@@ -80,6 +86,12 @@ test_verify_one_file! {
         {
             std::mem::take(dest)
         }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] mem_take_does_not_leave_old_value verus_code! {
+        use vstd::prelude::*;
 
         fn test_wrong() {
             let mut x: u64 = 9;
