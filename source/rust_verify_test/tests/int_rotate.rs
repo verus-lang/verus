@@ -66,6 +66,12 @@ test_verify_one_file! {
             let _ = b.rotate_right(64);
             let _ = c.rotate_left(1000);
         }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unsigned_rotate_left_is_not_shift_left verus_code! {
+        use vstd::prelude::*;
 
         fn test_wrong(x: u8) {
             let a = x.rotate_left(1);
@@ -117,6 +123,12 @@ test_verify_one_file! {
             let _ = a.rotate_left(3);
             let _ = b.rotate_right(5);
         }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] signed_full_width_rotate_is_not_negation verus_code! {
+        use vstd::prelude::*;
 
         fn test_wrong(x: i8) {
             let a = x.rotate_left(8);
