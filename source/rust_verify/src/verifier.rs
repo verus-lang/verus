@@ -2062,7 +2062,9 @@ impl Verifier {
             None
         };
 
-        let krate = vir::trait_extensions::eliminate_trait_extensions(&krate)?;
+        let mut warning_ctx = (*self.warning_ctx.clone().expect("warning_ctx")).clone();
+        let krate = vir::trait_extensions::eliminate_trait_extensions(&krate, &mut warning_ctx)?;
+        self.warning_ctx = Some(Arc::new(warning_ctx));
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             self.crate_id.clone().expect("crate_id"),

@@ -663,129 +663,139 @@ pub fn inherit_default_bodies(
                 // Create a shell Function for trait_impl, with these purposes:
                 // - used as a recursion::Node::Fun in the call graph
                 // - for spec functions, used by sst_to_air_func to create a definition axiom
-                let inherit_kind = FunctionKind::TraitMethodImpl {
-                    method: default_function.x.name.clone(),
-                    impl_path: impl_path.clone(),
-                    trait_path: trait_impl.x.trait_path.clone(),
-                    trait_typ_args: trait_impl.x.trait_typ_args.clone(),
-                    inherit_body_from: Some(default_function.x.name.clone()),
-                };
                 let tr = trait_map[&trait_impl.x.trait_path];
-                let mut subst_map: HashMap<Ident, Typ> = HashMap::new();
-                assert!(trait_impl.x.trait_typ_args.len() == tr.x.typ_params.len() + 1);
-                let tr_params = tr.x.typ_param_names_with_self();
-                let n_outer = tr_params.len(); // Self + trait params
-                for (x, t) in tr_params.iter().zip(trait_impl.x.trait_typ_args.iter()) {
-                    assert!(!subst_map.contains_key(x));
-                    subst_map.insert(x.clone(), t.clone());
-                }
-                // Note: Rust won't let tr_params conflict with f_typ_params.
-                // However, trait_impl.x.typ_params could have the same names as f_typ_params.
-                // So we have to rename f_typ_params.
-                let rename_f_typ_param = |x: &Ident| -> Ident {
-                    let s = format!("{}{}", crate::def::PREFIX_DEFAULT_TYP_PARAM, x);
-                    Arc::new(s)
-                };
-                let f_typ_params: Vec<Ident> =
-                    default_function.x.typ_params.iter().skip(n_outer).cloned().collect();
-                for x in &f_typ_params {
-                    let r = rename_f_typ_param(x);
-                    subst_map.insert(x.clone(), Arc::new(TypX::TypParam(r)));
-                }
-                let ft = |_: &mut (), t: &Typ| -> Result<Typ, VirErr> {
-                    match &**t {
-                        TypX::TypParam(x) => Ok(subst_map[x].clone()),
-                        _ => Ok(t.clone()),
-                    }
-                };
-                let params = crate::ast_visitor::map_params_visitor(
-                    &default_function.x.params,
-                    &mut (),
-                    &ft,
-                )
-                .unwrap();
-                let outer_ret = crate::ast_visitor::map_param_visitor(
-                    &default_function.x.outer_ret,
-                    &mut (),
-                    &ft,
-                )
-                .unwrap();
-                let inner_ret = crate::ast_visitor::map_param_visitor(
-                    &default_function.x.inner_ret,
-                    &mut (),
-                    &ft,
-                )
-                .unwrap();
                 let name =
                     crate::def::trait_inherit_default_name(&default_function.x.name, &impl_path);
-                let visibility = Visibility {
-                    restricted_to: default_function
-                        .x
-                        .visibility
-                        .restricted_to
-                        .clone()
-                        .and(trait_impl.x.owning_module.clone()),
-                };
-                let f_typ_params = f_typ_params.iter().map(rename_f_typ_param);
-                let typ_params: Vec<Ident> =
-                    trait_impl.x.typ_params.iter().cloned().chain(f_typ_params).collect();
-                let mut f_typ_bounds = default_function.x.typ_bounds.clone();
-                remove_self_is_itself_bound(
-                    &mut f_typ_bounds,
-                    &trait_impl.x.trait_path,
-                    &tr.x.typ_params,
-                );
-                if let Some(origin_trait) = extension_to_trait.get(&trait_impl.x.trait_path) {
-                    // For TSpec: T, also remove the Self: T bound,
-                    // since the impl of TSpec is merged with the impl of T
-                    // (just as for spec functions explicitly implemented in impls of TSpecImpl)
-                    remove_self_is_itself_bound(&mut f_typ_bounds, origin_trait, &tr.x.typ_params);
-                }
-                let f_typ_bounds =
-                    crate::ast_visitor::map_generic_bounds_visitor(&f_typ_bounds, &mut (), &ft)
-                        .expect("map_generic_bounds_visitor");
-                let typ_bounds: Vec<GenericBound> =
-                    trait_impl.x.typ_bounds.iter().chain(f_typ_bounds.iter()).cloned().collect();
-                let inherit_functionx = FunctionX {
+                let origin_trait = extension_to_trait.get(&trait_impl.x.trait_path);
+                let inherit_function = trait_method_impl_shell(
+                    trait_impl,
+                    tr,
+                    default_function,
                     name,
-                    proxy: None,
-                    kind: inherit_kind,
-                    // TODO: we could try to use the impl visibility and owning module for better pruning:
-                    visibility,
-                    body_visibility: default_function.x.body_visibility.clone(),
-                    opaqueness: default_function.x.opaqueness.clone(),
-                    owning_module: trait_impl.x.owning_module.clone(),
-                    mode: default_function.x.mode,
-                    typ_params: Arc::new(typ_params),
-                    typ_bounds: Arc::new(typ_bounds),
-                    params,
-                    outer_ret,
-                    inner_ret,
-                    require: Arc::new(vec![]),
-                    ensure: (Arc::new(vec![]), Arc::new(vec![])),
-                    returns: None,
-                    decrease: Arc::new(vec![]),
-                    decrease_when: None,
-                    decrease_by: None,
-                    fndef_axioms: None,
-                    atomic_update: None,
-                    mask_spec: None,
-                    unwind_spec: None,
-                    item_kind: default_function.x.item_kind,
-                    attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
-                    body: None,
-                    return_opaque_type_eqs: Arc::new(vec![]),
-                    extra_dependencies: vec![],
-                    hidden: Arc::new(vec![]),
-                };
-                let warn_config = warning_ctx.fun_warn_configs[&default_function.x.name].clone();
-                warning_ctx.fun_warn_configs.insert(inherit_functionx.name.clone(), warn_config);
-                kratex.functions.push(default_function.new_x(inherit_functionx));
+                    Some(default_function.x.name.clone()),
+                    origin_trait,
+                    warning_ctx,
+                );
+                kratex.functions.push(inherit_function);
             }
         }
     }
 
     Ok(Arc::new(kratex))
+}
+
+/// Create a body-less implementation of trait method `method` (declared in trait `tr`)
+/// for `trait_impl`, named `name`.
+/// If inherit_body_from is Some, this is a shell for a default method that trait_impl inherits.
+/// If inherit_body_from is None, this is an uninterpreted implementation.
+/// If tr is an external_trait_extension TSpec of origin_trait T,
+/// trait_impl may be an impl of either TSpec or T.
+pub(crate) fn trait_method_impl_shell(
+    trait_impl: &TraitImpl,
+    tr: &Trait,
+    method: &Function,
+    name: Fun,
+    inherit_body_from: Option<Fun>,
+    origin_trait: Option<&Path>,
+    warning_ctx: &mut crate::context::WarningCtx,
+) -> Function {
+    let impl_path = &trait_impl.x.impl_path;
+    let kind = FunctionKind::TraitMethodImpl {
+        method: method.x.name.clone(),
+        impl_path: impl_path.clone(),
+        trait_path: tr.x.name.clone(),
+        trait_typ_args: trait_impl.x.trait_typ_args.clone(),
+        inherit_body_from,
+    };
+    let mut subst_map: HashMap<Ident, Typ> = HashMap::new();
+    assert!(trait_impl.x.trait_typ_args.len() == tr.x.typ_params.len() + 1);
+    let tr_params = tr.x.typ_param_names_with_self();
+    let n_outer = tr_params.len(); // Self + trait params
+    for (x, t) in tr_params.iter().zip(trait_impl.x.trait_typ_args.iter()) {
+        assert!(!subst_map.contains_key(x));
+        subst_map.insert(x.clone(), t.clone());
+    }
+    // Note: Rust won't let tr_params conflict with f_typ_params.
+    // However, trait_impl.x.typ_params could have the same names as f_typ_params.
+    // So we have to rename f_typ_params.
+    let rename_f_typ_param = |x: &Ident| -> Ident {
+        let s = format!("{}{}", crate::def::PREFIX_DEFAULT_TYP_PARAM, x);
+        Arc::new(s)
+    };
+    let f_typ_params: Vec<Ident> = method.x.typ_params.iter().skip(n_outer).cloned().collect();
+    for x in &f_typ_params {
+        let r = rename_f_typ_param(x);
+        subst_map.insert(x.clone(), Arc::new(TypX::TypParam(r)));
+    }
+    let ft = |_: &mut (), t: &Typ| -> Result<Typ, VirErr> {
+        match &**t {
+            TypX::TypParam(x) => Ok(subst_map[x].clone()),
+            _ => Ok(t.clone()),
+        }
+    };
+    let params = crate::ast_visitor::map_params_visitor(&method.x.params, &mut (), &ft).unwrap();
+    let outer_ret =
+        crate::ast_visitor::map_param_visitor(&method.x.outer_ret, &mut (), &ft).unwrap();
+    let inner_ret =
+        crate::ast_visitor::map_param_visitor(&method.x.inner_ret, &mut (), &ft).unwrap();
+    let visibility = Visibility {
+        restricted_to: method
+            .x
+            .visibility
+            .restricted_to
+            .clone()
+            .and(trait_impl.x.owning_module.clone()),
+    };
+    let f_typ_params = f_typ_params.iter().map(rename_f_typ_param);
+    let typ_params: Vec<Ident> =
+        trait_impl.x.typ_params.iter().cloned().chain(f_typ_params).collect();
+    let mut f_typ_bounds = method.x.typ_bounds.clone();
+    remove_self_is_itself_bound(&mut f_typ_bounds, &tr.x.name, &tr.x.typ_params);
+    if let Some(origin_trait) = origin_trait {
+        // For TSpec: T, also remove the Self: T bound,
+        // since the impl of TSpec is merged with the impl of T
+        // (just as for spec functions explicitly implemented in impls of TSpecImpl)
+        remove_self_is_itself_bound(&mut f_typ_bounds, origin_trait, &tr.x.typ_params);
+    }
+    let f_typ_bounds = crate::ast_visitor::map_generic_bounds_visitor(&f_typ_bounds, &mut (), &ft)
+        .expect("map_generic_bounds_visitor");
+    let typ_bounds: Vec<GenericBound> =
+        trait_impl.x.typ_bounds.iter().chain(f_typ_bounds.iter()).cloned().collect();
+    let functionx = FunctionX {
+        name,
+        proxy: None,
+        kind,
+        // TODO: we could try to use the impl visibility and owning module for better pruning:
+        visibility,
+        body_visibility: method.x.body_visibility.clone(),
+        opaqueness: method.x.opaqueness.clone(),
+        owning_module: trait_impl.x.owning_module.clone(),
+        mode: method.x.mode,
+        typ_params: Arc::new(typ_params),
+        typ_bounds: Arc::new(typ_bounds),
+        params,
+        outer_ret,
+        inner_ret,
+        require: Arc::new(vec![]),
+        ensure: (Arc::new(vec![]), Arc::new(vec![])),
+        returns: None,
+        decrease: Arc::new(vec![]),
+        decrease_when: None,
+        decrease_by: None,
+        fndef_axioms: None,
+        atomic_update: None,
+        mask_spec: None,
+        unwind_spec: None,
+        item_kind: method.x.item_kind,
+        attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
+        body: None,
+        return_opaque_type_eqs: Arc::new(vec![]),
+        extra_dependencies: vec![],
+        hidden: Arc::new(vec![]),
+    };
+    let warn_config = warning_ctx.fun_warn_configs[&method.x.name].clone();
+    warning_ctx.fun_warn_configs.insert(functionx.name.clone(), warn_config);
+    method.new_x(functionx)
 }
 
 /// For `#[verifier::external_trait_extension(TSpec via TSpecImpl)]` on a trait `T`,
@@ -902,15 +912,6 @@ pub(crate) fn redirect_calls_in_default_methods(
     {
         if callee_trait == caller_trait {
             if let Some(f_trait) = inherit_body_from {
-                if get_trait(f_trait) != get_trait(&callee) {
-                    // After trait_extensions::eliminate_trait_extensions merges TSpec into T,
-                    // a default method of T may call a method of TSpec (or vice-versa),
-                    // with callee_trait == caller_trait == T.
-                    // As before the merge, only redirect calls within the trait
-                    // that declares the default method.
-                    // (Trait method declarations are named after their original trait.)
-                    return Ok((callee, impl_paths));
-                }
                 let f_trait = &func_map[f_trait];
                 match &f_trait.x.kind {
                     FunctionKind::TraitMethodDecl { trait_path, has_default: true } => {

@@ -14,6 +14,9 @@
 //! - merges `TSpec`'s methods into `T` and removes `TSpec`,
 //! - merges each impl of `TSpec` into its paired impl of `T`
 //!   (the impl's methods become methods of the paired impl of `T`) and removes the `TSpec` impl,
+//! - for each impl of `T` that (after merging) still doesn't implement some method of `TSpec`,
+//!   adds an uninterpreted implementation of the method,
+//!   so that every impl of `T` implements every method of `T`, as for ordinary traits,
 //! - removes the blanket impl,
 //! - replaces all remaining references to `TSpec` with `T`
 //!   and all references to impls of `TSpec` with the paired impls of `T`.
@@ -399,7 +402,10 @@ fn preserve_intra_impl_calls(
     Ok(function.new_x(functionx))
 }
 
-pub fn eliminate_trait_extensions(krate: &Krate) -> Result<Krate, VirErr> {
+pub fn eliminate_trait_extensions(
+    krate: &Krate,
+    warning_ctx: &mut crate::context::WarningCtx,
+) -> Result<Krate, VirErr> {
     let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
     for t in krate.traits.iter() {
         if let Some((extension, _)) = &t.x.external_trait_extension {
@@ -423,6 +429,51 @@ pub fn eliminate_trait_extensions(krate: &Krate) -> Result<Krate, VirErr> {
         } else if let Some(t) = extension_to_trait.get(&ti.x.trait_path) {
             let origin = crate::traits::find_trait_impl_from_extension(ti, &trait_impl_map, t)?;
             impl_to_origin.insert(ti.x.impl_path.clone(), origin.x.impl_path.clone());
+        }
+    }
+
+    // Make sure that every impl of T implements every method of TSpec,
+    // adding uninterpreted implementations as needed.
+    // (Usually, an impl of TSpecImpl must implement all non-default methods,
+    // and inherit_default_bodies supplies the default methods;
+    // the remaining cases are impls of T with no corresponding impl of TSpecImpl.)
+    let trait_map: HashMap<Path, &crate::ast::Trait> =
+        krate.traits.iter().map(|t| (t.x.name.clone(), t)).collect();
+    let func_map: HashMap<Fun, &Function> =
+        krate.functions.iter().map(|f| (f.x.name.clone(), f)).collect();
+    let mut implemented: HashSet<(Path, Fun)> = HashSet::new();
+    for f in krate.functions.iter() {
+        if let FunctionKind::TraitMethodImpl { method, impl_path, .. } = &f.x.kind {
+            let impl_path = impl_to_origin.get(impl_path).unwrap_or(impl_path);
+            implemented.insert((impl_path.clone(), method.clone()));
+        }
+    }
+    let mut uninterp_functions: Vec<Function> = Vec::new();
+    for ti in krate.trait_impls.iter() {
+        if ti.x.external_trait_blanket || impl_to_origin.contains_key(&ti.x.impl_path) {
+            continue;
+        }
+        let Some(t) = trait_map.get(&ti.x.trait_path) else { continue };
+        let Some((extension, _)) = &t.x.external_trait_extension else { continue };
+        let Some(ext) = trait_map.get(extension) else { continue };
+        for method in ext.x.methods.iter() {
+            if implemented.contains(&(ti.x.impl_path.clone(), method.clone())) {
+                continue;
+            }
+            let Some(decl) = func_map.get(method) else {
+                // The method declaration has been pruned, so the method is never used
+                continue;
+            };
+            let name = crate::def::trait_extension_uninterp_name(method, &ti.x.impl_path);
+            uninterp_functions.push(crate::traits::trait_method_impl_shell(
+                ti,
+                ext,
+                decl,
+                name,
+                None,
+                Some(&t.x.name),
+                warning_ctx,
+            ));
         }
     }
 
@@ -487,7 +538,7 @@ pub fn eliminate_trait_extensions(krate: &Krate) -> Result<Krate, VirErr> {
         }
     }
     let mut functions = Vec::new();
-    for f in krate.functions.iter() {
+    for f in krate.functions.iter().chain(uninterp_functions.iter()) {
         functions.push(preserve_intra_impl_calls(
             f,
             &impl_to_origin,
