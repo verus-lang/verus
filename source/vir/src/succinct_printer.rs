@@ -7,7 +7,7 @@
 
 use crate::ast::{
     ArithOp, BinaryOp, CallTarget, Constant, Dt, Expr, ExprX, InequalityOp, Place, PlaceX,
-    ReadKind, UnaryOp, VarIdent,
+    ReadKind, TypDecoration, TypX, UnaryOp, VarIdent,
 };
 
 /// Maximum nesting depth of the printed expression
@@ -108,7 +108,17 @@ fn expr(e: &Expr, depth: usize) -> String {
         | ExprX::Ghost { expr: e1, .. } => return expr(e1, depth),
         ExprX::ReadPlace(p, rk) => {
             return match rk.preliminary_kind {
-                ReadKind::ImmutBor => format!("&{}", place(p, depth)),
+                ReadKind::ImmutBor => match &*p.typ {
+                    // Dereferences of shared references and boxes are implicit in VIR,
+                    // so `&*b` (for a box `b`) and `&*r` (for a shared reference `r`, including
+                    // the reborrows that rustc inserts) are borrows of `b` and `r`.
+                    // We print these as `&*b` and `r` (eliding the reborrow).
+                    // (This is ambiguous: a borrow `&r` of a shared reference, or `&b` of a box,
+                    // has the same VIR and is printed the same way.)
+                    TypX::Decorate(TypDecoration::Box, _, _) => format!("&*{}", place(p, depth)),
+                    TypX::Decorate(TypDecoration::Ref, _, _) => place(p, depth),
+                    _ => format!("&{}", place(p, depth)),
+                },
                 _ => place(p, depth),
             };
         }
