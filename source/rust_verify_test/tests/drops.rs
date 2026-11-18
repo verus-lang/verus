@@ -10,13 +10,17 @@ use common::*;
 // resolution_inference (`--log resolution-cfg`), in which the drops appear as `ScopeDrop`
 // instructions. Each expected CFG was compared to the MIR built by rustc
 // (`-Zdump-mir=<fn>`, the `built` phase, before drop elaboration) for the same code,
-// with `D` implementing `Drop`. Note the following differences, which are expected:
+// with `D` implementing `Drop`. This means that a `Drop` node indicates the value
+// going out of scope, but not necessarily that a drop call occurs, since the value
+// might have been moved-out-of already.
+//
+// Like MIR, we only drop values whose types need dropping, so `D` implements `Drop`
+// (whereas integers, references, and `Option<u64>` don't need dropping).
+//
+// Note the following differences, which are expected:
 //  - VIR uses temporaries in some places where MIR doesn't (e.g., for `let` initializers),
-//    and MIR uses temporaries in some places where VIR doesn't (e.g., for reborrows).
-//  - Like MIR, we only drop values whose types need dropping, so `D` implements `Drop`
-//    (whereas integers, references, and `Option<u64>` don't need dropping).
-//  - MIR's drops of moved-from values are later removed by drop elaboration;
-//    we leave them in (they should be treated as no-ops when the value has been moved out).
+//  - MIR uses temporaries in some places where VIR doesn't (e.g., for reborrows).
+//    This doesn't impact drops, since references have no drop glue.
 
 const DEFS: &str = verus_code_str! {
     struct D { x: u64 }
