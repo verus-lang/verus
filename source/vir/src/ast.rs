@@ -1346,6 +1346,8 @@ pub enum ExprX {
     /// would drop it (if it is still initialized at that point, i.e., not moved-out-of).
     /// These are inserted by rust_to_vir following rustc's scope rules.
     /// Has unit type. Currently a no-op in ast_to_sst.
+    /// Note that this doesn't account for drops that result from dropping the overwritten
+    /// value of an assignment.
     Drop(LocalOrTemp),
 }
 

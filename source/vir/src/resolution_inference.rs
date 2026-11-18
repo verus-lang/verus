@@ -526,10 +526,10 @@ enum InstructionKind {
     /// Drop whatever is here; the place may previously be initialized, uninitialized,
     /// or partially initialized. Whatever was there before gets dropped.
     /// The place is subsequently uninitialized.
-    DropFrom(FlattenedPlace),
+    Uninitialize(FlattenedPlace),
     /// Corresponds to an ExprX::Drop node, i.e., the point where Rust would drop the given
     /// local or temporary when it goes out of scope.
-    /// (Not to be confused with DropFrom, which serves an unrelated purpose.)
+    /// (Not to be confused with Uninitialize, which serves an unrelated purpose.)
     /// This is currently a no-op for the purposes of the analysis.
     ScopeDrop(FlattenedPlace),
 }
@@ -798,7 +798,7 @@ impl<'a> Builder<'a> {
                     self.fns.last_mut().unwrap().upvars_moved.push(fp.clone());
                 }
             }
-            InstructionKind::DropFrom(_) | InstructionKind::ScopeDrop(_) => {}
+            InstructionKind::Uninitialize(_) | InstructionKind::ScopeDrop(_) => {}
         }
         self.push_instruction_raw(bb, post_instruction_position, instr);
     }
@@ -827,7 +827,7 @@ impl<'a> Builder<'a> {
             self.push_instruction_propagate(
                 bb,
                 post_instruction_position,
-                InstructionKind::DropFrom(fp.clone()),
+                InstructionKind::Uninitialize(fp.clone()),
             );
         }
     }
@@ -2942,7 +2942,7 @@ impl FlattenedPlace {
             InstructionKind::MoveFrom(_) => false,
             InstructionKind::Overwrite(sp) => self.intersects(sp),
             InstructionKind::Mutate(sp) => self.intersects(sp),
-            InstructionKind::DropFrom(_) => false,
+            InstructionKind::Uninitialize(_) => false,
             InstructionKind::ScopeDrop(_) => false,
         }
     }
@@ -3436,7 +3436,7 @@ fn pretty_instr(locals: &LocalCollection, instr: &Instruction) -> String {
         InstructionKind::MoveFrom(fp) => ("MoveFrom", fp),
         InstructionKind::Overwrite(fp) => ("Overwrite", fp),
         InstructionKind::Mutate(fp) => ("Mutate", fp),
-        InstructionKind::DropFrom(fp) => ("DropFrom", fp),
+        InstructionKind::Uninitialize(fp) => ("Uninitialize", fp),
         InstructionKind::ScopeDrop(fp) => ("ScopeDrop", fp),
     };
     format!("{:}({:})", name, pretty_flattened_place(locals, fp))
@@ -3450,7 +3450,7 @@ fn pretty_instr_annotated(locals: &LocalCollection, instr: &Instruction) -> Stri
         InstructionKind::MoveFrom(fp)
         | InstructionKind::Overwrite(fp)
         | InstructionKind::Mutate(fp)
-        | InstructionKind::DropFrom(fp)
+        | InstructionKind::Uninitialize(fp)
         | InstructionKind::ScopeDrop(fp) => fp,
     };
     match &locals.locals[fp.local].name {
@@ -3567,7 +3567,7 @@ impl DataflowState for InitializationPossibilities {
             }
             InstructionKind::Mutate(_sp) => *self,
             InstructionKind::ScopeDrop(_sp) => *self,
-            InstructionKind::DropFrom(sp) => {
+            InstructionKind::Uninitialize(sp) => {
                 if sp.contains(place) {
                     InitializationPossibilities { can_be_uninit: true }
                 } else {
@@ -3613,7 +3613,7 @@ impl DataflowState for ResolveSafety {
                 }
             }
             InstructionKind::ScopeDrop(_sp) => *self,
-            InstructionKind::Overwrite(sp) | InstructionKind::DropFrom(sp) => {
+            InstructionKind::Overwrite(sp) | InstructionKind::Uninitialize(sp) => {
                 if sp.contains_and_not_separated_by_deref(place) {
                     ResolveSafety { can_resolve: true }
                 } else if sp.intersects(place) {
