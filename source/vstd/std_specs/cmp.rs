@@ -368,6 +368,52 @@ impl PartialEqSpecImpl for char {
     }
 }
 
+impl PartialOrdSpecImpl for char {
+    open spec fn obeys_partial_cmp_spec() -> bool {
+        true
+    }
+
+    open spec fn partial_cmp_spec(&self, other: &char) -> Option<Ordering> {
+        if *self < *other {
+            Some(Ordering::Less)
+        } else if *self > *other {
+            Some(Ordering::Greater)
+        } else {
+            Some(Ordering::Equal)
+        }
+    }
+}
+
+impl OrdSpecImpl for char {
+    open spec fn obeys_cmp_spec() -> bool {
+        true
+    }
+
+    open spec fn cmp_spec(&self, other: &char) -> Ordering {
+        if *self < *other {
+            Ordering::Less
+        } else if *self > *other {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+    }
+}
+
+pub assume_specification[ <char as Ord>::cmp ](x: &char, y: &char) -> Ordering;
+
+pub assume_specification[ <char as PartialOrd<char>>::partial_cmp ](x: &char, y: &char) -> Option<
+    Ordering,
+>;
+
+pub assume_specification[ <char as PartialOrd<char>>::lt ](x: &char, y: &char) -> bool;
+
+pub assume_specification[ <char as PartialOrd<char>>::le ](x: &char, y: &char) -> bool;
+
+pub assume_specification[ <char as PartialOrd<char>>::gt ](x: &char, y: &char) -> bool;
+
+pub assume_specification[ <char as PartialOrd<char>>::ge ](x: &char, y: &char) -> bool;
+
 /* floating point */
 
 /*
