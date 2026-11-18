@@ -1744,6 +1744,60 @@ bb0 (entry, exit):
     );
 }
 
+/// Only exec variables are dropped; ghost and tracked variables (and parameters) aren't
+#[test]
+fn test_no_drops_for_ghost_or_tracked() {
+    let code = verus_code! {
+        tracked struct T { }
+        impl Drop for T {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+            }
+        }
+        proof fn mk_t() -> (tracked t: T) { T { } }
+        fn test(d: D, tracked t: T, Tracked(u): Tracked<T>, Ghost(g): Ghost<D>) {
+            let tracked t2 = mk_t();
+            let ghost g2 = D { x: 1 };
+            let x = mk();
+            let (y, Tracked(v)) = (mk(), Tracked(mk_t()));
+        }
+    };
+    check_cfg(
+        code,
+        "test",
+        &[],
+        r#"
+bb0 (entry, exit):
+    Overwrite(d)
+    Overwrite(t)
+    Overwrite(u)
+    Overwrite(g)
+    Overwrite(verus_tmp)
+    MoveFrom(verus_tmp)
+    Overwrite(verus_tmp_t2)
+    MoveFrom(verus_tmp_t2)
+    Overwrite(t2)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
+    Overwrite(x)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // (mk(), mk_t())
+    MoveFrom(Temp_1.0)       // (mk(), mk_t())
+    MoveFrom(Temp_1.1)       // (mk(), mk_t())
+    Overwrite(y)
+    Overwrite(verus_tmp_v)
+    ScopeDrop(Temp_1)        // (mk(), mk_t())
+    MoveFrom(verus_tmp_v)
+    Overwrite(v)
+    ScopeDrop(y)
+    ScopeDrop(x)
+    ScopeDrop(d)
+"#,
+    );
+}
+
 /// Closures have their own scopes; closure params are dropped after the closure body.
 #[test]
 fn test_closure() {

@@ -718,4 +718,6 @@ Known deviations and limitations:
   doesn't have, and vice versa (reborrows, operands). MIR also omits drops for types without drop glue.
 * If a `PlaceX::Temporary` is later rewritten or cancelled (e.g. `&mut *temp`), its `Drop` refers to a
   nonexistent temporary and is ignored by `resolution_inference`.
-* No drops are emitted in spec or proof code, ghost blocks, or headers.
+* No drops are emitted in spec or proof code, ghost blocks, or headers, and only exec variables
+  are dropped (not ghost or tracked variables or parameters, including the variables bound inside
+  `Ghost(..)` and `Tracked(..)` patterns).

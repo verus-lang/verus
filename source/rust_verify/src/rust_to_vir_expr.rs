@@ -4659,7 +4659,10 @@ fn let_stmt_to_vir_in_scope<'tcx>(
     } else {
         None
     };
-    if mode != Mode::Spec {
+    // Only exec variables are dropped (not ghost or tracked variables).
+    // (`infer_mode` is only used for the declaration of a `tracked` variable whose
+    // initialization is moved into a proof block; see builtin_macros/src/syntax.rs)
+    if mode == Mode::Exec && !infer_mode {
         schedule_pattern_binding_drops(bctx, pattern);
     }
 
@@ -4828,7 +4831,7 @@ fn unwrap_parameter_to_vir<'tcx>(
     }
 }
 
-/// Schedule drops (in `args_scope`) for a parameter of a function or closure,
+/// Schedule drops (in `args_scope`) for an exec parameter of a function or closure,
 /// whose pattern is `pat`, and for the variables bound by `pat` (unless it is a simple binding,
 /// i.e., the parameter itself).
 /// As in rustc's MIR builder, the bindings are dropped before the parameter.
@@ -4846,12 +4849,38 @@ pub(crate) fn schedule_param_drops<'tcx>(
     }
 }
 
-/// Schedule drops for all the variables bound by the pattern
+/// Schedule drops for all the exec variables bound by the pattern.
+/// Only exec variables are dropped; the variables bound inside a `Ghost(..)` or `Tracked(..)`
+/// subpattern are ghost or tracked, so they aren't dropped.
+/// (For an or-pattern, we use the bindings of the first alternative, like `each_binding_or_first`.)
 fn schedule_pattern_binding_drops<'tcx>(bctx: &BodyCtxt<'tcx>, pat: &Pat<'tcx>) {
-    pat.each_binding_or_first(&mut |_binding_mode, hir_id, span, ident| {
-        let ty = bctx.types.node_type(hir_id);
-        bctx.schedule_local_drop(hir_id, &local_to_var(&ident, hir_id.local_id), span, ty);
+    pat.walk(|p| match &p.kind {
+        PatKind::Binding(_, hir_id, ident, _) => {
+            let ty = bctx.types.node_type(*hir_id);
+            let var = local_to_var(ident, hir_id.local_id);
+            bctx.schedule_local_drop(*hir_id, &var, p.span, ty);
+            true
+        }
+        PatKind::Or(pats) => {
+            schedule_pattern_binding_drops(bctx, &pats[0]);
+            false
+        }
+        PatKind::TupleStruct(..) => !is_ghost_or_tracked_pattern(bctx, p),
+        _ => true,
     });
+}
+
+/// Is `pat` a `Ghost(..)` or `Tracked(..)` pattern?
+fn is_ghost_or_tracked_pattern<'tcx>(bctx: &BodyCtxt<'tcx>, pat: &Pat<'tcx>) -> bool {
+    let TyKind::Adt(adt_def, _) = bctx.types.node_type(pat.hir_id).kind() else {
+        return false;
+    };
+    matches!(
+        bctx.ctxt.verus_items.id_to_name.get(&adt_def.did()),
+        Some(VerusItem::BuiltinType(
+            verus_items::BuiltinTypeItem::Ghost | verus_items::BuiltinTypeItem::Tracked
+        ))
+    )
 }
 
 /// `remainder` is the remainder scope opened by the statement, if it's a `let`

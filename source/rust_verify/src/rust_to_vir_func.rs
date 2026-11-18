@@ -462,13 +462,16 @@ fn body_to_vir<'tcx>(
         data: rustc_middle::middle::region::ScopeData::Arguments,
     };
     let (e, drops) = bctx.in_drop_scope(args_scope, || {
-        for ((param_name, hir_param), ty) in
-            param_names.iter().zip(body.params.iter()).zip(param_tys.iter())
+        for ((param, hir_param), ty) in params.iter().zip(body.params.iter()).zip(param_tys.iter())
         {
+            // Only exec parameters are dropped (not ghost or tracked parameters)
+            if param.x.mode != Mode::Exec {
+                continue;
+            }
             crate::rust_to_vir_expr::schedule_param_drops(
                 &bctx,
                 args_scope,
-                param_name,
+                &param.x.name,
                 peel_verus_param(hir_param.pat),
                 body.value.span,
                 *ty,
