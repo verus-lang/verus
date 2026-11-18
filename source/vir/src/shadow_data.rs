@@ -1,22 +1,62 @@
 use crate::ast::{
-    Fun, FunctionKind, Mode, Primitive, SpannedTyped, Typ, TypX, UnaryOp, VarIdent,
-    VarIdentDisambiguate, VirErr,
+    Fun, FunctionKind, Ident, Idents, Mode, Primitive, SpannedTyped, Typ, TypDecoration, TypX,
+    UnaryOp, VarIdent, VarIdentDisambiguate, VirErr,
 };
+use crate::ast_util::types_equal;
 use crate::def::{Spanned, shadow_data_temp_var};
 use crate::messages::{Span, error};
 use crate::sst::{
     CallTarget, Dest, Exp, ExpX, FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FunctionSst, LocalDecl,
     LocalDeclKind, LocalDeclX, Par, ParPurpose, ParX, PostConditionSst, Stm, StmX,
 };
+use crate::sst_util::subst_typ;
 use crate::sst_visitor::{map_exp_visitor_result, map_stm_exp_visitor, map_stm_visitor};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+pub(crate) struct ShadowFun {
+    typ_params: Idents,
+    par_typs: Vec<Typ>,
+    ret_typ: Typ,
+}
+
 struct Ctxt {
-    shadow_funs: Rc<HashSet<Fun>>,
-    shadows: HashMap<VarIdent, VarIdent>,
+    shadow_funs: Rc<HashMap<Fun, ShadowFun>>,
+    // variable -> (its shadow variable, its declared type)
+    shadows: HashMap<VarIdent, (VarIdent, Typ)>,
+    // the function's return variable
+    ret_var: Option<VarIdent>,
     has_shadow_data: bool,
+}
+
+// Ghost<T> and Tracked<T> are erased wrappers: `Tracked(x)` lowers to a bare `Var(x)`,
+// and the shadow data of a `Tracked<T>` is that of the `T` inside.
+fn strip_ghost_wrappers(typ: &Typ) -> &Typ {
+    match &**typ {
+        TypX::Decorate(TypDecoration::Ghost | TypDecoration::Tracked, _, t) => {
+            strip_ghost_wrappers(t)
+        }
+        _ => typ,
+    }
+}
+
+impl Ctxt {
+    // x's shadow data, only if x's declared type is `typ` (up to Ghost/Tracked wrappers).
+    // In SST, a bare `Var(x)` can stand for an implicit `&x` (a `ref` binding or a method auto-ref)
+    // or a deref `*x`, and only declared types tell these apart from a real copy of `x`.
+    fn shadow_as(&self, x: &VarIdent, typ: &Typ) -> Option<VarIdent> {
+        let (x_shadow, x_typ) = self.shadows.get(x)?;
+        if types_equal(strip_ghost_wrappers(x_typ), strip_ghost_wrappers(typ)) {
+            Some(x_shadow.clone())
+        } else {
+            None
+        }
+    }
+
+    fn declared_typ(&self, x: &VarIdent) -> Option<&Typ> {
+        self.shadows.get(x).map(|(_, t)| t)
+    }
 }
 
 struct State {
@@ -51,14 +91,14 @@ fn shadow_data_exp(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
     match &exp.x {
         ExpX::Unary(UnaryOp::ShadowData, e) => match &e.x {
             ExpX::Var(x) => {
-                if let Some(x_shadow) = ctxt.shadows.get(x) {
+                if let Some((x_shadow, _)) = ctxt.shadows.get(x) {
                     Ok(exp.new_x(ExpX::Var(x_shadow.clone())))
                 } else {
                     Err(error(&exp.span, "unsupported shadow_data variable"))
                 }
             }
             ExpX::VarAt(x, at) => {
-                if let Some(x_shadow) = ctxt.shadows.get(x) {
+                if let Some((x_shadow, _)) = ctxt.shadows.get(x) {
                     Ok(exp.new_x(ExpX::VarAt(x_shadow.clone(), *at)))
                 } else {
                     Err(error(&exp.span, "unsupported shadow_data variable"))
@@ -77,14 +117,17 @@ fn shadow_data_stm(ctxt: &Ctxt, state: &mut State, stm: &Stm) -> Stm {
     let mut precise = false;
     let mut stmx = stm.x.clone();
     match &mut stmx {
-        StmX::Call { fun, args, dest, .. } => {
+        StmX::Call { fun, typ_args, args, dest, .. } => {
             if let CallTarget::Fun(fun) = fun {
-                if ctxt.shadow_funs.contains(fun) {
+                if let Some(callee) = ctxt.shadow_funs.get(fun) {
+                    let substs: HashMap<Ident, Typ> =
+                        callee.typ_params.iter().cloned().zip(typ_args.iter().cloned()).collect();
                     let mut new_args = (**args).clone();
-                    for arg in args.iter() {
+                    for (arg, par_typ) in args.iter().zip(callee.par_typs.iter()) {
+                        let par_typ = subst_typ(&substs, par_typ);
                         let mut arg_shadow: Option<VarIdent> = None;
                         if let ExpX::Var(arg_x) = &arg.x {
-                            arg_shadow = ctxt.shadows.get(arg_x).cloned();
+                            arg_shadow = ctxt.shadow_as(arg_x, &par_typ);
                         }
                         let arg_shadow = arg_shadow.unwrap_or_else(|| state.havoc_ident(&arg.typ));
                         new_args.push(arg.to_shadow(ExpX::Var(arg_shadow.clone())));
@@ -96,8 +139,9 @@ fn shadow_data_stm(ctxt: &Ctxt, state: &mut State, stm: &Stm) -> Stm {
                         let dest = Arc::make_mut(dest);
                         let mut dest_shadow: Option<VarIdent> = None;
                         if let ExpX::VarLoc(dest_x) = &dest[0].dest.x {
-                            dest_shadow = ctxt.shadows.get(dest_x).cloned();
-                            precise = true;
+                            let ret_typ = subst_typ(&substs, &callee.ret_typ);
+                            dest_shadow = ctxt.shadow_as(dest_x, &ret_typ);
+                            precise = dest_shadow.is_some();
                         }
                         // If we don't have a precise shadow destination, dump into a havoc dest
                         // in order to ignore the shadow result.
@@ -116,9 +160,9 @@ fn shadow_data_stm(ctxt: &Ctxt, state: &mut State, stm: &Stm) -> Stm {
         StmX::Assign { lhs, rhs } => {
             let lhs_dest = if let ExpX::Loc(loc) = &lhs.dest.x { loc } else { &lhs.dest };
             if let ExpX::VarLoc(lhs_x) = &lhs_dest.x {
-                if let Some(lhs_shadow) = ctxt.shadows.get(lhs_x) {
+                if let Some((lhs_shadow, lhs_typ)) = ctxt.shadows.get(lhs_x) {
                     if let ExpX::Var(rhs_x) = &rhs.x {
-                        if let Some(rhs_shadow) = ctxt.shadows.get(rhs_x) {
+                        if let Some(rhs_shadow) = ctxt.shadow_as(rhs_x, lhs_typ) {
                             precise = true;
                             let lhs_exp = lhs.dest.to_shadow(ExpX::VarLoc(lhs_shadow.clone()));
                             let dest = Dest { dest: lhs_exp, is_init: lhs.is_init };
@@ -135,8 +179,10 @@ fn shadow_data_stm(ctxt: &Ctxt, state: &mut State, stm: &Stm) -> Stm {
             if ret_exp.len() == 1 {
                 let ret_exp = Arc::make_mut(ret_exp);
                 let mut ret_shadow: Option<VarIdent> = None;
-                if let ExpX::Var(ret_x) = &ret_exp[0].x {
-                    ret_shadow = ctxt.shadows.get(ret_x).cloned();
+                if let (ExpX::Var(ret_x), Some(ret_var)) = (&ret_exp[0].x, &ctxt.ret_var) {
+                    if let Some(ret_typ) = ctxt.declared_typ(ret_var) {
+                        ret_shadow = ctxt.shadow_as(ret_x, ret_typ);
+                    }
                 }
                 let ret_shadow = ret_shadow.unwrap_or_else(|| state.havoc_ident(&ret_exp[0].typ));
                 ret_exp.push(ret_exp[0].to_shadow(ExpX::Var(ret_shadow)));
@@ -148,7 +194,7 @@ fn shadow_data_stm(ctxt: &Ctxt, state: &mut State, stm: &Stm) -> Stm {
     if !precise {
         for lhs in crate::sst_vars::stm_get_dest_shallow(&stm).iter() {
             let lhs_x = crate::sst_vars::get_loc_var(&lhs.dest);
-            if let Some(lhs_shadow) = ctxt.shadows.get(&lhs_x) {
+            if let Some((lhs_shadow, _)) = ctxt.shadows.get(&lhs_x) {
                 let rhs_shadow = state.havoc_ident(&lhs.dest.typ);
                 let lhs_exp = lhs.dest.to_shadow(ExpX::VarLoc(lhs_shadow.clone()));
                 let dest = Dest { dest: lhs_exp, is_init: lhs.is_init };
@@ -181,17 +227,17 @@ fn add_to_pars(pars: &mut Vec<Par>, span: &Span) {
 }
 
 fn shadow_data_fun_decl(
-    shadow_funs: Rc<HashSet<Fun>>,
+    shadow_funs: Rc<HashMap<Fun, ShadowFun>>,
     fun_decl: &mut FuncDeclSst,
     span: &Span,
 ) -> Result<(), VirErr> {
-    let mut shadows: HashMap<VarIdent, VarIdent> = HashMap::new();
+    let mut shadows: HashMap<VarIdent, (VarIdent, Typ)> = HashMap::new();
     for x in fun_decl.ens_pars.iter() {
         let y_ident = shadow_name(&x.x.name);
         assert!(!shadows.contains_key(&x.x.name));
-        shadows.insert(x.x.name.clone(), y_ident.clone());
+        shadows.insert(x.x.name.clone(), (y_ident, x.x.typ.clone()));
     }
-    let ctxt = Ctxt { shadow_funs, shadows, has_shadow_data: true };
+    let ctxt = Ctxt { shadow_funs, shadows, ret_var: None, has_shadow_data: true };
     let f_exp = |e: &Exp| {
         let mut f = |e: &Exp| shadow_data_exp(&ctxt, e);
         map_exp_visitor_result(e, &mut f)
@@ -255,10 +301,10 @@ fn declare_havocs(state: &State, local_decls: &mut Vec<LocalDecl>) {
 }
 
 fn no_shadow_data_fun_check(
-    shadow_funs: Rc<HashSet<Fun>>,
+    shadow_funs: Rc<HashMap<Fun, ShadowFun>>,
     fun_check: &mut FuncCheckSst,
 ) -> Result<(), VirErr> {
-    let ctxt = Ctxt { shadow_funs, shadows: HashMap::new(), has_shadow_data: false };
+    let ctxt = Ctxt { shadow_funs, shadows: HashMap::new(), ret_var: None, has_shadow_data: false };
     let mut state = State { shadow_temps: Vec::new() };
     shadow_data_fun_check_stms(&ctxt, &mut state, fun_check)?;
     declare_havocs(&state, Arc::make_mut(&mut fun_check.local_decls));
@@ -267,10 +313,11 @@ fn no_shadow_data_fun_check(
 }
 
 fn shadow_data_fun_check(
-    shadow_funs: Rc<HashSet<Fun>>,
+    shadow_funs: Rc<HashMap<Fun, ShadowFun>>,
     fun_check: &mut FuncCheckSst,
 ) -> Result<(), VirErr> {
-    let mut shadows: HashMap<VarIdent, VarIdent> = HashMap::new();
+    let mut shadows: HashMap<VarIdent, (VarIdent, Typ)> = HashMap::new();
+    let mut ret_var: Option<VarIdent> = None;
     let local_decls = Arc::make_mut(&mut fun_check.local_decls);
     for x in local_decls.clone() {
         match &x.kind {
@@ -279,16 +326,19 @@ fn shadow_data_fun_check(
             | LocalDeclKind::StmtLet { .. }
             | LocalDeclKind::TempViaAssign
             | LocalDeclKind::StmCallArg { .. } => {
+                if matches!(x.kind, LocalDeclKind::Return) {
+                    ret_var = Some(x.ident.clone());
+                }
                 let y_ident = shadow_name(&x.ident);
                 assert!(!shadows.contains_key(&x.ident));
-                shadows.insert(x.ident.clone(), y_ident.clone());
+                shadows.insert(x.ident.clone(), (y_ident.clone(), x.typ.clone()));
                 let y = LocalDeclX { ident: y_ident, typ: shadow_typ(&x.typ), kind: x.kind };
                 local_decls.push(Arc::new(y));
             }
             _ => {}
         }
     }
-    let ctxt = Ctxt { shadow_funs, shadows, has_shadow_data: true };
+    let ctxt = Ctxt { shadow_funs, shadows, ret_var, has_shadow_data: true };
     let mut state = State { shadow_temps: Vec::new() };
 
     shadow_data_fun_check_stms(&ctxt, &mut state, fun_check)?;
@@ -325,7 +375,7 @@ fn shadow_data_fun_check(
 }
 
 fn no_shadow_data_function(
-    shadow_funs: Rc<HashSet<Fun>>,
+    shadow_funs: Rc<HashMap<Fun, ShadowFun>>,
     function: &mut FunctionSst,
 ) -> Result<(), VirErr> {
     let functionx = &mut Arc::make_mut(function).x;
@@ -344,7 +394,7 @@ fn no_shadow_data_function(
 }
 
 fn shadow_data_function(
-    shadow_funs: Rc<HashSet<Fun>>,
+    shadow_funs: Rc<HashMap<Fun, ShadowFun>>,
     function: &mut FunctionSst,
 ) -> Result<(), VirErr> {
     let span = function.span.clone();
@@ -378,10 +428,10 @@ fn shadow_data_function(
 }
 
 pub(crate) fn shadow_data_function_sst(
-    shadow_funs: &Rc<HashSet<Fun>>,
+    shadow_funs: &Rc<HashMap<Fun, ShadowFun>>,
     function: &mut FunctionSst,
 ) -> Result<(), VirErr> {
-    if shadow_funs.contains(&function.x.name) {
+    if shadow_funs.contains_key(&function.x.name) {
         shadow_data_function(shadow_funs.clone(), function)?;
     } else if function.x.mode == Mode::Exec && shadow_funs.len() != 0 {
         no_shadow_data_function(shadow_funs.clone(), function)?;
@@ -390,20 +440,27 @@ pub(crate) fn shadow_data_function_sst(
     Ok(())
 }
 
-pub(crate) fn shadow_data_funs(krate: &crate::ast::Krate) -> Result<Rc<HashSet<Fun>>, VirErr> {
-    let mut shadow_funs: HashSet<Fun> = HashSet::new();
+pub(crate) fn shadow_data_funs(
+    krate: &crate::ast::Krate,
+) -> Result<Rc<HashMap<Fun, ShadowFun>>, VirErr> {
+    let sig = |f: &crate::ast::Function| ShadowFun {
+        typ_params: f.x.typ_params.clone(),
+        par_typs: f.x.params.iter().map(|p| p.x.typ.clone()).collect(),
+        ret_typ: f.x.ret.x.typ.clone(),
+    };
+    let mut shadow_funs: HashMap<Fun, ShadowFun> = HashMap::new();
     for f in krate.functions.iter() {
         if f.x.attrs.has_shadow_data {
             if let FunctionKind::TraitMethodImpl { .. } = &f.x.kind {
                 return Err(error(&f.span, "shadow_data only allowed in trait, not in impl"));
             }
-            shadow_funs.insert(f.x.name.clone());
+            shadow_funs.insert(f.x.name.clone(), sig(f));
         }
     }
     for f in krate.functions.iter() {
         if let FunctionKind::TraitMethodImpl { method, .. } = &f.x.kind {
-            if shadow_funs.contains(method) {
-                shadow_funs.insert(f.x.name.clone());
+            if shadow_funs.contains_key(method) {
+                shadow_funs.insert(f.x.name.clone(), sig(f));
             }
         }
     }

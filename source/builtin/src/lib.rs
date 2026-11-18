@@ -2369,7 +2369,7 @@ pub use decreases_to_internal;
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::ShadowData")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types(A))]
-pub struct ShadowData<A> {
+pub struct ShadowData<A: ?Sized> {
     phantom: PhantomData<A>,
 }
 

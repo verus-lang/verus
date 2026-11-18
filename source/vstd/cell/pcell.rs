@@ -17,7 +17,7 @@ as a basis for verifying many other interior-mutable types
 (e.g., [`InvCell`](super::invcell::InvCell),
 [`RefCell`](https://github.com/verus-lang/verus/blob/main/examples/state_machines/tutorial/ref_cell.rs)).
 
-`PCell` uses a _ghost permission token_ similar to [`simple_pptr::PPtr`](super::super::simple_pptr) -- see the [`simple_pptr::PPtr`](super::super::simple_pptr)
+`PCell` uses a _ghost permission token_ similar to `simple_pptr::PPtr` -- see the `simple_pptr::PPtr`
 documentation for the basics.
 For `PCell`, the associated type of the permission token is [`PointsTo`].
 
@@ -25,7 +25,7 @@ If you want a cell that can be optionally initialized, see [`pcell_maybe_uninit:
 
 ### Differences from `PPtr`.
 
-Whereas [`simple_pptr::PPtr`](super::super::simple_pptr) represents a fixed address in memory,
+Whereas `simple_pptr::PPtr` represents a fixed address in memory,
 a `PCell` has _no_ fixed address because a `PCell` might be moved.
 As such, the [`pcell.id()`](PCell::id) does not correspond to a memory address; rather,
 it is a unique identifier that is fixed for a given cell, even when it is moved.

@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use super::abstract_bytes::*;
 use super::points_to_model::*;
 use super::points_to_ops::*;
 use super::points_to_structs::*;
@@ -37,7 +38,7 @@ pub tracked struct PointsToRaw {
 
 impl PointsToRaw {
     /// The domain is finite, and each byte permission is at its key's address,
-    /// with this permission's provenance.
+    /// with this permission's provenance, and is `wf_basic`.
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
         &&& self.bytes.dom().finite()
@@ -45,6 +46,7 @@ impl PointsToRaw {
             self.bytes.dom().contains(a) ==> {
                 &&& self.bytes[a].ptr()@.addr == a
                 &&& self.bytes[a].ptr()@.provenance == self.provenance@
+                &&& self.bytes[a].wf_basic()
             }
     }
 
@@ -239,6 +241,7 @@ impl PointsToRaw {
                 0 <= i < perms.len() ==> {
                     &&& (#[trigger] perms[i]).ptr()@.addr == start + i
                     &&& perms[i].ptr()@.provenance == provenance
+                    &&& perms[i].wf_basic()
                 },
         ensures
             m.dom() == set_int_range(start, start + perms.len()),
@@ -247,6 +250,7 @@ impl PointsToRaw {
                 m.dom().contains(a) ==> {
                     &&& m[a].ptr()@.addr == a
                     &&& m[a].ptr()@.provenance == provenance
+                    &&& m[a].wf_basic()
                 },
         decreases perms.len(),
     {
@@ -328,7 +332,12 @@ impl PointsToRaw {
                 + self.provenance().unwrap().alloc_len(),
         ensures
             out.ptr() == ptr_mut_from_data::<[u8]>(
-                PtrData { addr: start, provenance: self.provenance(), metadata: len as usize },
+                PtrData {
+                    addr: start,
+                    provenance: self.provenance(),
+                    metadata: len as usize,
+                    is_real: true,
+                },
             ),
             out.bytes() == self.bytes_range(start as int, len),
             out.wf(),
@@ -344,12 +353,13 @@ impl PointsToRaw {
             assert(self.dom().contains(start + len - 1));
         }
         let ptr = ptr_mut_from_data::<u8>(
-            PtrData { addr: start, provenance: self.provenance(), metadata: () },
+            PtrData { addr: start, provenance: self.provenance(), metadata: (), is_real: true },
         );
         let tracked PointsToRaw { bytes, .. } = self;
         let tracked perms = Self::seq_from_map(bytes, start as int, len);
         assert forall|i: int| 0 <= i < perms.len() implies {
             &&& (#[trigger] perms[i]).ptr()@.provenance == ptr@.provenance
+            &&& perms[i].ptr()@.is_real == ptr@.is_real
             &&& perms[i].ptr()@.addr == ptr@.addr + i * PointsToByte::size(())
         } by {
             assert(bytes.dom().contains(start + i));
@@ -676,7 +686,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             forall|i: int|
                 0 <= i < len ==> {
-                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid() ==> abs_decode::<T>(
+                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid()
+                        ==> abstract_bytes_decode::<T>(
                         self.seq_pt()[i].bytes(),
                         &self.seq_typed_value()[i].value(),
                     )
@@ -698,7 +709,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             forall|i: int|
                 0 <= i < self.len() ==> {
-                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid() ==> abs_decode::<T>(
+                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid()
+                        ==> abstract_bytes_decode::<T>(
                         self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
                         &self.seq_typed_value()[i].value(),
                     )
@@ -712,11 +724,12 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
     /// We can construct a `SeqPointsTo` with `length`-many `PointsTo` permissions,
     /// provided that `T` is zero-sized;
-    /// the pointer is non-null, aligned, and within bounds of its provenance;
+    /// the pointer is real, non-null, aligned, and within bounds of its provenance;
     /// and the length is bounded by `usize::MAX`.
     pub proof fn zero_sized(ptr: *mut T, length: nat) -> (tracked out: Self)
         requires
             size_of::<T>() == 0,
+            ptr@.is_real,
             ptr@.addr != 0,
             PointsTo::<T>::satisfies_alignment(ptr@.addr),
             ptr_addr_in_bounds(ptr),
@@ -755,6 +768,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             assert forall|i: int| 0 <= i < perms.len() implies {
                 &&& #[trigger] perms[i].ptr()@.addr == ptr@.addr + i * size_of::<T>()
                 &&& perms[i].ptr()@.provenance == ptr@.provenance
+                &&& perms[i].ptr()@.is_real
             } by {
                 assert(i * size_of::<T>() == 0) by (nonlinear_arith)
                     requires
@@ -781,6 +795,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: mid as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             second.ptr() == ptr_mut_from_data::<[T]>(
@@ -788,6 +803,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     addr: (self.ptr()@.addr + mid * size_of::<T>()) as usize,
                     provenance: self.ptr()@.provenance,
                     metadata: (self.len() - mid) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             first.wf(),
@@ -837,6 +853,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: (self.len() + other.len()) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             joined.seq_pt() == self.seq_pt() + other.seq_pt(),
@@ -868,6 +885,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     addr: (self.ptr()@.addr + start * size_of::<T>()) as usize,
                     provenance: self.ptr()@.provenance,
                     metadata: (end - start) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             sub.seq_pt() == self.seq_pt().subrange(start as int, end as int),
@@ -897,6 +915,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     addr: (old(self).ptr()@.addr + i * size_of::<T>()) as usize,
                     provenance: old(self).ptr()@.provenance,
                     metadata: (j - i) as usize,
+                    is_real: old(self).ptr()@.is_real,
                 },
             ),
             subperm.seq_pt() == old(self).seq_pt().subrange(i as int, j as int),
@@ -1034,7 +1053,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             0 <= start <= start + val.len() <= self.len(),
             forall|i: int|
                 0 <= i < val.len() ==> {
-                    (#[trigger] val[i]).is_valid() ==> abs_decode::<T>(
+                    (#[trigger] val[i]).is_valid() ==> abstract_bytes_decode::<T>(
                         self.bytes().subrange(
                             (start + i) * size_of::<T>(),
                             (start + i + 1) * size_of::<T>(),
@@ -1100,7 +1119,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             0 <= start <= start + val.len() <= self.len(),
             forall|i: int|
                 0 <= i < val.len() ==> {
-                    (#[trigger] val[i]).is_valid() ==> abs_decode::<T>(
+                    (#[trigger] val[i]).is_valid() ==> abstract_bytes_decode::<T>(
                         self.bytes().subrange(
                             (start + i) * size_of::<T>(),
                             (start + i + 1) * size_of::<T>(),
@@ -1204,7 +1223,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             0 <= start <= start + val.len() <= self.len(),
             forall|i: int|
                 0 <= i < val.len() ==> {
-                    abs_decode::<T>(
+                    abstract_bytes_decode::<T>(
                         self.bytes().subrange(
                             (start + i) * size_of::<T>(),
                             (start + i + 1) * size_of::<T>(),
@@ -1278,7 +1297,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             0 <= start <= start + val.len() <= self.len(),
             forall|i: int|
                 0 <= i < val.len() ==> {
-                    abs_decode::<T>(
+                    abstract_bytes_decode::<T>(
                         self.bytes().subrange(
                             (start + i) * size_of::<T>(),
                             (start + i + 1) * size_of::<T>(),
@@ -1415,6 +1434,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: (self.len() * size_of::<T>()) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             pt_untyped.bytes() == self.bytes(),
@@ -1434,6 +1454,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                         addr: self.ptr()@.addr,
                         provenance: self.ptr()@.provenance,
                         metadata: (),
+                        is_real: self.ptr()@.is_real,
                     },
                 ),
             );
@@ -1487,9 +1508,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             pt_untyped.len() == capacity * size_of::<T>(),
             typed_value.len() <= capacity,
             forall|i: int|
-                0 <= i < typed_value.len() && typed_value[i].is_valid() ==> #[trigger] abs_decode::<
-                    T,
-                >(
+                0 <= i < typed_value.len() && typed_value[i].is_valid()
+                    ==> #[trigger] abstract_bytes_decode::<T>(
                     pt_untyped.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
                     &typed_value[i].value(),
                 ),
@@ -1560,7 +1580,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             let tracked mut tail_seq = Seq::tracked_empty();
             tail_seq.tracked_push(tail_pt);
             assert forall|i: int| 0 <= i < tail_seq.len() implies #[trigger] tail_seq[i].ptr()@.addr
-                == tail_ptr@.addr + i * size_of::<T>() by {
+                == tail_ptr@.addr + i * size_of::<T>() && tail_seq[i].ptr()@.is_real by {
                 assert(0 * size_of::<T>() == 0) by (nonlinear_arith);
             }
             let tracked tail_typed = Self::from_seq_pt(tail_seq, tail_ptr);
@@ -1568,7 +1588,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             // Invoke the inductive hypothesis on the head
             assert forall|i: int|
                 0 <= i < head_typed_value.len()
-                    && head_typed_value[i].is_valid() implies #[trigger] abs_decode::<T>(
+                    && head_typed_value[i].is_valid() implies #[trigger] abstract_bytes_decode::<T>(
                 head.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
                 &head_typed_value[i].value(),
             ) by {
@@ -1613,6 +1633,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: (self.len() * size_of::<T>()) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             pt_untyped.bytes() == self.bytes(),
@@ -1666,6 +1687,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: (n * size_of::<T>()) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             pt_untyped.bytes() == Self::bytes_inner(self.seq_pt().take(n as int)),
@@ -1679,6 +1701,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                         addr: self.ptr()@.addr,
                         provenance: self.ptr()@.provenance,
                         metadata: (),
+                        is_real: self.ptr()@.is_real,
                     },
                 ),
             );
@@ -1718,6 +1741,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: (self.len() * size_of::<T>()) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             pt_untyped.bytes() == self.bytes(),
@@ -1738,12 +1762,14 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     ) -> (tracked pt_untyped: &mut PointsToUntyped)
         requires
             base@.addr != 0,
+            base@.is_real,
             ptr_addr_in_bounds(base),
             forall|i: int|
                 0 <= i < perms.len() ==> {
                     &&& #[trigger] perms[i].wf()
                     &&& perms[i].ptr()@.addr == base@.addr + i * size_of::<T>()
                     &&& perms[i].ptr()@.provenance == base@.provenance
+                    &&& perms[i].ptr()@.is_real
                 },
         ensures
             pt_untyped.ptr() == ptr_mut_from_data::<[u8]>(
@@ -1751,6 +1777,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     addr: base@.addr,
                     provenance: base@.provenance,
                     metadata: (old(perms).len() * size_of::<T>()) as usize,
+                    is_real: true,
                 },
             ),
             pt_untyped.bytes() == Self::bytes_inner(*old(perms)),
@@ -1773,7 +1800,12 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         if perms.len() == 0 {
             let tracked empty = PointsToUntyped::zero_sized(
                 ptr_mut_from_data::<()>(
-                    PtrData { addr: base@.addr, provenance: base@.provenance, metadata: () },
+                    PtrData {
+                        addr: base@.addr,
+                        provenance: base@.provenance,
+                        metadata: (),
+                        is_real: true,
+                    },
                 ),
             );
             crate::vstd::modes::tracked_static_mut_ref(empty)
@@ -1788,6 +1820,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 &&& #[trigger] init[k].wf()
                 &&& init[k].ptr()@.addr == base@.addr + k * size_of::<T>()
                 &&& init[k].ptr()@.provenance == base@.provenance
+                &&& init[k].ptr()@.is_real
             } by {}
 
             // The prefix, joined
@@ -1825,6 +1858,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     addr: old(self).ptr()@.addr,
                     provenance: old(self).ptr()@.provenance,
                     metadata: (old(self).len() * size_of::<T>()) as usize,
+                    is_real: old(self).ptr()@.is_real,
                 },
             ),
             pt_untyped.bytes() == old(self).bytes(),
@@ -1879,7 +1913,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             !self.is_valid() ==> out.typed_value().is_empty(),
             out.wf(),
     {
-        broadcast use group_vstd_default, abs_decode_slice;
+        broadcast use group_vstd_default, abstract_bytes_decode_slice;
 
         let n = self.len();
         let s = size_of::<T>() as int;
@@ -1894,7 +1928,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     assert(elems[i].is_valid());
                 }
                 self.bytes_decode();
-                assert forall|i: int| 0 <= i < value@.len() implies abs_decode::<T>(
+                assert forall|i: int| 0 <= i < value@.len() implies abstract_bytes_decode::<T>(
                     pt_untyped.bytes().subrange(i * s, (i + 1) * s),
                     &#[trigger] value@[i],
                 ) by {}
@@ -1917,12 +1951,14 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     ): (&mut PointsToUntyped, Seq<&mut TypedValue<T>>))
         requires
             base@.addr != 0,
+            base@.is_real,
             ptr_addr_in_bounds(base),
             forall|i: int|
                 0 <= i < perms.len() ==> {
                     &&& #[trigger] perms[i].wf()
                     &&& perms[i].ptr()@.addr == base@.addr + i * size_of::<T>()
                     &&& perms[i].ptr()@.provenance == base@.provenance
+                    &&& perms[i].ptr()@.is_real
                 },
         ensures
             pt_untyped.ptr() == ptr_mut_from_data::<[u8]>(
@@ -1930,6 +1966,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     addr: base@.addr,
                     provenance: base@.provenance,
                     metadata: (old(perms).len() * size_of::<T>()) as usize,
+                    is_real: true,
                 },
             ),
             pt_untyped.bytes() == Self::bytes_inner(*old(perms)),
@@ -1962,7 +1999,12 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         if perms.len() == 0 {
             let tracked empty = PointsToUntyped::zero_sized(
                 ptr_mut_from_data::<()>(
-                    PtrData { addr: base@.addr, provenance: base@.provenance, metadata: () },
+                    PtrData {
+                        addr: base@.addr,
+                        provenance: base@.provenance,
+                        metadata: (),
+                        is_real: true,
+                    },
                 ),
             );
             (crate::vstd::modes::tracked_static_mut_ref(empty), Seq::tracked_empty())
@@ -1978,7 +2020,10 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 &&& #[trigger] init[i].wf()
                 &&& init[i].ptr()@.addr == base@.addr + i * s
                 &&& init[i].ptr()@.provenance == base@.provenance
-            } by {}
+                &&& init[i].ptr()@.is_real
+            } by {
+                assert(init[i] == old_perms[i]);
+            }
 
             // The prefix
             let tracked (a, mut typed_values) = Self::raw_parts_mut(init, base);
@@ -2070,7 +2115,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 &&& final(self).wf()
             },
     {
-        broadcast use group_vstd_default, abs_decode_slice;
+        broadcast use group_vstd_default, abstract_bytes_decode_slice;
 
         let old_self = *self;
         let self_ref = self;
@@ -2099,7 +2144,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         // The slice permission is well-formed
         if unaligned.typed_value().is_valid() {
             let value = unaligned.typed_value().value_ref();
-            assert forall|i: int| 0 <= i < value@.len() implies abs_decode::<T>(
+            assert forall|i: int| 0 <= i < value@.len() implies abstract_bytes_decode::<T>(
                 unaligned.bytes().subrange(i * s, (i + 1) * s),
                 &#[trigger] value@[i],
             ) by {
@@ -2128,7 +2173,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 && new_self[i].wf_basic() by {
                 assert(new_self[i] == final(perms_ref)[i]);
                 if final_unaligned.typed_value().is_valid() {
-                    assert(abs_decode::<T>(
+                    assert(abstract_bytes_decode::<T>(
                         final_unaligned.bytes().subrange(i * s, (i + 1) * s),
                         &final_unaligned.value()[i],
                     ));

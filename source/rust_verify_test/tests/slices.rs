@@ -177,8 +177,6 @@ test_verify_one_file! {
         use std::ops::Index;
         use vstd::prelude::*;
 
-        broadcast use vstd::group_vstd_default;
-
         fn element(s: &[u8]) {
             assume(s.len() == 5);
             let x = s[2];

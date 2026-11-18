@@ -579,6 +579,10 @@ pub assume_specification<'a, T>[ <IterMut<'a, T> as Iterator>::next ](
         iter_mut_next_post(old(iter), final(iter), ret),
 ;
 
+pub assume_specification<'a, T>[ <IterMut<'a, T> as Iterator>::size_hint ](
+    iter: &IterMut<'a, T>,
+) -> (usize, Option<usize>);
+
 
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()

@@ -2,7 +2,7 @@
 //! The tools here are meant to address "real Rust pointers, including all their subtleties on the Rust Abstract Machine,
 //! to the largest extent that is reasonable."
 //!
-//! For a gentler introduction to some of the concepts here, see [`PPtr`](crate::simple_pptr), which uses a much-simplified pointer model.
+//! For a gentler introduction to some of the concepts here, see `PPtr`, which uses a much-simplified pointer model.
 //!
 //! ### Pointer model
 //!
@@ -160,6 +160,7 @@ pub type Provenance = Option<ProvenanceData>;
 ///   <https://github.com/minirust/minirust/blob/master/spec/mem/basic.md>
 /// - The actual size of the allocation is at least as big as the originally requested size
 ///   (from the documentation for the `Allocator` trait).
+/// - If memory was allocated with the `Global` allocator, the actual size is the requested size.
 pub broadcast axiom fn provenance_properties(p: ProvenanceData)
     ensures
         #![trigger p.spatial_data()]
@@ -171,6 +172,7 @@ pub broadcast axiom fn provenance_properties(p: ProvenanceData)
         p.start_addr() as nat % p.alignment() == 0,
         p.start_addr() != 0,
         p.orig_size() <= p.alloc_len(),
+        p.alloc_id() == global_alloc_id() ==> p.alloc_len() == p.orig_size(),
 ;
 
 /// Specifies that the pointer's address is within the bounds of its provenance.
@@ -232,11 +234,18 @@ pub broadcast axiom fn axiom_covariant_metadata_eq<T: ?Sized>(m: CovariantMetada
 
 /// Model of a pointer `*mut T` or `*const T` in Rust's abstract machine.
 /// In addition to the address, each pointer has its corresponding provenance and metadata.
+///
+/// `is_real` marks a pointer to the real address space,
+/// as opposed to, say, the pointer of a tracked reference to a made-up value.
+/// Only permissions at real pointers give facts about memory addresses.
+/// Executable operations that make pointers make real ones,
+/// and operations that derive a pointer from another (casts, offsets) keep the flag.
 #[cfg(verus_keep_ghost)]
 pub ghost struct PtrData<T: core::marker::PointeeSized> {
     pub addr: usize,
     pub provenance: Provenance,
     pub metadata: Metadata<T>,
+    pub is_real: bool,
 }
 
 #[cfg(verus_keep_ghost)]
@@ -298,14 +307,20 @@ pub broadcast axiom fn ptrs_mut_eq<T: ?Sized>(a: *mut T)
 // `a@.metadata == b@.metadata`, since this condition is trivial; both values are always unit.
 // (See the test_extensionality_sized test case.)
 #[doc(hidden)]
-pub closed spec fn view_reverse_for_eq_sized<T>(addr: usize, provenance: Provenance) -> *mut T {
-    view_reverse_for_eq(PtrData { addr: addr, provenance: provenance, metadata: () })
+pub closed spec fn view_reverse_for_eq_sized<T>(
+    addr: usize,
+    provenance: Provenance,
+    is_real: bool,
+) -> *mut T {
+    view_reverse_for_eq(
+        PtrData { addr: addr, provenance: provenance, metadata: (), is_real: is_real },
+    )
 }
 
 /// Implies that `a@ == b@ ==> a == b` for `Sized` types.
 pub broadcast proof fn ptrs_mut_eq_sized<T>(a: *mut T)
     ensures
-        view_reverse_for_eq_sized::<T>((#[trigger] a@).addr, a@.provenance) == a,
+        view_reverse_for_eq_sized::<T>((#[trigger] a@).addr, a@.provenance, a@.is_real) == a,
 {
     assert(a@.metadata == ());
     ptrs_mut_eq(a);

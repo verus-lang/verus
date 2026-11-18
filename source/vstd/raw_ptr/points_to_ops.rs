@@ -4,6 +4,7 @@ use super::super::layout::{self, *};
 use super::super::prelude::*;
 #[cfg(verus_keep_ghost)]
 use super::super::type_representation::*;
+use super::abstract_bytes::*;
 use super::points_to_model::*;
 use super::points_to_structs::*;
 use super::ptr_model;
@@ -12,6 +13,8 @@ use super::ptr_specs::*;
 use crate::vstd::endian::{BasePow2, CompatibleSmallerBaseFor, EndianNat};
 #[cfg(verus_keep_ghost)]
 use crate::vstd::endian::{to_big_from_digits, to_big_from_digits_single, to_endian_from_digits};
+#[cfg(verus_keep_ghost)]
+use crate::vstd::modes::tracked_from_spec;
 
 verus! {
 
@@ -45,7 +48,7 @@ pub trait PTTypedValue: PTPhys {
     /// and it satisfies `additional_validity_constraints`.
     open spec fn valid_value(self) -> bool {
         self.typed_value().is_valid() ==> {
-            &&& abs_decode(self.bytes(), self.typed_value().value_ref())
+            &&& abstract_bytes_decode(self.bytes(), self.typed_value().value_ref())
             &&& Self::additional_validity_constraints(
                 self.typed_value().value_ref(),
                 self.ptr()@.metadata,
@@ -71,7 +74,7 @@ pub trait PTTypedValue: PTPhys {
         ensures
             self.bytes().len() == Self::size(self.ptr()@.metadata),
             self.typed_value().is_valid() ==> {
-                &&& abs_decode(self.bytes(), self.typed_value().value_ref())
+                &&& abstract_bytes_decode(self.bytes(), self.typed_value().value_ref())
                 &&& Self::additional_validity_constraints(
                     self.typed_value().value_ref(),
                     self.ptr()@.metadata,
@@ -126,9 +129,10 @@ pub trait PTTypedValue: PTPhys {
 /// for a `PointsTo` permission to a single, possibly-valid value of type `Self::A`.
 pub trait PTValueOps: PTTypedValue + PTProperties {
     /// Creates an empty permission to a zero-sized region,
-    /// at any non-null, in-bounds pointer that satisfies the alignment requirement.
+    /// at any real, non-null, in-bounds pointer that satisfies the alignment requirement.
     proof fn zero_sized(ptr: *mut Self::A) -> (tracked out: Self)
         requires
+            ptr@.is_real,
             ptr@.addr != 0,
             ptr_addr_in_bounds(ptr),
             Self::size(ptr@.metadata) == 0,
@@ -142,7 +146,12 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
         // PointsToUntyped::zero_sized needs a pointer to a zero-sized type.
         let tracked pt_untyped = PointsToUntyped::zero_sized(
             ptr_mut_from_data::<()>(
-                PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: () },
+                PtrData {
+                    addr: ptr@.addr,
+                    provenance: ptr@.provenance,
+                    metadata: (),
+                    is_real: ptr@.is_real,
+                },
             ),
         );
         Self::from_untyped(pt_untyped, ptr@.metadata)
@@ -174,7 +183,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
         requires
             self.wf(),
             v.is_valid() ==> {
-                &&& abs_decode(self.bytes(), v.value_ref())
+                &&& abstract_bytes_decode(self.bytes(), v.value_ref())
                 &&& Self::additional_validity_constraints(v.value_ref(), self.ptr()@.metadata)
             },
         ensures
@@ -211,6 +220,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: Self::size(self.ptr()@.metadata) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             pt_untyped.bytes() == self.bytes(),
@@ -231,7 +241,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
             pt_untyped.len() == Self::size(metadata),
             Self::satisfies_alignment(pt_untyped.ptr()@.addr),
             typed_value.is_valid() ==> {
-                &&& abs_decode(pt_untyped.bytes(), typed_value.value_ref())
+                &&& abstract_bytes_decode(pt_untyped.bytes(), typed_value.value_ref())
                 &&& Self::additional_validity_constraints(typed_value.value_ref(), metadata)
             },
         ensures
@@ -240,6 +250,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
                     addr: pt_untyped.ptr()@.addr,
                     provenance: pt_untyped.ptr()@.provenance,
                     metadata,
+                    is_real: pt_untyped.ptr()@.is_real,
                 },
             ),
             out.bytes() == pt_untyped.bytes(),
@@ -258,6 +269,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: Self::size(self.ptr()@.metadata) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             pt_untyped.bytes() == self.bytes(),
@@ -277,6 +289,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: Self::size(self.ptr()@.metadata) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             pt_untyped.bytes() == self.bytes(),
@@ -301,6 +314,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
                     addr: old(self).ptr()@.addr,
                     provenance: old(self).ptr()@.provenance,
                     metadata: Self::size(old(self).ptr()@.metadata) as usize,
+                    is_real: old(self).ptr()@.is_real,
                 },
             ),
             pt_untyped.bytes() == old(self).bytes(),
@@ -310,6 +324,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
                     addr: final(pt_untyped).ptr()@.addr,
                     provenance: final(pt_untyped).ptr()@.provenance,
                     metadata: old(self).ptr()@.metadata,
+                    is_real: final(pt_untyped).ptr()@.is_real,
                 },
             ),
             final(self).bytes() == final(pt_untyped).bytes(),
@@ -332,6 +347,7 @@ pub trait PTValueOps: PTTypedValue + PTProperties {
                     addr: pt_untyped.ptr()@.addr,
                     provenance: pt_untyped.ptr()@.provenance,
                     metadata,
+                    is_real: pt_untyped.ptr()@.is_real,
                 },
             ),
             out.bytes() == pt_untyped.bytes(),
@@ -383,7 +399,7 @@ pub trait PTSizedValue: PTValueOps where <Self as PTPhys>::A: Sized {
     proof fn put(tracked &mut self, tracked v: Self::A)
         requires
             self.wf(),
-            abs_decode(self.bytes(), &v),
+            abstract_bytes_decode(self.bytes(), &v),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
@@ -399,7 +415,7 @@ pub trait PTSizedValue: PTValueOps where <Self as PTPhys>::A: Sized {
     proof fn copy(tracked &mut self, tracked v: &Self::A) where Self::A: Copy
         requires
             self.wf(),
-            abs_decode(self.bytes(), v),
+            abstract_bytes_decode(self.bytes(), v),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
@@ -417,7 +433,7 @@ pub trait PTSizedValue: PTValueOps where <Self as PTPhys>::A: Sized {
 
         requires
             self.wf(),
-            v.is_valid() ==> abs_decode(self.bytes(), &v.value()),
+            v.is_valid() ==> abstract_bytes_decode(self.bytes(), &v.value()),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
@@ -440,13 +456,14 @@ pub trait PTSizedValue: PTValueOps where <Self as PTPhys>::A: Sized {
             pt_untyped.wf(),
             pt_untyped.len() == Self::size(()),
             Self::satisfies_alignment(pt_untyped.ptr()@.addr),
-            abs_decode(pt_untyped.bytes(), &value),
+            abstract_bytes_decode(pt_untyped.bytes(), &value),
         ensures
             out.ptr() == ptr_mut_from_data::<Self::A>(
                 PtrData {
                     addr: pt_untyped.ptr()@.addr,
                     provenance: pt_untyped.ptr()@.provenance,
                     metadata: (),
+                    is_real: pt_untyped.ptr()@.is_real,
                 },
             ),
             out.bytes() == pt_untyped.bytes(),
@@ -577,8 +594,10 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
             forall|i: int|
                 0 <= i < perms.len() ==> {
                     &&& (#[trigger] perms[i]).ptr()@.provenance == ptr@.provenance
+                    &&& perms[i].ptr()@.is_real
                     &&& perms[i].ptr()@.addr == ptr@.addr + i * P::size(())
                 },
+            ptr@.is_real,
             ptr@.addr != 0,
             ptr_addr_in_bounds(ptr),
             perms.len() <= usize::MAX,
@@ -592,6 +611,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                 addr: ptr@.addr,
                 provenance: ptr@.provenance,
                 metadata: perms.len() as usize,
+                is_real: ptr@.is_real,
             },
         );
         Self::from_seq(perms, slice_ptr)
@@ -600,6 +620,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
     /// Creates an empty sequence at `ptr`.
     pub proof fn empty(ptr: *mut T) -> (tracked out: Self)
         requires
+            ptr@.is_real,
             ptr@.addr != 0,
             ptr_addr_in_bounds(ptr),
         ensures
@@ -623,6 +644,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: mid as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             second.ptr() == ptr_mut_from_data::<[T]>(
@@ -630,6 +652,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                     addr: (self.ptr()@.addr + mid * P::size(())) as usize,
                     provenance: self.ptr()@.provenance,
                     metadata: (self.len() - mid) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             first.wf_basic(),
@@ -651,6 +674,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                 addr: self.ptr()@.addr,
                 provenance: self.ptr()@.provenance,
                 metadata: mid as usize,
+                is_real: self.ptr()@.is_real,
             },
         );
         let p2 = ptr_mut_from_data::<[T]>(
@@ -658,6 +682,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                 addr: (self.ptr()@.addr + mid * s) as usize,
                 provenance: self.ptr()@.provenance,
                 metadata: (n - mid) as usize,
+                is_real: self.ptr()@.is_real,
             },
         );
 
@@ -693,6 +718,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: (self.len() + other.len()) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             joined.wf_basic(),
@@ -702,6 +728,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                 addr: self.ptr()@.addr,
                 provenance: self.ptr()@.provenance,
                 metadata: (self.len() + other.len()) as usize,
+                is_real: self.ptr()@.is_real,
             },
         );
         self.lemma_join_len(&other);
@@ -761,6 +788,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                     addr: a.ptr()@.addr,
                     provenance: a.ptr()@.provenance,
                     metadata: (a.len() + b.len()) as usize,
+                    is_real: a.ptr()@.is_real,
                 },
             ),
         ensures
@@ -791,6 +819,7 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                     addr: (self.ptr()@.addr + start * P::size(())) as usize,
                     provenance: self.ptr()@.provenance,
                     metadata: (end - start) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             sub.wf_basic(),
@@ -810,10 +839,14 @@ impl<T, P: PTProperties<A = T>> SeqPointsTo<T, P> {
                 addr: (self.ptr()@.addr + start * s) as usize,
                 provenance: self.ptr()@.provenance,
                 metadata: (end - start) as usize,
+                is_real: self.ptr()@.is_real,
             },
         );
 
-        let tracked seq_pt = self.tracked_seq_pt().tracked_borrow_subrange(start as int, end as int);
+        let tracked seq_pt = self.tracked_seq_pt().tracked_borrow_subrange(
+            start as int,
+            end as int,
+        );
         let tracked sub = Self::from_seq_ref(seq_pt, sub_ptr);
 
         assert forall|i: int| 0 <= i < sub.len() implies {
@@ -859,22 +892,29 @@ impl PointsToUntyped {
     }
 
     /// If `T` is zero sized,
-    /// then we can construct a `PointsToUntyped` from any non-null `*mut T`
+    /// then we can construct a `PointsToUntyped` from any real, non-null `*mut T`
     /// whose address is within bounds of its provenance.
     /// The range of memory pointed to by this permission will be empty.
     pub proof fn zero_sized<T>(ptr: *mut T) -> (tracked perm: Self)
         requires
+            ptr@.is_real,
             ptr@.addr != 0,
             size_of::<T>() == 0,
             ptr_addr_in_bounds(ptr),
         ensures
             perm.ptr()@.addr == ptr@.addr,
             perm.ptr()@.provenance == ptr@.provenance,
+            perm.ptr()@.is_real,
             perm.bytes().len() == size_of::<T>(),
             perm.wf(),
     {
         let byte_ptr: *mut [u8] = ptr_mut_from_data(
-            PtrData::<[u8]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: 0 },
+            PtrData::<[u8]> {
+                addr: ptr@.addr,
+                provenance: ptr@.provenance,
+                metadata: 0,
+                is_real: ptr@.is_real,
+            },
         );
         Self::from_seq(Seq::tracked_empty(), byte_ptr)
     }
@@ -910,6 +950,7 @@ impl PointsToUntyped {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: mid as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             second.ptr() == ptr_mut_from_data::<[u8]>(
@@ -917,6 +958,7 @@ impl PointsToUntyped {
                     addr: (self.ptr()@.addr + mid) as usize,
                     provenance: self.ptr()@.provenance,
                     metadata: (self.len() - mid) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             first.wf(),
@@ -942,6 +984,7 @@ impl PointsToUntyped {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: mid as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             second.ptr() == ptr_mut_from_data::<[u8]>(
@@ -949,6 +992,7 @@ impl PointsToUntyped {
                     addr: (self.ptr()@.addr + mid) as usize,
                     provenance: self.ptr()@.provenance,
                     metadata: (self.len() - mid) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             first.wf(),
@@ -983,6 +1027,7 @@ impl PointsToUntyped {
                     addr: old(self).ptr()@.addr,
                     provenance: old(self).ptr()@.provenance,
                     metadata: mid as usize,
+                    is_real: old(self).ptr()@.is_real,
                 },
             ),
             second.ptr() == ptr_mut_from_data::<[u8]>(
@@ -990,6 +1035,7 @@ impl PointsToUntyped {
                     addr: (old(self).ptr()@.addr + mid) as usize,
                     provenance: old(self).ptr()@.provenance,
                     metadata: (old(self).len() - mid) as usize,
+                    is_real: old(self).ptr()@.is_real,
                 },
             ),
             first.wf(),
@@ -1013,6 +1059,7 @@ impl PointsToUntyped {
                 addr: old_self.ptr()@.addr,
                 provenance: old_self.ptr()@.provenance,
                 metadata: mid as usize,
+                is_real: old_self.ptr()@.is_real,
             },
         );
         let p2 = ptr_mut_from_data::<[u8]>(
@@ -1020,6 +1067,7 @@ impl PointsToUntyped {
                 addr: (old_self.ptr()@.addr + mid) as usize,
                 provenance: old_self.ptr()@.provenance,
                 metadata: (old_self.len() - mid) as usize,
+                is_real: old_self.ptr()@.is_real,
             },
         );
         let tracked (s1, s2) = self.tracked_seq_pt_mut().tracked_split_borrow_mut(mid as int);
@@ -1045,6 +1093,7 @@ impl PointsToUntyped {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: (self.len() + other.len()) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             joined.wf(),
@@ -1069,6 +1118,7 @@ impl PointsToUntyped {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: (self.len() + other.len()) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             joined.wf(),
@@ -1078,6 +1128,7 @@ impl PointsToUntyped {
                 addr: self.ptr()@.addr,
                 provenance: self.ptr()@.provenance,
                 metadata: (self.len() + other.len()) as usize,
+                is_real: self.ptr()@.is_real,
             },
         );
         self.lemma_join_len(other);
@@ -1107,6 +1158,7 @@ impl PointsToUntyped {
                     addr: old(self).ptr()@.addr,
                     provenance: old(self).ptr()@.provenance,
                     metadata: (old(self).len() + old(other).len()) as usize,
+                    is_real: old(self).ptr()@.is_real,
                 },
             ),
             joined.wf(),
@@ -1126,6 +1178,7 @@ impl PointsToUntyped {
                 addr: old_self.ptr()@.addr,
                 provenance: old_self.ptr()@.provenance,
                 metadata: (old_self.len() + old_other.len()) as usize,
+                is_real: old_self.ptr()@.is_real,
             },
         );
         self.lemma_join_len(other);
@@ -1184,6 +1237,7 @@ impl<T> PTPhys for PointsToUnaligned<T> {
                 addr: self.pt_untyped().ptr()@.addr,
                 provenance: self.pt_untyped().ptr()@.provenance,
                 metadata: self.metadata(),
+                is_real: self.pt_untyped().ptr()@.is_real,
             },
         )
     }
@@ -1227,6 +1281,7 @@ impl<T> PTPhys for PointsToUnaligned<[T]> {
                 addr: self.pt_untyped().ptr()@.addr,
                 provenance: self.pt_untyped().ptr()@.provenance,
                 metadata: self.metadata(),
+                is_real: self.pt_untyped().ptr()@.is_real,
             },
         )
     }
@@ -1936,11 +1991,7 @@ impl<T> PointsTo<T> {
         let self_ref = self;
         PointsTo::<T>::lemma_pt_parts_wf(old_self);
         let tracked (pt_untyped, typed_value) = self.as_raw_parts_mut().as_raw_parts_mut();
-        let tracked val = mut_ref_from_parts(
-            old_self.ptr(),
-            pt_untyped,
-            typed_value,
-        );
+        let tracked val = mut_ref_from_parts(old_self.ptr(), pt_untyped, typed_value);
         PointsTo::<T>::lemma_pt_parts_wf(*final(self_ref));
         val
     }
@@ -2131,6 +2182,7 @@ impl<T> PointsToUnaligned<[T]> {
                     addr: (self.ptr()@.addr + i * size_of::<T>()) as usize,
                     provenance: self.ptr()@.provenance,
                     metadata: (),
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             out.bytes() == self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
@@ -2141,7 +2193,7 @@ impl<T> PointsToUnaligned<[T]> {
             self.typed_value().is_empty() ==> out.typed_value().is_empty(),
             out.wf(),
     {
-        broadcast use crate::vstd::type_representation::abs_decode_slice;
+        broadcast use abstract_bytes_decode_slice;
 
         let s = size_of::<T>() as int;
         let n = self.len() as int;
@@ -2179,6 +2231,7 @@ impl<T> PointsToUnaligned<[T]> {
                     addr: (self.ptr()@.addr + start * size_of::<T>()) as usize,
                     provenance: self.ptr()@.provenance,
                     metadata: (end - start) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             out.bytes() == self.bytes().subrange(
@@ -2192,7 +2245,7 @@ impl<T> PointsToUnaligned<[T]> {
             self.typed_value().is_empty() ==> out.typed_value().is_empty(),
             out.wf(),
     {
-        broadcast use crate::vstd::type_representation::abs_decode_slice;
+        broadcast use abstract_bytes_decode_slice;
 
         let s = size_of::<T>() as int;
         let n = self.len() as int;
@@ -2225,7 +2278,7 @@ impl<T> PointsToUnaligned<[T]> {
         if self.typed_value().is_valid() {
             let w = out.value();
             // Each element's slot in the subrange's bytes is its slot in `self`'s bytes
-            assert forall|k: int| 0 <= k < w.len() implies abs_decode::<T>(
+            assert forall|k: int| 0 <= k < w.len() implies abstract_bytes_decode::<T>(
                 out.bytes().subrange(k * s, (k + 1) * s),
                 &#[trigger] w[k],
             ) by {
@@ -2261,6 +2314,7 @@ impl<T> PointsToUnaligned<[T]> {
                 addr: pt_untyped.ptr()@.addr,
                 provenance: pt_untyped.ptr()@.provenance,
                 metadata: len,
+                is_real: pt_untyped.ptr()@.is_real,
             }),
             out.bytes() == pt_untyped.bytes(),
             out.typed_value().is_empty(),
@@ -2279,22 +2333,20 @@ impl<T> PointsToUnaligned<[T]> {
     ) -> (tracked out: &'a Self)
         requires
             pt_untyped.wf(),
-            abs_decode::<[T]>(pt_untyped.bytes(), value),
+            abstract_bytes_decode::<[T]>(pt_untyped.bytes(), value),
         ensures
             out.ptr()@ == (PtrData {
                 addr: pt_untyped.ptr()@.addr,
                 provenance: pt_untyped.ptr()@.provenance,
                 metadata: value@.len() as usize,
+                is_real: pt_untyped.ptr()@.is_real,
             }),
             out.bytes() == pt_untyped.bytes(),
             out.typed_value().is_valid(),
             out.typed_value().value_ref() == value,
             out.wf(),
     {
-        broadcast use
-            crate::vstd::slice::group_slice_axioms,
-            crate::vstd::type_representation::abs_decode_slice,
-        ;
+        broadcast use crate::vstd::slice::group_slice_axioms, abstract_bytes_decode_slice;
 
         assert(value@.len() == crate::vstd::slice::spec_slice_len(value));
         let tracked typed_value = TypedValue::valid_ref(value);
@@ -2371,11 +2423,7 @@ impl<T> PointsTo<[T]> {
         let self_ref = self;
         PointsTo::<[T]>::lemma_pt_parts_wf(old_self);
         let tracked (pt_untyped, typed_value) = self.as_raw_parts_mut().as_raw_parts_mut();
-        let tracked val = mut_ref_from_parts_slice(
-            old_self.ptr(),
-            pt_untyped,
-            typed_value,
-        );
+        let tracked val = mut_ref_from_parts_slice(old_self.ptr(), pt_untyped, typed_value);
         PointsTo::<[T]>::lemma_pt_parts_wf(*final(self_ref));
         val
     }
@@ -2392,6 +2440,7 @@ impl<T> PointsTo<[T]> {
                     addr: (self.ptr()@.addr + i * size_of::<T>()) as usize,
                     provenance: self.ptr()@.provenance,
                     metadata: (),
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             out.bytes() == self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
@@ -2434,6 +2483,7 @@ impl<T> PointsTo<[T]> {
                     addr: (self.ptr()@.addr + start * size_of::<T>()) as usize,
                     provenance: self.ptr()@.provenance,
                     metadata: (end - start) as usize,
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             out.bytes() == self.bytes().subrange(
@@ -2483,6 +2533,7 @@ impl<T> PointsTo<[T]> {
                 addr: pt_untyped.ptr()@.addr,
                 provenance: pt_untyped.ptr()@.provenance,
                 metadata: len,
+                is_real: pt_untyped.ptr()@.is_real,
             }),
             out.bytes() == pt_untyped.bytes(),
             out.typed_value().is_empty(),
@@ -2500,13 +2551,14 @@ impl<T> PointsTo<[T]> {
     ) -> (tracked out: &'a Self)
         requires
             pt_untyped.wf(),
-            abs_decode::<[T]>(pt_untyped.bytes(), value),
+            abstract_bytes_decode::<[T]>(pt_untyped.bytes(), value),
             Self::satisfies_alignment(pt_untyped.ptr()@.addr),
         ensures
             out.ptr()@ == (PtrData {
                 addr: pt_untyped.ptr()@.addr,
                 provenance: pt_untyped.ptr()@.provenance,
                 metadata: value@.len() as usize,
+                is_real: pt_untyped.ptr()@.is_real,
             }),
             out.bytes() == pt_untyped.bytes(),
             out.typed_value().is_valid(),
@@ -2527,6 +2579,8 @@ impl<T> PointsTo<[T]> {
     ///
     /// (3) `self.len() * size_of::<T>() == size_of::<V>()`.
     ///
+    /// (4) Every `V` value satisfies its type invariant (`TrivialOwnership::type_inv`).
+    ///
     /// The `V`'s value is the integer with the `T`s as its digits,
     /// in this platform's endianness (`to_big_from_digits`),
     /// and the bytes are unchanged.
@@ -2543,12 +2597,14 @@ impl<T> PointsTo<[T]> {
             self.wf(),
             self.is_valid(),
             self.len() * size_of::<T>() == size_of::<V>(),
+            forall|v: V| v.type_inv(),
         ensures
             out.ptr() == ptr_mut_from_data::<V>(
                 PtrData {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: (),
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             out.bytes() == self.bytes(),
@@ -2556,7 +2612,7 @@ impl<T> PointsTo<[T]> {
             out.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
             out.wf(),
     {
-        broadcast use crate::vstd::type_representation::abs_decode_slice, EndianNat::exp_properties;
+        broadcast use abstract_bytes_decode_slice, EndianNat::exp_properties;
 
         let ghost digits = self.value();
         let ghost k = digits.len() as int;
@@ -2565,14 +2621,18 @@ impl<T> PointsTo<[T]> {
         T::bits_to_base();
         V::lemma_base_size();
         // Each element is a digit in base `T`, since its bytes decode to it
-        assert forall|i: int| 0 <= i < k implies 0 <= (#[trigger] digits[i] as int) < T::base() by {
+        assert forall|i: int| 0 <= i < k implies {
+            &&& 0 <= (#[trigger] digits[i] as int) < T::base()
+            &&& T::decode(self.bytes().subrange(i * s, (i + 1) * s), &digits[i], arbitrary())
+        } by {
             assert(0 <= i * s && (i + 1) * s <= k * s) by (nonlinear_arith)
                 requires
                     0 <= i < k,
                     s >= 0,
             ;
             let chunk = self.bytes().subrange(i * s, (i + 1) * s);
-            T::lemma_abs_decode(chunk, digits[i]);
+            T::lemma_decode(chunk, digits[i]);
+            type_representation_implements_encode_decode::<T>(&digits[i], chunk);
             bytes_to_endian(chunk).to_nat_properties();
         }
         // The elements are one digit in base `V`
@@ -2592,12 +2652,12 @@ impl<T> PointsTo<[T]> {
         let ghost n = to_big_from_digits::<V, T>(digits).index(0);
         V::lemma_from_nat(n as nat);
         let ghost v = V::from_nat(n as nat);
-        lemma_abs_decode_to_big::<V, T>(self.bytes(), digits, v);
+        lemma_decode_to_big::<V, T>(self.bytes(), digits, v);
+        V::lemma_decode(self.bytes(), v);
+        type_representation_implements_encode_decode::<V>(&v, self.bytes());
 
         let tracked typed_value: &TypedValue<V> = crate::vstd::modes::tracked_static_ref(
-            // TODO(verify-rustlib-transmute-v2): becomes `TypedValue::Valid(tracked_from_spec(&v))` there,
-            // with a proof of its size bound.
-            TypedValue::Valid(Tracked(V::tracked_from_spec(v))),
+            TypedValue::Valid(tracked_from_spec(&v)),
         );
         PointsToUnaligned::<V>::from_raw_parts_ref(self.as_untyped(), typed_value, ())
     }
@@ -2615,6 +2675,8 @@ impl<T> PointsTo<[T]> {
     ///
     /// (4) The pointer's address is aligned to `V`.
     ///
+    /// (5) Every `V` value satisfies its type invariant (`TrivialOwnership::type_inv`).
+    ///
     /// The `V`'s value is the integer with the `T`s as its digits,
     /// in this platform's endianness (`to_big_from_digits`),
     /// and the bytes are unchanged.
@@ -2628,12 +2690,14 @@ impl<T> PointsTo<[T]> {
             self.is_valid(),
             self.len() * size_of::<T>() == size_of::<V>(),
             self.ptr()@.addr as int % align_of::<V>() as int == 0,
+            forall|v: V| v.type_inv(),
         ensures
             out.ptr() == ptr_mut_from_data::<V>(
                 PtrData {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: (),
+                    is_real: self.ptr()@.is_real,
                 },
             ),
             out.bytes() == self.bytes(),

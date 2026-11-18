@@ -139,16 +139,18 @@ pub const exec fn layout_for_type_is_valid<V>()
 /// Note that, unusually for a lemma, this is an `exec`-mode function. (This is necessary to
 /// ensure that the types are really compilable, as ghost code can reason about "virtual" types
 /// that exceed these bounds.) Despite being `exec`-mode, it is a no-op.
+/// The value is an `exec` reference for the same reason:
+/// a tracked reference may be to a made-up value that is too large for memory.
 #[allow(unused_variables)]
 #[verifier::external_body]
 #[inline(always)]
-pub const exec fn layout_for_val_is_valid<V: ?Sized>(val: Tracked<&V>)
+pub const exec fn layout_for_val_is_valid<V: ?Sized>(val: &V)
     ensures
-        valid_layout(spec_size_of_val::<V>(val@) as usize, spec_align_of_val::<V>(val@) as usize),
-        spec_size_of_val::<V>(val@) as usize as nat == spec_size_of_val::<V>(val@),
-        spec_align_of_val::<V>(val@) as usize as nat == spec_align_of_val::<V>(val@),
-        spec_align_of_val::<V>(val@) != 0,
-        spec_size_of_val::<V>(val@) % spec_align_of_val::<V>(val@) == 0,
+        valid_layout(spec_size_of_val::<V>(val) as usize, spec_align_of_val::<V>(val) as usize),
+        spec_size_of_val::<V>(val) as usize as nat == spec_size_of_val::<V>(val),
+        spec_align_of_val::<V>(val) as usize as nat == spec_align_of_val::<V>(val),
+        spec_align_of_val::<V>(val) != 0,
+        spec_size_of_val::<V>(val) % spec_align_of_val::<V>(val) == 0,
     opens_invariants none
     no_unwind
 {
@@ -251,11 +253,15 @@ pub broadcast axiom fn layout_of_str(x: &str)
         spec_align_of_val::<str>(x) == align_of::<u8>(),
 ;
 
-/// For `Sized` types, the alignment of a value is the same as the alignment of the type
+/// For `Sized` types, the size and alignment of a value are the same as the size and
+/// alignment of the type
 /// ([Reference](https://doc.rust-lang.org/std/mem/fn.align_of_val.html))
 pub broadcast axiom fn layout_of_sized<T>(v: &T)
     ensures
-        #[trigger] spec_align_of_val::<T>(v) == align_of::<T>(),
+        #![trigger spec_align_of_val::<T>(v)]
+        #![trigger spec_size_of_val::<T>(v)]
+        spec_align_of_val::<T>(v) == align_of::<T>(),
+        spec_size_of_val::<T>(v) == size_of::<T>(),
 ;
 
 /// `str` has the same layout as `[u8]`, which has the same layout as `u8`.

@@ -27,6 +27,19 @@ struct Ctxt<'a> {
     no_cheating: bool,
 }
 
+impl<'a> Ctxt<'a> {
+    fn assumptions_allowed(&self, function: &Function) -> bool {
+        function.x.attrs.no_cheating_trusted
+            || matches!(&function.x.owning_module, Some(path) if path.is_vstd_path()
+            // vstd embedded in core
+            || (path.krate == crate::ast::CrateId::Core
+                && matches!(
+                    path.segments.first().map(|s| s.as_str()),
+                    Some("vstd" | "verus_builtin")
+                )))
+    }
+}
+
 /// Details from well-formedness checking.
 pub struct CheckDetails {
     /// For each function, collects proof notes that fail due to `--no-cheating`.
@@ -445,7 +458,7 @@ fn check_one_expr<Emit: EmitError>(
         }
         ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), _args, _post_args) => {
             if attrs.assume_external_allowed && !ctxt.funs.contains_key(x) {
-                if ctxt.no_cheating {
+                if ctxt.no_cheating && !ctxt.assumptions_allowed(function) {
                     return Err(error(
                         &expr.span,
                         "call via externals_available_without_declaration not allowed with --no-cheating",
@@ -579,7 +592,7 @@ fn check_one_expr<Emit: EmitError>(
             )?;
         }
         ExprX::AssertAssume { is_assume, expr: inner_expr, .. } => {
-            if ctxt.no_cheating && *is_assume {
+            if ctxt.no_cheating && *is_assume && !ctxt.assumptions_allowed(function) {
                 let mut msg = error(&expr.span, "assume/admit not allowed with --no-cheating");
                 if let Some(label) = ast_expr_get_proof_note(inner_expr) {
                     msg =
@@ -1168,7 +1181,10 @@ fn check_function<Emit: EmitError>(
         ));
     }
 
-    if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
+    if function.x.attrs.exec_assume_termination
+        && ctxt.no_cheating
+        && !ctxt.assumptions_allowed(function)
+    {
         let msg =
             error(&function.span, "#[verifier::assume_termination] not allowed with --no-cheating");
         emit.emit(None, VirErrAs::NonFatalError(msg, None));
@@ -1485,18 +1501,15 @@ fn check_function<Emit: EmitError>(
         }
     }
 
-    if ctxt.no_cheating && (function.x.attrs.is_external_body || function.x.proxy.is_some()) {
-        match &function.x.owning_module {
-            // Allow external_body/assume_specification inside vstd
-            Some(path) if path.is_vstd_path() => {}
-            _ => {
-                let msg = error(
-                    &function.span,
-                    "external_body/assume_specification not allowed with --no-cheating",
-                );
-                emit.emit(None, VirErrAs::NonFatalError(msg, None));
-            }
-        }
+    if ctxt.no_cheating
+        && (function.x.attrs.is_external_body || function.x.proxy.is_some())
+        && !ctxt.assumptions_allowed(function)
+    {
+        let msg = error(
+            &function.span,
+            "external_body/assume_specification not allowed with --no-cheating",
+        );
+        emit.emit(None, VirErrAs::NonFatalError(msg, None));
     }
 
     Ok(())

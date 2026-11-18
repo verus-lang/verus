@@ -7,6 +7,7 @@ use super::super::modes::tracked_ref;
 use super::super::prelude::*;
 #[cfg(verus_keep_ghost)]
 use super::super::type_representation::*;
+use super::abstract_bytes::*;
 use super::ptr_model;
 use super::ptr_model::*;
 
@@ -62,7 +63,7 @@ pub trait PTPhys: Sized + PTPhysSealed {
             new.wf_basic(),
     ;
 
-    /// Ensures that the permission actually holds a `PointsToByte` permission 
+    /// Ensures that the permission actually holds a `PointsToByte` permission
     /// for every byte in its memory range.
     proof fn borrow_byte(tracked &self, addr: int) -> (tracked b: &PointsToByte)
         requires
@@ -71,6 +72,7 @@ pub trait PTPhys: Sized + PTPhysSealed {
         ensures
             b.byte_ptr()@.addr == addr,
             b.byte_ptr()@.provenance == self.ptr()@.provenance,
+            b.byte_wf(),
     ;
 }
 
@@ -161,9 +163,9 @@ impl PTPhys for PointsToByte {
         1
     }
 
-    /// A `PointsToByte` is always well-formed.
+    /// The inherent `byte_wf`.
     open spec fn wf_basic(self) -> bool {
-        true
+        self.byte_wf()
     }
 
     /// If the pointer stays the same, `old` and `new` are permissions to the same memory.
@@ -171,7 +173,7 @@ impl PTPhys for PointsToByte {
         new.ptr() == old.ptr()
     }
 
-    /// Trivial, since a `PointsToByte` is always well-formed.
+    /// Trivial, since `new` keeps `old`'s pointer.
     proof fn stays_wf_basic(old: Self, new: Self) {
     }
 
@@ -182,17 +184,14 @@ impl PTPhys for PointsToByte {
 }
 
 impl PTProperties for PointsToByte {
-    /// Guarantee that the `PointsToByte` points to a non-null address.
-    ///
-    /// See <https://doc.rust-lang.org/std/ptr/#safety>.
-    axiom fn is_nonnull(tracked &self);
+    proof fn is_nonnull(tracked &self) {
+    }
 
-    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
-    axiom fn ptr_bounds(tracked &self);
+    proof fn ptr_bounds(tracked &self) {
+    }
 
-    /// Since `u8` is not a ZST, the pointer's provenance is non-null.
-    /// <https://doc.rust-lang.org/std/ptr/index.html#provenance>
-    axiom fn provenance_not_none(tracked &self);
+    proof fn provenance_not_none(tracked &self) {
+    }
 
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
@@ -224,7 +223,19 @@ impl PointsToByte {
     /// The byte that this permission tracks.
     pub uninterp spec fn byte(self) -> AbstractByte;
 
-    /// Guarantees that the byte associated with this permission 
+    /// A `PointsToByte` is well-formed (its `PTPhys::wf_basic`) if its pointer is real and non-null,
+    /// and its byte is within the bounds of its pointer's (non-null) provenance.
+    // An inherent fn for the same reason as `byte_ptr`.
+    pub open spec fn byte_wf(self) -> bool {
+        let p = self.byte_ptr()@;
+        &&& p.is_real
+        &&& p.addr != 0
+        &&& p.provenance is Some
+        &&& p.addr >= p.provenance.unwrap().start_addr()
+        &&& p.addr + 1 <= p.provenance.unwrap().start_addr() + p.provenance.unwrap().alloc_len()
+    }
+
+    /// Guarantees that the byte associated with this permission
     /// is not associated with any other `PointsToByte` permission.
     /// (`self` is an &mut reference to enforce distinctness,
     /// so you cannot pass the same `PointsToByte` as both arguments.)
@@ -292,17 +303,21 @@ impl<T, P: PTProperties<A = T>> PTPhys for SeqPointsTo<T, P> {
         metadata as nat * P::size(())
     }
 
+    /// The pointer is real:
+    /// a permission is never at a made-up pointer, which may cover more bytes than fit in memory.
     open spec fn wf_basic(self) -> bool {
         // The pointer's metadata is the number of permissions
-        &&& self.ptr()@.metadata
-            == self.len()
-        // Defining the provenance and address for the individual permissions
+        &&& self.ptr()@.metadata == self.len()
+        // The pointer is real
+        &&& self.ptr()@.is_real
+        // Defining the provenance, realness and address for the individual permissions
         &&& forall|i|
             #![trigger self[i].ptr()@.provenance]
             #![trigger self[i].ptr()@.addr]
             #![trigger self[i].wf_basic()]
             0 <= i < self.len() ==> {
                 &&& self[i].ptr()@.provenance == self.ptr()@.provenance
+                &&& self[i].ptr()@.is_real
                 &&& self[i].ptr()@.addr == self.ptr()@.addr + i * P::size(())
                 &&& self[i].wf_basic()
             }
@@ -552,13 +567,13 @@ impl<T> TypedValue<T> {
 }
 
 impl<T> TypedValue<[T]> {
-    // TODO(verify-rustlib-transmute-v2): unsound without a length bound
-    // (one shared borrow repeated past `usize::MAX` contradicts `axiom_spec_len`);
-    // there it requires `elems.len() <= usize::MAX, elems.len() * size_of::<T>() <= isize::MAX`.
     /// A sequence of borrows of typed values acts as one borrow of a slice typed value.
     /// If any element is empty, the slice is empty.
+    /// The slice length must fit in a `usize`.
     pub axiom fn from_elems_ref<'a>(tracked elems: Seq<&'a TypedValue<T>>) -> (tracked out:
         &'a TypedValue<[T]>)
+        requires
+            elems.len() <= usize::MAX,
         ensures
     // Valid with the elements' values if every element is valid
     // (a zero-length Seq counts as valid); otherwise empty.
@@ -571,11 +586,13 @@ impl<T> TypedValue<[T]> {
                 ==> out.is_empty(),
     ;
 
-    // TODO(verify-rustlib-transmute-v2): gets the same length bound as `from_elems_ref` there.
     /// A sequence of mutable borrows of typed values acts as one mutable borrow of a slice typed value.
     /// If any element is empty, the slice starts empty.
+    /// The slice length must fit in a `usize`.
     pub axiom fn from_elems_mut<'a>(tracked elems: Seq<&'a mut TypedValue<T>>) -> (tracked out:
         &'a mut TypedValue<[T]>)
+        requires
+            elems.len() <= usize::MAX,
         ensures
     // Initially: valid with the elements' values if every element is valid
     // (a zero-length Seq counts as valid); otherwise empty.
@@ -603,8 +620,11 @@ impl<T> TypedValue<[T]> {
     ;
 }
 
-/// `pt_untyped` and `typed_value` are the parts of a well-formed `PointsToUnaligned<T>` for a pointer with view `ptr`.
-pub open spec fn pt_unaligned_parts_wf<T>(
+/// The conditions shared by the parts of every well-formed permission
+/// for a pointer with view `ptr`:
+/// `pt_untyped` is well-formed and has `ptr`'s address, provenance and `is_real`,
+/// and if `typed_value` is valid, the bytes decode to it.
+pub open spec fn pt_parts_wf_common<T: ?Sized>(
     ptr: PtrData<T>,
     pt_untyped: PointsToUntyped,
     typed_value: TypedValue<T>,
@@ -612,8 +632,21 @@ pub open spec fn pt_unaligned_parts_wf<T>(
     &&& pt_untyped.wf()
     &&& pt_untyped.ptr()@.addr == ptr.addr
     &&& pt_untyped.ptr()@.provenance == ptr.provenance
+    &&& pt_untyped.ptr()@.is_real == ptr.is_real
+    &&& typed_value.is_valid() ==> abstract_bytes_decode(
+        pt_untyped.bytes(),
+        typed_value.value_ref(),
+    )
+}
+
+/// `pt_untyped` and `typed_value` are the parts of a well-formed `PointsToUnaligned<T>` for a pointer with view `ptr`.
+pub open spec fn pt_unaligned_parts_wf<T>(
+    ptr: PtrData<T>,
+    pt_untyped: PointsToUntyped,
+    typed_value: TypedValue<T>,
+) -> bool {
+    &&& pt_parts_wf_common(ptr, pt_untyped, typed_value)
     &&& pt_untyped.len() == size_of::<T>()
-    &&& typed_value.is_valid() ==> abs_decode(pt_untyped.bytes(), typed_value.value_ref())
 }
 
 /// `pt_untyped` and `typed_value` are the parts of a well-formed `PointsTo<T>` for a pointer with view `ptr`.
@@ -632,15 +665,10 @@ pub open spec fn pt_parts_wf_slice<T>(
     pt_untyped: PointsToUntyped,
     typed_value: TypedValue<[T]>,
 ) -> bool {
-    &&& pt_untyped.wf()
-    &&& pt_untyped.ptr()@.addr == ptr.addr
-    &&& pt_untyped.ptr()@.provenance == ptr.provenance
+    &&& pt_parts_wf_common(ptr, pt_untyped, typed_value)
     &&& pt_untyped.len() == ptr.metadata * size_of::<T>()
     &&& ptr.addr as nat % align_of::<T>() == 0
-    &&& typed_value.is_valid() ==> {
-        &&& abs_decode(pt_untyped.bytes(), typed_value.value_ref())
-        &&& typed_value.value_ref()@.len() == ptr.metadata
-    }
+    &&& typed_value.is_valid() ==> typed_value.value_ref()@.len() == ptr.metadata
 }
 
 } // verus!

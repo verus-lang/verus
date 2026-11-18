@@ -18,11 +18,12 @@ imports of single items may need the new names ([section 4](#4-renames)).
 
 | What the import was for | Module |
 |---|---|
-| The permission types and traits: `PointsTo<T>`, `PointsToUnaligned<T>`, `SeqPointsTo<T, P>`, `PointsToUntyped`, `PointsToByte`, `TypedValue<T>`; the traits `PTPhys`, `PTProperties`, `PTTypedValue`, `PTValueOps`, `PTSizedValue` | `points_to_model` (definitions and axioms), `points_to_model::points_to_ops` (proofs) |
+| The permission types and traits: `PointsTo<T>`, `PointsToUnaligned<T>`, `SeqPointsTo<T, P>`, `PointsToUntyped`, `PointsToByte`, `TypedValue<T>`; the traits `PTPhys`, `PTProperties`, `PTTypedValue`, `PTValueOps`, `PTSizedValue` | `points_to_model` and `points_to_structs` (definitions and axioms), `points_to_ops` (proofs) |
 | The typed sequence `SeqPointsTo<T, PointsTo<T>>` | `points_to_collections` |
 | The pointer and provenance model: `PtrData`, `Provenance`, `ProvenanceData`, `AllocId`, `global_alloc_id`, `ptr_addr_in_bounds`, `ptr_mut_from_data`, `ptr_from_data`, `Metadata`, `group_raw_ptr_axioms` | `ptr_model` |
-| `ptr_null*`, the pointer casts, `ptr_ref` / `ptr_mut_ref` and their slice versions, `ptr_mut_ref_join`, `mut_ref_to_shr_points_to(_slice)`, `tracked_mut_ref_slice_subrange` / `_idx`, `cast_mut_ref_to_ptr` (and the slice and `str` versions), `allocate`, `deallocate` | `ptr_specs` |
-| `SharedReference`, `ptr_ref2`, `ptr_ref2_ghost`, `ptr_ref2_slice_ghost` | `shared_reference` |
+| `ptr_null*`, the pointer casts, `ptr_mut_ref_join`, `tracked_mut_ref_slice_subrange` / `_idx`, `cast_mut_ref_to_ptr` (and the slice and `str` versions), `allocate`, `deallocate` | `ptr_specs` |
+| `ptr_ref` / `ptr_mut_ref` and their slice versions, `mut_ref_to_shr_points_to(_slice)`, `shr_ref_points_to(_slice)` | `ptr_verified_specs` |
+| `SharedReference`, `ptr_ref2`, `ptr_ref2_ghost`, `ptr_ref2_slice_ghost` | removed; for a `&PointsTo` from a reference, use `shr_ref_points_to(_slice)` |
 | `Dealloc` / `DeallocData` | removed; see [`Dealloc` → provenance](#dealloc--provenance) |
 | Everything for `PointsTo<str>` | rustlib (see [section 8](#8-str)) |
 
@@ -288,7 +289,7 @@ Both exist. Pick by what the code needs:
 |---|---|---|
 | Validity | all valid or all empty | each element independently |
 | Real `&[T]` / `&mut [T]` | yes: `ptr_ref_slice`, `ptr_mut_ref_slice`, `borrow` (ghost `&[T]`) | no |
-| From a `&[T]` / `&mut [T]` | yes: `SharedReference<[T]>::points_to`, `mut_ref_to_shr_points_to_slice` | no |
+| From a `&[T]` / `&mut [T]` | yes: `shr_ref_points_to_slice`, `mut_ref_to_shr_points_to_slice` | no |
 | Element access | `borrow_index(i)` (shared) | `self[i]`, `index_mut(i)`, the `*_subrange` operations |
 | Subranges, split, join | no | yes |
 | Pointer | `*mut [T]`; `len()` is the metadata | `ptr()` is `*mut [T]`, `thin_ptr()` the base |
@@ -334,7 +335,7 @@ The generic operations (untyped conversions, `as_aligned(_mut)`, `into_aligned`)
 
 `PointsTo<str>` and `PointsToUnaligned<str>` are written in **rustlib**, not vstd
 (rustlib's `str` view is its bytes).
-Their specs are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#rustlib-str).
+Their specs are in rustlib's `proofs/str.rs`.
 
 * The metadata is the byte length, and the value is `typed_value().value_ref()` (a `&str`).
 * `wf()` includes UTF-8 validity (`str::inv`).
@@ -342,8 +343,8 @@ Their specs are in [TYPED_POINTS_TO_APPROVED.md](TYPED_POINTS_TO_APPROVED.md#rus
   and `PointsTo<str>::from_bytes_ref` (from `&PointsTo<[u8]>`, given valid UTF-8);
   they replace `cast_to_u8_shared` and `cast_to_str_shared`.
   There are no owned or `&mut` casts.
-* The reference helpers (`ptr_ref_str`, `ptr_mut_ref_str`, `ptr_ref2_str_ghost`, `SharedReference<str>::points_to`,
-  `mut_ref_to_shr_points_to_str`) are rustlib axioms with the new API.
+* The reference helpers are rustlib's `ref_to_parts_str`, `ref_from_parts_str` and `mut_ref_from_parts_str` (axioms),
+  with verified `PointsTo` versions; `ptr_ref2_str_ghost` and `SharedReference<str>` are removed.
 * The old `PointsTo<str>` methods (`ptr_bounds`, `is_disjoint`, ...) are the trait methods.
   `subrange` and `axiom_pt_str_len` have no replacement.
 
