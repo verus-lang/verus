@@ -3550,9 +3550,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
             }
         }
-        ExprKind::Assign(lhs, rhs, _) => {
-            expr_assign_to_vir_innermost(bctx, expr, lhs, rhs, None)
-        }
+        ExprKind::Assign(lhs, rhs, _) => expr_assign_to_vir_innermost(bctx, expr, lhs, rhs, None),
         ExprKind::Field(lhs, name) => {
             let vir_lhs = expr_to_vir_place(bctx, lhs)?;
 
@@ -3631,8 +3629,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     // (since the condition is a terminating scope, this is usually empty).
                     // Like rustc's MIR builder, we drop the condition's temporaries
                     // after branching, at the start of each branch.
-                    let ((vir_cond, cond_drops, vir_lhs, failure_drops), then_drops) =
-                        bctx.in_drop_scope(if_then_scope, || {
+                    let ((vir_cond, cond_drops, vir_lhs, failure_drops), then_drops) = bctx
+                        .in_drop_scope(if_then_scope, || {
                             let (vir_cond, cond_drops) =
                                 expr_to_vir_consume_deferring_drops(bctx, cond)?;
                             let failure_drops = bctx.drops_for_exit_from(if_then_scope);
