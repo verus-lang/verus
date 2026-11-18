@@ -58,8 +58,8 @@ mod doubly_linked_list {
         spec fn well_formed_node(&self, i: nat) -> bool {
             &&& self.ghost_state@.points_to_map.dom().contains(i)
             &&& self.ghost_state@.points_to_map[i].pptr() == self.ghost_state@.ptrs[i as int]
-            &&& self.ghost_state@.points_to_map[i].mem_contents() matches TypedValue::Init(node)
-                  && node.prev == self.prev_of(i) && node.next == self.next_of(i)
+            &&& self.ghost_state@.points_to_map[i].mem_contents() matches TypedValue::Valid(node)
+                  && node@.prev == self.prev_of(i) && node@.next == self.next_of(i)
         }
 
         /// Linked list is well-formed

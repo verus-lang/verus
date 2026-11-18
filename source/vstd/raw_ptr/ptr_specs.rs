@@ -2,7 +2,10 @@
 
 use super::super::layout::*;
 use super::super::prelude::*;
+use super::abstract_bytes::*;
 use super::points_to_model::*;
+use super::points_to_ops::*;
+use super::points_to_structs::*;
 use super::ptr_model::*;
 
 verus! {
@@ -268,6 +271,67 @@ pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
     ptr as usize
 }
 
+//////////////////////////////////////
+// Reading and writing
+//////////////////////////////////////
+/// Calls [`core::ptr::read`] to read the value `val` from the memory pointed to by `src`,
+/// given the bytes `perm` of that memory, which decode to `val`.
+// The specs are identical to rustlib's `read_via_copy_verus` (`core/src/intrinsics/mod.rs`),
+// which rustlib uses in place of this function.
+#[cfg(not(verus_verify_core))]
+#[inline(always)]
+#[verifier::external_body]
+pub const unsafe fn ptr_read_untyped<T>(
+    src: *const T,
+    Tracked(perm): Tracked<&PointsToUntyped>,
+    Tracked(val): Tracked<T>,
+) -> (out: T)
+    requires
+        src == perm.ptr() as *const T,
+        src@.addr as int % align_of::<T>() as int == 0,
+        size_of::<T>() == perm.ptr()@.metadata,
+        abstract_bytes_decode::<T>(perm.bytes(), &val),
+        perm.wf(),
+    ensures
+        out == val,
+    opens_invariants none
+    no_unwind
+{
+    unsafe { core::ptr::read(src) }
+}
+
+/// Calls [`core::ptr::write`] to write `value` to the memory pointed to by `ptr`,
+/// given the bytes `perm` of that memory.
+/// Returns `value` as a tracked value, which the final bytes encode.
+// The specs are identical to rustlib's `write_via_move_verus` (`core/src/intrinsics/mod.rs`),
+// which rustlib uses in place of this function.
+#[cfg(not(verus_verify_core))]
+#[inline(always)]
+#[verifier::external_body]
+pub const unsafe fn ptr_write_untyped<T>(
+    ptr: *mut T,
+    value: T,
+    Tracked(perm): Tracked<&mut PointsToUntyped>,
+) -> (out: Tracked<T>)
+    requires
+        ptr == old(perm).ptr() as *mut T,
+        ptr@.addr as int % align_of::<T>() as int == 0,
+        size_of::<T>() == old(perm).ptr()@.metadata,
+        old(perm).wf(),
+    ensures
+        final(perm).ptr() == old(perm).ptr(),
+        abstract_bytes_encode::<T>(&value, final(perm).bytes()),
+        out@ == value,
+        final(perm).wf(),
+    opens_invariants none
+    no_unwind
+{
+    unsafe {
+        core::ptr::write(ptr, value);
+    }
+    Tracked::assume_new()
+}
+
 ////////////////////////////////////////////////
 // Pointer reference and dereference operations
 ////////////////////////////////////////////////
@@ -428,6 +492,72 @@ macro_rules! pointer_specs {
 pointer_specs!(ptr_mut_specs, ptr_mut_from_data, mut);
 
 pointer_specs!(ptr_const_specs, ptr_from_data, const);
+
+//////////////////////////////////////
+// Exposed provenance
+//////////////////////////////////////
+/// Tracked object that indicates a given provenance has been exposed.
+#[verifier::external_body]
+pub tracked struct IsExposed {}
+
+impl Clone for IsExposed {
+    #[verifier::external_body]
+    fn clone(&self) -> (s: Self)
+        ensures
+            s == self,
+    {
+        IsExposed {  }
+    }
+}
+
+impl Copy for IsExposed {
+
+}
+
+impl IsExposed {
+    /// The view of `IsExposed` is simply its provenance.
+    pub open spec fn view(self) -> Provenance {
+        self.provenance()
+    }
+
+    /// Provenance we are exposing.
+    pub uninterp spec fn provenance(self) -> Provenance;
+
+    /// It is always possible to expose/construct the null provenance.
+    pub axiom fn null() -> (tracked exp: IsExposed)
+        ensures
+            exp.provenance() == Provenance::None,
+    ;
+}
+
+/// Perform a provenance expose operation.
+#[verifier::external_body]
+pub fn expose_provenance<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>)
+    ensures
+        provenance@@ == m@.provenance,
+    opens_invariants none
+    no_unwind
+{
+    let _ = m as usize;
+    Tracked::assume_new()
+}
+
+/// Construct a pointer with the given provenance from a _usize_ address.
+/// The provenance must have previously been exposed.
+#[verifier::external_body]
+pub fn with_exposed_provenance<T: Sized>(
+    addr: usize,
+    Tracked(provenance): Tracked<IsExposed>,
+) -> (p: *mut T)
+    ensures
+        p == ptr_mut_from_data::<T>(
+            PtrData::<T> { addr: addr, provenance: provenance@, metadata: (), is_real: true },
+        ),
+    opens_invariants none
+    no_unwind
+{
+    addr as *mut T
+}
 
 ////////////////////////////////////////
 // Shared and mutable reference specs

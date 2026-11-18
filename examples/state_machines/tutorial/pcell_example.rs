@@ -17,9 +17,9 @@ fn main() {
     let (pcell, Tracked(mut perm)) = PCell::<u64>::empty();
 
     // Initially, cell is unitialized, and the `perm` token
-    // represents that as the value `TypedValue::Uninit`.
+    // represents that as the value `TypedValue::Empty`.
     assert(perm.id() == pcell.id());
-    assert(perm.mem_contents() == TypedValue::Uninit);
+    assert(perm.mem_contents() == TypedValue::Empty);
 
     // We can write a value to the pcell (thus initializing it).
     // This only requires an `&` reference to the PCell, but it does
@@ -28,7 +28,7 @@ fn main() {
 
     // Having written the value, this is reflected in the token:
     assert(perm.id() == pcell.id());
-    assert(perm.mem_contents() == TypedValue::Init(5));
+    assert(perm.mem_contents().is_valid() && perm.mem_contents().value() == 5);
 
     // We can take the value back out:
     let x = pcell.take(Tracked(&mut perm));
@@ -36,7 +36,7 @@ fn main() {
     // Which leaves it uninitialized again:
     assert(x == 5);
     assert(perm.id() == pcell.id());
-    assert(perm.mem_contents() == TypedValue::Uninit);
+    assert(perm.mem_contents() == TypedValue::Empty);
 }
 // ANCHOR_END: example
 

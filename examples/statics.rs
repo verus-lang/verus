@@ -42,7 +42,8 @@ struct_with_invariants!{
                 GhostState::Uninitialized(points_to) => {
                     v == 0
                       && points_to.id() == cell.id()
-                      && (points_to.mem_contents() == TypedValue::Init(None))
+                      && points_to.mem_contents().is_valid()
+                      && points_to.mem_contents().value() == None::<T>
                 }
                 GhostState::Initializing => {
                     v == 1
@@ -50,7 +51,8 @@ struct_with_invariants!{
                 GhostState::Initialized(points_to) => {
                     v == 2
                       && points_to.id() == cell.id()
-                      && (points_to.mem_contents() matches TypedValue::Init(Some(_)))
+                      && points_to.mem_contents().is_valid()
+                      && (points_to.mem_contents().value() matches Some(_))
                 }
             }
         }

@@ -36,9 +36,9 @@ verus! {
 /// The `perm: PointsTo<V>` object tracks two pieces of data:
 ///  * [`perm.pptr()`](PointsTo::pptr) is the pointer that the permission is associated to.
 ///  * [`perm.mem_contents()`](PointsTo::mem_contents) is the memory contents, which is one of either:
-///     * [`TypedValue::Uninit`] if the memory pointed-to by
+///     * [`TypedValue::Empty`] if the memory pointed-to by
 ///       by the pointer is uninitialized.
-///     * [`TypedValue::Init(v)`](raw_ptr::TypedValue::Init) if the memory points-to the
+///     * [`TypedValue::Valid(v)`](raw_ptr::TypedValue::Valid) if the memory points-to the
 ///       the value `v`.
 ///
 /// Your access to the `PointsTo` object determines what operations you can safely perform
@@ -62,13 +62,13 @@ verus! {
 ///         // p: PPtr<u64>, points_to: PointsTo<u64>
 ///         let (p, Tracked(mut points_to)) = PPtr::<u64>::empty();
 ///
-///         assert(points_to.mem_contents() == TypedValue::Uninit);
+///         assert(points_to.mem_contents() == TypedValue::Empty);
 ///         assert(points_to.pptr() == p);
 ///
 ///         // unsafe { *p = 5; }
 ///         p.write(Tracked(&mut points_to), 5);
 ///
-///         assert(points_to.mem_contents() == TypedValue::Init(5));
+///         assert(points_to.is_init() && points_to.value() == 5);
 ///         assert(points_to.pptr() == p);
 ///
 ///         // let x = unsafe { *p };
@@ -162,12 +162,13 @@ pub struct PPtr<V>(pub usize, pub PhantomData<V>);
 pub tracked struct PointsTo<V> {
     points_to: raw_ptr::PointsTo<V>,
     exposed: raw_ptr::IsExposed,
-    dealloc: Option<raw_ptr::Dealloc>,
 }
 
 #[verusfmt::skip]
 broadcast use {
     super::raw_ptr::group_raw_ptr_axioms,
+    super::raw_ptr::group_points_to_lemmas,
+    super::layout::group_layout_axioms,
     super::set_lib::group_set_lib_default,
     super::set::group_set_axioms};
 
@@ -227,24 +228,27 @@ impl<V> PointsTo<V> {
         self.points_to.ptr().addr()
     }
 
+    // A non-ZST permission covers a whole allocation from the global allocator,
+    // so it can be deallocated;
+    // the facts for deallocation are on the pointer's provenance.
     #[verifier::type_invariant]
     closed spec fn wf(self) -> bool {
+        &&& self.points_to.wf()
         &&& self.points_to.ptr()@.provenance == self.exposed.provenance()
-        &&& match self.dealloc {
-            Some(dealloc) => {
-                &&& dealloc.addr() == self.points_to.ptr().addr()
-                &&& dealloc.size() == size_of::<V>() == dealloc.provenance().data().alloc_len()
-                &&& dealloc.align() == align_of::<V>()
-                &&& dealloc.provenance() == self.points_to.ptr()@.provenance
-                &&& size_of::<V>() > 0
-            },
-            None => { size_of::<V>() == 0 },
+        &&& self.points_to.ptr()@.is_real
+        &&& size_of::<V>() > 0 ==> {
+            &&& self.points_to.ptr()@.provenance is Some
+            &&& self.points_to.ptr()@.provenance.unwrap().start_addr()
+                == self.points_to.ptr().addr()
+            &&& self.points_to.ptr()@.provenance.unwrap().orig_size() == size_of::<V>()
+            &&& self.points_to.ptr()@.provenance.unwrap().alignment() == align_of::<V>()
+            &&& self.points_to.ptr()@.provenance.unwrap().alloc_id() == global_alloc_id()
         }
         &&& self.points_to.ptr().addr() != 0
     }
 
     pub closed spec fn mem_contents(&self) -> TypedValue<V> {
-        self.points_to.mem_contents()
+        self.points_to.typed_value()
     }
 
     #[doc(hidden)]
@@ -255,12 +259,12 @@ impl<V> PointsTo<V> {
 
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
-        self.mem_contents().is_init()
+        self.mem_contents().is_valid()
     }
 
     #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
-        self.mem_contents().is_uninit()
+        self.mem_contents().is_empty()
     }
 
     #[verifier::inline]
@@ -280,7 +284,7 @@ impl<V> PointsTo<V> {
     }
 
     /// "Forgets" about the value stored behind the pointer.
-    /// Updates the `PointsTo` value to [`TypedValue::Uninit`](TypedValue::Uninit).
+    /// Updates the `PointsTo` value to [`TypedValue::Empty`](TypedValue::Empty).
     /// Note that this is a `proof` function, i.e., it is operationally a no-op in executable code.
     pub proof fn leak_contents(tracked &mut self)
         ensures
@@ -310,7 +314,8 @@ impl<V> PointsTo<V> {
                 <= final(self).addr(),
     {
         use_type_invariant(&*self);
-        self.points_to.is_disjoint(&other.points_to);
+        use_type_invariant(other);
+        self.points_to.is_disjoint_pointsto(&other.points_to);
     }
 
     /// Guarantees that two distinct, non-ZST `PointsTo<V>` objects point to different
@@ -324,7 +329,8 @@ impl<V> PointsTo<V> {
             final(self).addr() != other.addr(),
     {
         use_type_invariant(&*self);
-        self.points_to.is_disjoint(&other.points_to);
+        use_type_invariant(other);
+        self.points_to.is_disjoint_pointsto(&other.points_to);
     }
 }
 
@@ -352,16 +358,17 @@ impl<V> PPtr<V> {
     {
         layout_for_type_is_valid::<V>();
         if core::mem::size_of::<V>() != 0 {
-            let (p, Tracked(points_to_raw), Tracked(dealloc)) = allocate(
+            let (p, Tracked(pt_untyped)) = allocate(
                 core::mem::size_of::<V>(),
                 core::mem::align_of::<V>(),
             );
             let Tracked(exposed) = expose_provenance(p);
-            let tracked points_to = points_to_raw.into_typed::<V>(p.addr());
+            let tracked points_to = raw_ptr::PointsTo::<V>::from_untyped(pt_untyped, ());
             proof {
+                points_to.lemma_wf_basic();
                 points_to.is_nonnull();
             }
-            let tracked pt = PointsTo { points_to, exposed, dealloc: Some(dealloc) };
+            let tracked pt = PointsTo { points_to, exposed };
             let pptr = PPtr(p as usize, PhantomData);
 
             return (pptr, Tracked(pt));
@@ -371,9 +378,10 @@ impl<V> PPtr<V> {
                 requires
                     p != 0,
             ;
-            let tracked emp = PointsToRaw::empty(Provenance::None);
-            let tracked points_to = emp.into_typed(p);
-            let tracked pt = PointsTo { points_to, exposed: IsExposed::null(), dealloc: None };
+            let tracked exposed = IsExposed::null();
+            let ptr: *mut V = with_exposed_provenance(p, Tracked(exposed));
+            let tracked points_to = raw_ptr::PointsTo::<V>::zero_sized(ptr);
+            let tracked pt = PointsTo { points_to, exposed };
             let pptr = PPtr(p, PhantomData);
 
             return (pptr, Tracked(pt));
@@ -386,7 +394,8 @@ impl<V> PPtr<V> {
     pub fn new(v: V) -> (pt: (PPtr<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@.pptr() == pt.0,
-            pt.1@.mem_contents() == TypedValue::Init(v),
+            pt.1@.mem_contents().is_valid(),
+            pt.1@.mem_contents().value() == v,
         opens_invariants none
     {
         let (p, Tracked(mut pt)) = PPtr::<V>::empty();
@@ -410,14 +419,13 @@ impl<V> PPtr<V> {
         }
         if core::mem::size_of::<V>() != 0 {
             let ptr: *mut u8 = with_exposed_provenance(self.0, Tracked(perm.exposed));
-            let tracked PointsTo { points_to, dealloc: dea, exposed } = perm;
-            let tracked points_to_raw = points_to.into_raw();
+            let tracked PointsTo { points_to, exposed } = perm;
+            let tracked pt_untyped = points_to.into_untyped();
             deallocate(
                 ptr,
                 core::mem::size_of::<V>(),
                 core::mem::align_of::<V>(),
-                Tracked(points_to_raw),
-                Tracked(dea.tracked_unwrap()),
+                Tracked(pt_untyped),
             );
         }
     }
@@ -446,15 +454,16 @@ impl<V> PPtr<V> {
     /// Requires the memory to be uninitialized, and leaves it initialized.
     ///
     /// In the ghost perspective, this updates `perm.mem_contents()`
-    /// from `TypedValue::Uninit` to `TypedValue::Init(v)`.
+    /// from `TypedValue::Empty` to `TypedValue::Valid(v)`.
     #[inline(always)]
     pub fn put(self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
             old(perm).pptr() == self,
-            old(perm).mem_contents() == TypedValue::Uninit::<V>,
+            old(perm).mem_contents() == TypedValue::Empty::<V>,
         ensures
             final(perm).pptr() == old(perm).pptr(),
-            final(perm).mem_contents() == TypedValue::Init(v),
+            final(perm).mem_contents().is_valid(),
+            final(perm).mem_contents().value() == v,
         opens_invariants none
         no_unwind
     {
@@ -479,7 +488,7 @@ impl<V> PPtr<V> {
             old(perm).is_init(),
         ensures
             final(perm).pptr() == old(perm).pptr(),
-            final(perm).mem_contents() == TypedValue::Uninit::<V>,
+            final(perm).mem_contents() == TypedValue::Empty::<V>,
             v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -500,7 +509,8 @@ impl<V> PPtr<V> {
             old(perm).is_init(),
         ensures
             final(perm).pptr() == old(perm).pptr(),
-            final(perm).mem_contents() == TypedValue::Init(in_v),
+            final(perm).mem_contents().is_valid(),
+            final(perm).mem_contents().value() == in_v,
             out_v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -559,7 +569,8 @@ impl<V> PPtr<V> {
             old(perm).pptr() == self,
         ensures
             final(perm).pptr() == old(perm).pptr(),
-            final(perm).mem_contents() == TypedValue::Init(in_v),
+            final(perm).mem_contents().is_valid(),
+            final(perm).mem_contents().value() == in_v,
         opens_invariants none
         no_unwind
     {
