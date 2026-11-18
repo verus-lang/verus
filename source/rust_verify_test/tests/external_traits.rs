@@ -1556,3 +1556,107 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_any_vir_error_msg(err, "`#[verifier::assume_compatibility_with_trait_spec]` not allowed with `--no-cheating`")
 }
+
+test_verify_one_file! {
+    #[test] trait_extension_same_name_as_trait_method verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        pub trait T {
+            fn f(&self) -> u8;
+        }
+
+        // TSpec::f is a different function from T::f
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait Ex {
+            type ExternalTraitSpecificationFor: T;
+            spec fn f(&self) -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait Ex2 {
+            type ExternalTraitSpecificationFor: T;
+            fn f(&self) -> (r: u8)
+                ensures r == 3;
+        }
+
+        struct S;
+        impl T for S {
+            fn f(&self) -> u8 { 3 }
+        }
+        impl TSpecImpl for S {
+            open spec fn f(&self) -> bool { true }
+        }
+
+        proof fn test1(s: S) {
+            assert(TSpec::f(&s));
+        }
+
+        fn test2(s: S) {
+            let r = T::f(&s);
+            assert(r == 3);
+            assert(TSpec::f(&s));
+            assert(r == 4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_extension_same_name_inherited_defaults verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        pub trait T {
+            fn m(&self) -> bool { true }
+            fn n(&self) -> bool { true }
+        }
+
+        // The default ensures of T::n mentions TSpec::m,
+        // while S inherits both T::n and T::m (a different function from TSpec::m).
+        // Make sure that the inherited T::n refers to S's implementation of TSpec::m,
+        // not to S's inherited T::m.
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait Ex {
+            type ExternalTraitSpecificationFor: T;
+            spec fn m(&self) -> bool;
+            fn n(&self) -> (r: bool)
+                default_ensures r == self.m();
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait Ex2 {
+            type ExternalTraitSpecificationFor: T;
+            fn m(&self) -> (r: bool)
+                default_ensures r;
+        }
+
+        struct S;
+        impl T for S {}
+        impl TSpecImpl for S {
+            open spec fn m(&self) -> bool { true }
+        }
+
+        struct R;
+        impl T for R {}
+        impl TSpecImpl for R {
+            open spec fn m(&self) -> bool { false }
+        }
+
+        fn test1(s: S) {
+            let a = T::m(&s);
+            assert(a);
+            let b = T::n(&s);
+            assert(b);
+        }
+
+        fn test2(r: R) {
+            let a = T::m(&r);
+            assert(a);
+            let b = T::n(&r);
+            assert(!b);
+            assert(b); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

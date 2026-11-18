@@ -933,14 +933,14 @@ pub(crate) fn redirect_calls_in_default_methods(
                     // specialized to our impl, we need to do extra work to
                     // redirect calls from the inherited body back to our own impl.
                     // See comments above regarding trait_inherit_default_name.
-                    let default_name = crate::def::trait_inherit_default_name(&callee, caller_impl);
-                    let callee = if func_map.contains_key(&default_name) {
-                        // turn T::f into impl::default-f
-                        default_name
-                    } else {
-                        // turn T::f into impl::f
-                        trait_impl_map[&(callee, caller_impl.clone())].clone()
-                    };
+                    // Turn T::f into impl::f, or into impl::default-f if impl inherits f.
+                    // Note: we look up the method by its full name (callee)
+                    // rather than computing trait_inherit_default_name(callee, caller_impl),
+                    // since the latter uses only the last segment of callee's name,
+                    // which is ambiguous when T has merged in an external_trait_extension TSpec
+                    // that declares a method with the same name as one of T's methods
+                    // (see trait_extensions::eliminate_trait_extensions).
+                    let callee = trait_impl_map[&(callee, caller_impl.clone())].clone();
 
                     // If we can directly resolve a call from f1 inside impl to f2 inside
                     // the same impl, then we don't try to pass a dictionary for impl from f1 to f2.
