@@ -3679,9 +3679,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let arm_scope = node_scope(arm.hir_id);
                 let ((pattern, guard, body), arm_drops) = bctx.in_drop_scope(arm_scope, || {
                     let pattern = pattern_to_vir(bctx, &arm.pat)?;
-                    let guard_scope =
-                        Scope { local_id: arm.hir_id.local_id, data: ScopeData::MatchGuard };
-                    let ((guard, body), guard_drops) = bctx.in_drop_scope(guard_scope, || {
+                    let guard_and_body = || {
                         let guard = match &arm.guard {
                             None => bctx.spanned_typed_new(
                                 expr.span,
@@ -3694,7 +3692,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         schedule_pattern_binding_drops(bctx, &arm.pat);
                         let body = expr_to_vir_consume(bctx, &arm.body)?;
                         Ok((guard, body))
-                    })?;
+                    };
+                    let ((guard, body), guard_drops) = if arm.guard.is_some() {
+                        let guard_scope =
+                            Scope { local_id: arm.hir_id.local_id, data: ScopeData::MatchGuard };
+                        bctx.in_drop_scope(guard_scope, guard_and_body)?
+                    } else {
+                        (guard_and_body()?, vec![])
+                    };
                     Ok((pattern, guard, append_drops(bctx, body, guard_drops)))
                 })?;
                 let body = append_drops(bctx, body, arm_drops);
