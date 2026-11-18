@@ -44,7 +44,7 @@ dependencies = [
 name = "air"
 version = "0.1.0"
 dependencies = [
- "getopts",
+ "clap",
  "indexmap 2.14.0",
  "petgraph 0.6.5",
  "serde",
