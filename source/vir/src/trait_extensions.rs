@@ -28,8 +28,7 @@
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, CallTarget, CallTargetKind, Expr, ExprX, Fun, Function,
     FunctionKind, GenericBound, GenericBoundX, ImplPath, ImplPaths, Krate, KrateX, NullaryOpr,
-    OpaqueTypeX, Path, Pattern, Place, Stmt, TraitId, TraitImpl, TraitImplX, TraitX, Typ, TypX,
-    UnaryOpr, VirErr,
+    OpaqueTypeX, Path, Pattern, Place, Stmt, TraitId, TraitImpl, TraitX, Typ, TypX, VirErr,
 };
 use crate::ast_visitor::{AstVisitor, NoScoper, Rewrite, VisitorScopeMap};
 use air::scope_map::ScopeMap;
@@ -62,7 +61,7 @@ impl EliminateExtensions {
         self.impl_to_origin.get(path).unwrap_or(path).clone()
     }
 
-    fn impl_paths(&self, impl_paths: &ImplPaths) -> ImplPaths {
+    fn map_impl_paths(&self, impl_paths: &ImplPaths) -> ImplPaths {
         let mut new_impl_paths: Vec<ImplPath> = Vec::new();
         for impl_path in impl_paths.iter() {
             let impl_path = match impl_path {
@@ -82,14 +81,9 @@ impl AstVisitor<Rewrite, VirErr, NoScoper> for EliminateExtensions {
     fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, VirErr> {
         let typ = self.visit_typ_rec(typ)?;
         let typ = match &*typ {
-            TypX::Datatype(dt, typs, impl_paths) => {
-                Arc::new(TypX::Datatype(dt.clone(), typs.clone(), self.impl_paths(impl_paths)))
+            TypX::Dyn(path, typs, impl_paths) => {
+                Arc::new(TypX::Dyn(self.trait_path(path), typs.clone(), impl_paths.clone()))
             }
-            TypX::Dyn(path, typs, impl_paths) => Arc::new(TypX::Dyn(
-                self.trait_path(path),
-                typs.clone(),
-                self.impl_paths(impl_paths),
-            )),
             TypX::Projection { trait_typ_args, trait_path, name } => Arc::new(TypX::Projection {
                 trait_typ_args: trait_typ_args.clone(),
                 trait_path: self.trait_path(trait_path),
@@ -98,6 +92,10 @@ impl AstVisitor<Rewrite, VirErr, NoScoper> for EliminateExtensions {
             _ => typ,
         };
         Ok(typ)
+    }
+
+    fn visit_impl_paths(&mut self, impl_paths: &ImplPaths) -> Result<ImplPaths, VirErr> {
+        Ok(self.map_impl_paths(impl_paths))
     }
 
     fn visit_expr(&mut self, expr: &Expr) -> Result<Expr, VirErr> {
@@ -116,42 +114,6 @@ impl AstVisitor<Rewrite, VirErr, NoScoper> for EliminateExtensions {
         self.visit_place_rec(place)
     }
 
-    fn visit_call_target_kind(&mut self, kind: &CallTargetKind) -> Result<CallTargetKind, VirErr> {
-        match kind {
-            CallTargetKind::DynamicResolved { resolved, typs, impl_paths, is_trait_default } => {
-                Ok(CallTargetKind::DynamicResolved {
-                    resolved: resolved.clone(),
-                    typs: Arc::new(self.visit_typs(typs)?),
-                    impl_paths: self.impl_paths(impl_paths),
-                    is_trait_default: *is_trait_default,
-                })
-            }
-            CallTargetKind::Static
-            | CallTargetKind::ProofFn(..)
-            | CallTargetKind::Dynamic
-            | CallTargetKind::ExternalTraitDefault => Ok(kind.clone()),
-        }
-    }
-
-    fn visit_call_target(&mut self, call_target: &CallTarget) -> Result<CallTarget, VirErr> {
-        match call_target {
-            CallTarget::Fun(kind, fun, typs, impl_paths, attrs) => Ok(CallTarget::Fun(
-                self.visit_call_target_kind(kind)?,
-                fun.clone(),
-                Arc::new(self.visit_typs(typs)?),
-                self.impl_paths(impl_paths),
-                attrs.clone(),
-            )),
-            CallTarget::FnSpec(expr) => Ok(CallTarget::FnSpec(self.visit_expr(expr)?)),
-            CallTarget::BuiltinSpecFun(bsf, typs, impl_paths) => Ok(CallTarget::BuiltinSpecFun(
-                bsf.clone(),
-                Arc::new(self.visit_typs(typs)?),
-                self.impl_paths(impl_paths),
-            )),
-            CallTarget::AssumeExternal => Ok(call_target.clone()),
-        }
-    }
-
     fn visit_nullary_opr(&mut self, nopr: &NullaryOpr) -> Result<NullaryOpr, VirErr> {
         match nopr {
             NullaryOpr::TraitBound(trait_id, typs) => Ok(NullaryOpr::TraitBound(
@@ -168,26 +130,6 @@ impl AstVisitor<Rewrite, VirErr, NoScoper> for EliminateExtensions {
             NullaryOpr::ConstTypBound(t1, t2) => {
                 Ok(NullaryOpr::ConstTypBound(self.visit_typ(t1)?, self.visit_typ(t2)?))
             }
-        }
-    }
-
-    fn visit_unary_opr(&mut self, uopr: &UnaryOpr) -> Result<UnaryOpr, VirErr> {
-        match uopr {
-            UnaryOpr::ToDyn(t, impl_paths) => {
-                Ok(UnaryOpr::ToDyn(self.visit_typ(t)?, self.impl_paths(impl_paths)))
-            }
-            UnaryOpr::Box(t) => Ok(UnaryOpr::Box(self.visit_typ(t)?)),
-            UnaryOpr::Unbox(t) => Ok(UnaryOpr::Unbox(self.visit_typ(t)?)),
-            UnaryOpr::HasType(t) => Ok(UnaryOpr::HasType(self.visit_typ(t)?)),
-            UnaryOpr::HasResolved(t) => Ok(UnaryOpr::HasResolved(self.visit_typ(t)?)),
-            UnaryOpr::IsVariant { .. }
-            | UnaryOpr::Field { .. }
-            | UnaryOpr::IntegerTypeBound(..)
-            | UnaryOpr::CustomErr(..)
-            | UnaryOpr::AutoDecreases
-            | UnaryOpr::AutoLoopEnsures
-            | UnaryOpr::ProofNote(..)
-            | UnaryOpr::LoopIsolationBoundary(_) => Ok(uopr.clone()),
         }
     }
 
@@ -280,37 +222,7 @@ impl AstVisitor<Rewrite, VirErr, NoScoper> for EliminateExtensions {
             trait_path: self.trait_path(trait_path),
             trait_typ_args: Arc::new(self.visit_typs(trait_typ_args)?),
             typ: self.visit_typ(typ)?,
-            impl_paths: self.impl_paths(impl_paths),
-        }))
-    }
-
-    fn visit_trait_impl(&mut self, imp: &TraitImpl) -> Result<TraitImpl, VirErr> {
-        let TraitImplX {
-            impl_path,
-            typ_params,
-            typ_bounds,
-            trait_path,
-            trait_typ_args,
-            trait_typ_arg_impls,
-            owning_module,
-            auto_imported,
-            external_trait_blanket,
-            is_unsafe,
-        } = &imp.x;
-        assert!(!*external_trait_blanket);
-        assert!(!self.impl_to_origin.contains_key(impl_path));
-        assert!(!self.extension_to_trait.contains_key(trait_path));
-        Ok(imp.new_x(TraitImplX {
-            impl_path: impl_path.clone(),
-            typ_params: typ_params.clone(),
-            typ_bounds: Arc::new(self.visit_generic_bounds(typ_bounds)?),
-            trait_path: trait_path.clone(),
-            trait_typ_args: Arc::new(self.visit_typs(trait_typ_args)?),
-            trait_typ_arg_impls: trait_typ_arg_impls.new_x(self.impl_paths(&trait_typ_arg_impls.x)),
-            owning_module: owning_module.clone(),
-            auto_imported: *auto_imported,
-            external_trait_blanket: false,
-            is_unsafe: *is_unsafe,
+            impl_paths: self.visit_impl_paths(impl_paths)?,
         }))
     }
 }
