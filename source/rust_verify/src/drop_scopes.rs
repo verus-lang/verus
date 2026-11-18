@@ -355,11 +355,10 @@ pub(crate) fn drop_stmts(bctx: &BodyCtxt, drops: Vec<Expr>) -> Vec<Stmt> {
     drops.into_iter().map(|d| bctx.ctxt.spanned_new_vir(&d.span, StmtX::Expr(d.clone()))).collect()
 }
 
-/// Return an expression that evaluates `e` and then executes the drops.
-/// If `e` is a block, we just append the drops to the block's drops; this way,
-/// we don't disturb any code that looks for a block in a specific place (e.g., for headers).
-/// For the same reason, we look through the same nodes that `vir::headers::read_header`
-/// looks through (which come from implicit adjustments).
+/// Return an expression that evaluates `e`, then executes the drops, and returns the value of `e`.
+/// This is `Binary(Left, e, drops)`, where `drops` is a single `Drop` or a block of them.
+/// (Code that looks for a specific shape, e.g., `vir::headers::read_header`,
+/// needs to look through the `Left` node.)
 pub(crate) fn append_drops(bctx: &BodyCtxt, e: Expr, drops: Vec<Expr>) -> Expr {
     if drops.len() == 0 {
         return e;
