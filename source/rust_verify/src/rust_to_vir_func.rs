@@ -462,8 +462,17 @@ fn body_to_vir<'tcx>(
         data: rustc_middle::middle::region::ScopeData::Arguments,
     };
     let (e, drops) = bctx.in_drop_scope(args_scope, || {
-        for (param_name, ty) in param_names.iter().zip(param_tys.iter()) {
-            bctx.schedule_local_drop_in(args_scope, param_name, body.value.span, *ty);
+        for ((param_name, hir_param), ty) in
+            param_names.iter().zip(body.params.iter()).zip(param_tys.iter())
+        {
+            crate::rust_to_vir_expr::schedule_param_drops(
+                &bctx,
+                args_scope,
+                param_name,
+                peel_verus_param(hir_param.pat),
+                body.value.span,
+                *ty,
+            );
         }
         expr_to_vir_consume(&bctx, body_expr)
     })?;

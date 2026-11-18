@@ -4828,6 +4828,24 @@ fn unwrap_parameter_to_vir<'tcx>(
     }
 }
 
+/// Schedule drops (in `args_scope`) for a parameter of a function or closure,
+/// whose pattern is `pat`, and for the variables bound by `pat` (unless it is a simple binding,
+/// i.e., the parameter itself).
+/// As in rustc's MIR builder, the bindings are dropped before the parameter.
+pub(crate) fn schedule_param_drops<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    args_scope: Scope,
+    param_name: &VarIdent,
+    pat: &Pat<'tcx>,
+    span: Span,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) {
+    bctx.schedule_local_drop_in(args_scope, param_name, span, ty);
+    if !matches!(pat.kind, PatKind::Binding(BindingMode(ByRef::No, _), _, _, None)) {
+        schedule_pattern_binding_drops(bctx, pat);
+    }
+}
+
 /// Schedule drops for all the variables bound by the pattern
 fn schedule_pattern_binding_drops<'tcx>(bctx: &BodyCtxt<'tcx>, pat: &Pat<'tcx>) {
     pat.each_binding_or_first(&mut |_binding_mode, hir_id, span, ident| {
@@ -5085,13 +5103,14 @@ pub(crate) fn closure_to_vir<'tcx>(
                 for ((param, hir_param), ty) in
                     params.iter().zip(body.params.iter()).zip(tys.iter())
                 {
-                    body_bctx.schedule_local_drop_in(args_scope, &param.name, hir_param.span, *ty);
-                    if !matches!(
-                        hir_param.pat.kind,
-                        PatKind::Binding(BindingMode(ByRef::No, _), _, _, None)
-                    ) {
-                        schedule_pattern_binding_drops(body_bctx, hir_param.pat);
-                    }
+                    schedule_param_drops(
+                        body_bctx,
+                        args_scope,
+                        &param.name,
+                        hir_param.pat,
+                        hir_param.span,
+                        *ty,
+                    );
                 }
                 expr_to_vir_consume(body_bctx, &body.value)
             })?;

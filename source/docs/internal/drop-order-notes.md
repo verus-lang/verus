@@ -719,5 +719,3 @@ Known deviations and limitations:
 * If a `PlaceX::Temporary` is later rewritten or cancelled (e.g. `&mut *temp`), its `Drop` refers to a
   nonexistent temporary and is ignored by `resolution_inference`.
 * No drops are emitted in spec or proof code, ghost blocks, or headers.
-* Function parameters are dropped by their VIR parameter names. Patterns in function parameters
-  are not split into separate bindings. Closure parameter patterns are split.

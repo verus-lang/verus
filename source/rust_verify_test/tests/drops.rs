@@ -1703,6 +1703,47 @@ bb0 (entry, exit):
     );
 }
 
+/// The variables bound by a parameter's pattern are dropped just before the parameter
+#[test]
+fn test_param_patterns() {
+    let code = verus_code! {
+        fn test((a, b): (D, D), c: D, (e, f): (D, D)) {
+            let x = mk();
+        }
+    };
+    check_cfg(
+        code,
+        "test",
+        &[],
+        r#"
+bb0 (entry, exit):
+    Overwrite(%param3)
+    Overwrite(c)
+    Overwrite(%param10)
+    MoveFrom(%param3.0)
+    MoveFrom(%param3.1)
+    Overwrite(a)
+    Overwrite(b)
+    MoveFrom(%param10.0)
+    MoveFrom(%param10.1)
+    Overwrite(e)
+    Overwrite(f)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
+    Overwrite(x)
+    ScopeDrop(Temp_0)        // mk()
+    ScopeDrop(x)
+    ScopeDrop(f)
+    ScopeDrop(e)
+    ScopeDrop(%param10)
+    ScopeDrop(c)
+    ScopeDrop(b)
+    ScopeDrop(a)
+    ScopeDrop(%param3)
+"#,
+    );
+}
+
 /// Closures have their own scopes; closure params are dropped after the closure body.
 #[test]
 fn test_closure() {
