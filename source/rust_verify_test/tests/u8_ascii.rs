@@ -73,9 +73,25 @@ test_verify_one_file! {
             let _ = b.is_ascii_whitespace();
             let _ = b.is_ascii_control();
         }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] x_is_not_ascii_hexdigit verus_code! {
+        use vstd::prelude::*;
 
         fn test_wrong() {
             assert(b'x'.is_ascii_hexdigit()); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] vertical_tab_is_not_ascii_whitespace verus_code! {
+        use vstd::prelude::*;
+
+        fn test_wrong() {
+            assert(0x0Bu8.is_ascii_whitespace()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -130,10 +146,29 @@ test_verify_one_file! {
             c.make_ascii_uppercase();
             c.make_ascii_lowercase();
         }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] to_ascii_lowercase_does_not_uppercase verus_code! {
+        use vstd::prelude::*;
 
         fn test_wrong() {
             let u = b'a'.to_ascii_lowercase();
             assert(u == b'A'); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] to_ascii_uppercase_does_not_change_non_ascii verus_code! {
+        use vstd::prelude::*;
+
+        fn test_wrong(b: u8)
+            requires b >= 0x80,
+        {
+            let u = b.to_ascii_uppercase();
+            assert(u != b); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
