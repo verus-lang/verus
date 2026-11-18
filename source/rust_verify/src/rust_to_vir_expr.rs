@@ -3705,9 +3705,20 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         // This is a desugared `await` expression: `match IntoFuture::into_future(x) { ... }`.
         // Keep the `into_future` call so that the awaited future is the one it returns.
-        ExprKind::Match(into_future, _arms, rustc_hir::MatchSource::AwaitDesugar) => {
+        ExprKind::Match(into_future, arms, rustc_hir::MatchSource::AwaitDesugar) => {
             let vir_expr = expr_to_vir_consume(bctx, into_future)?;
-            mk_expr(ExprX::Await(vir_expr))
+            // The future is moved into the `__awaitee` binding of the only arm
+            // (whose body, the polling loop, we skip over), and, as in rustc's MIR builder,
+            // it is dropped at the end of the arm, i.e., after the await completes.
+            let [arm] = arms else {
+                crate::internal_err!(expr.span, "expected one arm in await desugaring")
+            };
+            let ((), drops) = bctx.in_drop_scope(node_scope(arm.hir_id), || {
+                schedule_pattern_binding_drops(bctx, &arm.pat);
+                Ok(())
+            })?;
+            let e = mk_expr(ExprX::Await(vir_expr))?.expect_expr();
+            Ok(ExprOrPlace::Expr(append_drops(bctx, e, drops)))
         }
         ExprKind::Match(expr, arms, _match_source) => {
             let vir_place = expr_to_vir_place(bctx, expr)?;

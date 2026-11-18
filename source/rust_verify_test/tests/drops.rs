@@ -2081,13 +2081,8 @@ bb0 (entry, exit):
     );
 }
 
-/// Run Verus on the code and return the `Drop(CallArg(id, idx))` and `Drop(AssignRhs(id))`
-/// nodes in the VIR, in order, as a space-separated list of `<node><idx>` (with `idx` = `r`
-/// for `AssignRhs`), where each distinct node id is replaced by a letter (`A`, `B`, ...)
-/// in order of first appearance.
-/// (resolution_inference doesn't track the operand temporaries of calls, constructors,
-/// and assignments, so these drops don't appear in the CFG.)
-fn operand_drops(code: String) -> String {
+/// Run Verus on the code and return the VIR log
+fn vir_log(code: String) -> String {
     let test_dir = tempfile::tempdir().expect("temporary test directory");
     let entry_file = test_dir.path().join("test.rs");
     let log_dir = test_dir.path().join("log");
@@ -2099,7 +2094,17 @@ fn operand_drops(code: String) -> String {
     let output = run_verus(&options, test_dir.path(), &entry_file, true, false);
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
 
-    let log = std::fs::read_to_string(log_dir.join("crate.vir")).expect("read vir log");
+    std::fs::read_to_string(log_dir.join("crate.vir")).expect("read vir log")
+}
+
+/// Run Verus on the code and return the `Drop(CallArg(id, idx))` and `Drop(AssignRhs(id))`
+/// nodes in the VIR, in order, as a space-separated list of `<node><idx>` (with `idx` = `r`
+/// for `AssignRhs`), where each distinct node id is replaced by a letter (`A`, `B`, ...)
+/// in order of first appearance.
+/// (resolution_inference doesn't track the operand temporaries of calls, constructors,
+/// and assignments, so these drops don't appear in the CFG.)
+fn operand_drops(code: String) -> String {
+    let log = vir_log(code);
     let re = regex::Regex::new(
         r"Drop\s+\(LocalOrTemp\s+(?:CallArg\s+(\d+)\s+(\d+)|AssignRhs\s+(\d+))\)",
     )
@@ -2212,4 +2217,29 @@ fn test_assign_rhs_drops() {
         }
     };
     assert_eq!(operand_drops(code), "Ar Br");
+}
+
+/// The awaited future is moved into a binding (`__awaitee`) in the desugaring of `.await`,
+/// which is dropped after the await completes
+#[test]
+fn test_await_drops() {
+    let code = verus_code! {
+        async fn f() -> u64 { 0 }
+        async fn test() -> u64 {
+            let d = mk();
+            let r = f().await;
+            r
+        }
+    };
+    let log = vir_log(code);
+    let re = regex::Regex::new(r#"> (Await)|Drop\s+\(LocalOrTemp\s+Local\s+\(VarIdent\s+"(\w+)""#)
+        .unwrap();
+    let events: Vec<String> = re
+        .captures_iter(&log)
+        .map(|cap| match cap.get(1) {
+            Some(_) => "await".to_string(),
+            None => cap[2].to_string(),
+        })
+        .collect();
+    assert_eq!(events.join(" "), "await __awaitee d");
 }
