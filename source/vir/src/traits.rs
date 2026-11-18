@@ -41,7 +41,7 @@ impl DemoteTraitLookup {
         let mut extension_traits: HashSet<Path> = HashSet::new();
         let mut impl_to_spec_traits: HashMap<Path, Path> = HashMap::new();
         for t in traits_iter() {
-            if let Some((extension, imp)) = &t.x.external_trait_extension {
+            for (extension, imp) in t.x.external_trait_extension.iter() {
                 extension_traits.insert(extension.clone());
                 impl_to_spec_traits.insert(imp.clone(), extension.clone());
             }
@@ -627,7 +627,7 @@ pub fn inherit_default_bodies(
     // map TSpec to T for each external_trait_extension(TSpec via TSpecImpl) on T
     let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
     for tr in unpruned_krate.traits.iter() {
-        if let Some((extension, _)) = &tr.x.external_trait_extension {
+        for (extension, _) in tr.x.external_trait_extension.iter() {
             extension_to_trait.insert(extension.clone(), tr.x.name.clone());
         }
     }
@@ -1597,7 +1597,7 @@ pub fn merge_external_traits(
                     mut methods,
                     is_unsafe,
                     dyn_compatible,
-                    external_trait_extension,
+                    mut external_trait_extension,
                 } = prev.x.clone();
                 assert!(name == t.x.name);
                 if visibility != t.x.visibility {
@@ -1640,6 +1640,11 @@ pub fn merge_external_traits(
                     }
                 }
                 methods = Arc::new(methods.iter().chain(t.x.methods.iter()).cloned().collect());
+                for ext in t.x.external_trait_extension.iter() {
+                    if !external_trait_extension.contains(ext) {
+                        external_trait_extension.push(ext.clone());
+                    }
+                }
                 let prevx = TraitX {
                     name,
                     proxy,
@@ -1660,6 +1665,34 @@ pub fn merge_external_traits(
             }
         } else {
             traits.push(t.clone());
+        }
+    }
+
+    // If there are multiple external_trait_extensions for the same trait,
+    // they are all merged into the trait (see trait_extensions::eliminate_trait_extensions),
+    // so their methods must have distinct names
+    let trait_index: HashMap<Path, usize> =
+        traits.iter().enumerate().map(|(i, t)| (t.x.name.clone(), i)).collect();
+    for t in traits.iter() {
+        let mut names: HashMap<crate::ast::Segment, &Trait> = HashMap::new();
+        for (extension, _) in t.x.external_trait_extension.iter() {
+            let Some(i) = trait_index.get(extension) else { continue };
+            let ext = &traits[*i];
+            for m in ext.x.methods.iter() {
+                let name = m.path.last_segment();
+                if let Some(prev_ext) = names.get(&name) {
+                    return Err(error(
+                        &ext.span,
+                        format!(
+                            "spec function `{}` is declared by more than one `external_trait_extension` for trait `{}`",
+                            name,
+                            path_as_friendly_rust_name(&t.x.name),
+                        ),
+                    )
+                    .secondary_span(&prev_ext.span));
+                }
+                names.insert(name, ext);
+            }
         }
     }
 

@@ -355,7 +355,7 @@ impl GlobalCtx {
         // Note: external_trait_extension traits have already been eliminated
         // (see trait_extensions::eliminate_trait_extensions)
         for t in &krate.traits {
-            assert!(t.x.external_trait_extension.is_none());
+            assert!(t.x.external_trait_extension.is_empty());
         }
         for t in &krate.trait_impls {
             assert!(!t.x.external_trait_blanket);

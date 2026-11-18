@@ -320,7 +320,7 @@ pub fn eliminate_trait_extensions(
 ) -> Result<Krate, VirErr> {
     let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
     for t in krate.traits.iter() {
-        if let Some((extension, _)) = &t.x.external_trait_extension {
+        for (extension, _) in t.x.external_trait_extension.iter() {
             assert!(!extension_to_trait.contains_key(extension));
             extension_to_trait.insert(extension.clone(), t.x.name.clone());
         }
@@ -366,26 +366,27 @@ pub fn eliminate_trait_extensions(
             continue;
         }
         let Some(t) = trait_map.get(&ti.x.trait_path) else { continue };
-        let Some((extension, _)) = &t.x.external_trait_extension else { continue };
-        let Some(ext) = trait_map.get(extension) else { continue };
-        for method in ext.x.methods.iter() {
-            if implemented.contains(&(ti.x.impl_path.clone(), method.clone())) {
-                continue;
+        for (extension, _) in t.x.external_trait_extension.iter() {
+            let Some(ext) = trait_map.get(extension) else { continue };
+            for method in ext.x.methods.iter() {
+                if implemented.contains(&(ti.x.impl_path.clone(), method.clone())) {
+                    continue;
+                }
+                let Some(decl) = func_map.get(method) else {
+                    // The method declaration has been pruned, so the method is never used
+                    continue;
+                };
+                let name = crate::def::trait_extension_uninterp_name(method, &ti.x.impl_path);
+                uninterp_functions.push(crate::traits::trait_method_impl_shell(
+                    ti,
+                    ext,
+                    decl,
+                    name,
+                    None,
+                    Some(&t.x.name),
+                    warning_ctx,
+                ));
             }
-            let Some(decl) = func_map.get(method) else {
-                // The method declaration has been pruned, so the method is never used
-                continue;
-            };
-            let name = crate::def::trait_extension_uninterp_name(method, &ti.x.impl_path);
-            uninterp_functions.push(crate::traits::trait_method_impl_shell(
-                ti,
-                ext,
-                decl,
-                name,
-                None,
-                Some(&t.x.name),
-                warning_ctx,
-            ));
         }
     }
 
@@ -401,9 +402,10 @@ pub fn eliminate_trait_extensions(
         if extension_to_trait.contains_key(&t.x.name) {
             continue;
         }
-        if let Some((extension, _)) = &t.x.external_trait_extension {
+        if !t.x.external_trait_extension.is_empty() {
             let mut tx: TraitX = t.x.clone();
-            if let Some(ext) = extension_traits.get(extension) {
+            for (extension, _) in t.x.external_trait_extension.iter() {
+                let Some(ext) = extension_traits.get(extension) else { continue };
                 let names = |tx: &TraitX| tx.typ_params.iter().map(|(x, _)| x.clone()).collect();
                 let (t_names, ext_names): (Vec<_>, Vec<_>) = (names(&t.x), names(&ext.x));
                 if t_names != ext_names {
@@ -416,7 +418,7 @@ pub fn eliminate_trait_extensions(
                 methods.extend(ext.x.methods.iter().cloned());
                 tx.methods = Arc::new(methods);
             }
-            tx.external_trait_extension = None;
+            tx.external_trait_extension = vec![];
             traits.push(t.new_x(tx));
         } else {
             traits.push(t.clone());
