@@ -1223,7 +1223,8 @@ fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemFn) {
         );
         let self_ty = get_self_ty_turbofish(&bundle.sm);
         let trans_args: Vec<&Pat> = l.func.sig.inputs.iter().map(|i| left_of_colon(i)).collect();
-        quote! { pre.invariant() && #self_ty::#trans_name_strong(#(#trans_args),*) }
+        let pre = trans_args[0];
+        quote! { #pre.invariant() && #self_ty::#trans_name_strong(#(#trans_args),*) }
     };
 
     let mut stmts = vec![
