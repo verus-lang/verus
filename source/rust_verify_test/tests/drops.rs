@@ -17,8 +17,9 @@ use common::*;
 // Like MIR, we only drop values whose types need dropping, so `D` implements `Drop`
 // (whereas integers, references, and `Option<u64>` don't need dropping).
 //
-// Note the following differences, which are expected:
-//  - VIR uses temporaries in some places where MIR doesn't (e.g., for `let` initializers),
+// Note the following differences between VIR and MIR, which are expected:
+//  - VIR uses temporaries for all let initializers, whereas MIR writes a simple
+//    by-value binding (let x = e;) directly into the local. This doesn't impact drops.
 //  - MIR uses temporaries in some places where VIR doesn't (e.g., for reborrows).
 //    This doesn't impact drops, since references have no drop glue.
 
