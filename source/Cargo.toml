@@ -33,7 +33,7 @@ bincode-next = { version = "3.1", features = ["serde"] }
 cargo_metadata = "0.23.1"
 chrono = "0.4.41"
 clap-cargo = { version = "0.18.3", features = ["clap", "cargo_metadata"] }
-clap = { version = "4.6.1", features = ["derive"] }
+clap = { version = "4.6.1", features = ["derive", "wrap_help"] }
 colored = "3.1"
 console = { version = "0.16", default-features = false, features = ["ansi-parsing"] }
 convert_case = "0.4"
