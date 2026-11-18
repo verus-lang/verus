@@ -38,9 +38,7 @@ use rustc_middle::middle::region;
 use rustc_middle::mir::*;
 use rustc_middle::thir::{self, ExprId, LocalVarId, Param, ParamId, PatKind, Thir};
 use rustc_middle::ty::{self, ScalarInt, Ty, TyCtxt, TypeVisitableExt, TypingMode};
-use rustc_middle::{bug, span_bug};
-use rustc_session::lint;
-use rustc_span::{Span, Symbol};
+use rustc_span::{Span, Symbol, bug, span_bug};
 
 use crate::builder::expr::as_place::PlaceBuilder;
 use crate::builder::scope::LintLevel;
@@ -82,9 +80,9 @@ pub fn build_mir_inner_impl<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Body<'t
         Err(error_reported) => construct_error(tcx, def, error_reported),
         Ok((thir, expr)) => {
             let build_mir = |thir: &Thir<'tcx>| match thir.body_type {
-                thir::BodyTy::Fn(fn_sig) => construct_fn(tcx, def, thir, expr, fn_sig),
+                thir::BodyTy::Fn(fn_sig) => construct_fn(tcx, def, thir, expr, fn_sig, false),
                 thir::BodyTy::Const(ty) | thir::BodyTy::GlobalAsm(ty) => {
-                    construct_const(tcx, def, thir, expr, ty)
+                    construct_const(tcx, def, thir, expr, ty, false)
                 }
             };
 
@@ -479,6 +477,7 @@ fn construct_fn<'tcx>(
     thir: &Thir<'tcx>,
     expr: ExprId,
     fn_sig: ty::FnSig<'tcx>,
+    verus_full_erasure: bool,
 ) -> Body<'tcx> {
     let span = tcx.def_span(fn_def);
     let fn_id = tcx.local_def_id_to_hir_id(fn_def);
@@ -502,15 +501,6 @@ fn construct_fn<'tcx>(
     let arguments = &thir.params;
 
     let return_ty = fn_sig.output();
-    let coroutine = match tcx.type_of(fn_def).instantiate_identity().skip_norm_wip().kind() {
-        ty::Coroutine(_, args) => Some(Box::new(CoroutineInfo::initial(
-            tcx.coroutine_kind(fn_def).unwrap(),
-            args.as_coroutine().yield_ty(),
-            args.as_coroutine().resume_ty(),
-        ))),
-        ty::Closure(..) | ty::CoroutineClosure(..) | ty::FnDef(..) => None,
-        ty => span_bug!(span_with_body, "unexpected type of body: {ty:?}"),
-    };
 
     if let Some((dialect, phase)) =
         find_attr!(tcx, fn_id, CustomMir(dialect, phase) => (dialect, phase))
@@ -539,6 +529,27 @@ fn construct_fn<'tcx>(
     };
 
     let infcx = tcx.infer_ctxt().build(typing_mode);
+
+    let defining_ty = tcx.type_of(fn_def).instantiate_identity().skip_normalization();
+    let defining_ty = if infcx.next_trait_solver() {
+        // Closure types come from HIR typeck results, where they were already
+        // normalized during writeback. Wrapping them in an `EarlyBinder`
+        // conservatively makes aliases non-rigid, so restore their rigidness
+        // instead of normalizing them again during MIR build.
+        ty::set_aliases_to_rigid(tcx, defining_ty)
+    } else {
+        defining_ty
+    };
+    let coroutine = match defining_ty.kind() {
+        ty::Coroutine(_, args) => Some(Box::new(CoroutineInfo::initial(
+            tcx.coroutine_kind(fn_def).unwrap(),
+            args.as_coroutine().yield_ty(),
+            args.as_coroutine().resume_ty(),
+        ))),
+        ty::Closure(..) | ty::CoroutineClosure(..) | ty::FnDef(..) => None,
+        ty => span_bug!(span_with_body, "unexpected type of body: {ty:?}"),
+    };
+
     let mut builder = Builder::new(
         thir,
         infcx,
@@ -549,6 +560,7 @@ fn construct_fn<'tcx>(
         return_ty,
         return_ty_span,
         coroutine,
+        verus_full_erasure,
     );
 
     let call_site_scope =
@@ -569,6 +581,7 @@ fn construct_fn<'tcx>(
             })
             .into_block();
         let source_info = builder.source_info(fn_end);
+        builder.push_coverage_point_for_fn_end(return_block, source_info, fn_id);
         builder.cfg.terminate(return_block, source_info, TerminatorKind::Return);
         builder.build_drop_trees();
         return_block.unit()
@@ -594,6 +607,7 @@ fn construct_const<'a, 'tcx>(
     thir: &'a Thir<'tcx>,
     expr: ExprId,
     const_ty: Ty<'tcx>,
+    verus_full_erasure: bool,
 ) -> Body<'tcx> {
     let hir_id = tcx.local_def_id_to_hir_id(def);
 
@@ -628,8 +642,18 @@ fn construct_const<'a, 'tcx>(
     };
 
     let infcx = tcx.infer_ctxt().build(typing_mode);
-    let mut builder =
-        Builder::new(thir, infcx, def, hir_id, span, 0, const_ty, const_ty_span, None);
+    let mut builder = Builder::new(
+        thir,
+        infcx,
+        def,
+        hir_id,
+        span,
+        0,
+        const_ty,
+        const_ty_span,
+        None,
+        verus_full_erasure,
+    );
 
     let mut block = START_BLOCK;
     block = builder.expr_into_dest(Place::return_place(), block, expr).into_block();
@@ -651,8 +675,8 @@ fn construct_error(tcx: TyCtxt<'_>, def_id: LocalDefId, guar: ErrorGuaranteed) -
     let hir_id = tcx.local_def_id_to_hir_id(def_id);
 
     let (inputs, output, coroutine) = match tcx.def_kind(def_id) {
-        DefKind::Const { .. }
-        | DefKind::AssocConst { .. }
+        DefKind::Const
+        | DefKind::AssocConst
         | DefKind::AnonConst
         | DefKind::Static { .. }
         | DefKind::GlobalAsm => {
@@ -783,6 +807,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         return_ty: Ty<'tcx>,
         return_span: Span,
         coroutine: Option<Box<CoroutineInfo<'tcx>>>,
+        verus_full_erasure: bool,
     ) -> Builder<'a, 'tcx> {
         let tcx = infcx.tcx;
         // Some functions always have overflow checks enabled,
@@ -827,7 +852,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             var_debug_info: vec![],
             lint_level_roots_cache: GrowableBitSet::new_empty(),
             coverage_info: coverageinfo::CoverageInfoBuilder::new_if_enabled(tcx, def),
-            verus_extra_thir: crate::verus::get_extra_thir(def),
+            verus_extra_thir: if verus_full_erasure {
+                None
+            } else {
+                crate::verus::get_extra_thir(def)
+            },
             verus_mir_builder_ctxt: crate::builder::verus_builder::VerusMirBuilderCtxt::new(),
         };
 
@@ -852,7 +881,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             self.coroutine.clone(),
             None,
         );
-        body.coverage_info_hi = self.coverage_info.as_ref().map(|b| b.as_done());
+        body.coverage_early_info = self.coverage_info.as_ref().map(|b| b.as_done());
 
         let writer = pretty::MirWriter::new(self.tcx);
         writer.write_mir_fn(&body, &mut std::io::stdout()).unwrap();
@@ -973,7 +1002,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 .unwrap_crate_local()
                 .lint_root;
             self.tcx.emit_node_span_lint(
-                lint::builtin::UNREACHABLE_CODE,
+                rustc_lint_defs::builtin::UNREACHABLE_CODE,
                 lint_root,
                 target_loc.span,
                 crate::diagnostics::UnreachableDueToUninhabited {
@@ -1001,7 +1030,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             self.coroutine,
             None,
         );
-        body.coverage_info_hi = self.coverage_info.map(|b| b.into_done());
+        body.coverage_early_info = self.coverage_info.map(|b| b.into_done());
 
         let writer = pretty::MirWriter::new(self.tcx);
         for (index, block) in body.basic_blocks.iter().enumerate() {

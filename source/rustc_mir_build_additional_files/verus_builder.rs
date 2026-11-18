@@ -194,3 +194,25 @@ pub(super) fn cfg_removal_fix_constraints_one_block<'a, 'tcx>(
 
     this.cfg.terminate(new_block, source_info, TerminatorKind::Goto { target: new_block });
 }
+
+/// Build the MIR for the given body in "full erasure" mode (see `FullErasureCtxt`).
+/// This does NOT use the query system (i.e., the results of `thir_body` and `mir_built`
+/// are unaffected), and it should only be called when the full erasure context is set.
+pub fn build_mir_full_erasure<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def: rustc_hir::def_id::LocalDefId,
+) -> rustc_middle::mir::Body<'tcx> {
+    let full_erasure =
+        crate::verus::get_full_erasure_ctxt().expect("full erasure ctxt should be set");
+    match crate::thir::cx::thir_body_full_erasure(tcx, def, full_erasure) {
+        Err(error_reported) => super::construct_error(tcx, def, error_reported),
+        Ok((thir, expr)) => match thir.body_type {
+            rustc_middle::thir::BodyTy::Fn(fn_sig) => {
+                super::construct_fn(tcx, def, &thir, expr, fn_sig, true)
+            }
+            rustc_middle::thir::BodyTy::Const(ty) | rustc_middle::thir::BodyTy::GlobalAsm(ty) => {
+                super::construct_const(tcx, def, &thir, expr, ty, true)
+            }
+        },
+    }
+}

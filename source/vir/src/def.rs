@@ -107,6 +107,7 @@ const MONOTYPE_APP_END: &str = ">";
 const MONOTYPE_DECORATE: &str = "$%";
 const TRAIT_DEFAULT_PREFIX: &str = "default%";
 const TRAIT_DEFAULT_SEPARATOR: &str = "%%%";
+const PREFIX_EXTENSION_IMPL: &str = "extension_impl%";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
 const DUMMY_PARAM: &str = "no%param";
@@ -124,6 +125,7 @@ pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
 pub const CLOSURE_RETURN_VALUE_NAME: &str = "closure_return%";
 
 pub const AUTOSPEC_FUNC_PREFIX: &str = "returns_clause_autospec%";
+pub const CLONE_FUNC_PREFIX: &str = "clone_clause_autoderived%";
 
 pub const FNDEF_TYPE: &str = "fndef";
 pub const FNDEF_SINGLETON: &str = "fndef_singleton";
@@ -139,6 +141,7 @@ pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
 pub const FUEL_DEFAULTS: &str = "fuel_defaults";
 pub const RETURN_VALUE: &str = "return%";
 pub const RETURN_VALUE_ASYNC_FUTURE: &str = "return_async_future%";
+pub const OTHER_PARAM_VALUE: &str = "other%";
 pub const DEFAULT_ENSURES: &str = "default_ensures";
 pub const U_HI: &str = "uHi";
 pub const I_LO: &str = "iLo";
@@ -451,6 +454,20 @@ pub fn trait_inherit_default_name(default_fun: &Fun, impl_path: &Path) -> Fun {
             krate: path.krate.clone(),
             segments: Arc::new(segments),
         }),
+    })
+}
+
+/// Path of the impl of an external_trait_extension trait TSpec that Verus synthesizes
+/// for an impl of T (origin_impl_path) that has no matching TSpecImpl impl
+pub(crate) fn synthesized_extension_impl_path(origin_impl_path: &Path) -> Path {
+    let mut segments = (*origin_impl_path.segments).clone();
+    let last = segments.last().expect("segment").to_string();
+    let x = PREFIX_EXTENSION_IMPL.to_string() + &last;
+    assert!(!x.contains(TRAIT_DEFAULT_SEPARATOR));
+    *segments.last_mut().unwrap() = Segment::V(Arc::new(x), 0);
+    Arc::new(crate::ast::PathX {
+        krate: origin_impl_path.krate.clone(),
+        segments: Arc::new(segments),
     })
 }
 
@@ -1088,6 +1105,10 @@ pub fn fn_au_inner_mask() -> Fun {
     fun!(CrateId::Vstd => "atomic", "AtomicUpdate"; "inner_mask")
 }
 
+pub fn fn_resolution_atomic_update() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "Resolution"; "atomic_update")
+}
+
 pub fn fn_pred_args() -> Fun {
     fun!(CrateId::Vstd => "atomic"; "pred_args")
 }
@@ -1255,4 +1276,12 @@ pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
             crate::fun!(CrateId::Vstd => "std_specs", "cmp"; "ge_ensures")
         }
     }
+}
+
+pub fn clone_spec_fn_name(path: &Path) -> Fun {
+    let name = path.last_segment();
+    let Segment::Impl(d) = name else { panic!("clone_spec_fn_name") };
+    let name = Segment::V(Arc::new(CLONE_FUNC_PREFIX.to_string()), d);
+    let p = path.pop_segment().push_segment(name);
+    Arc::new(FunX { path: p })
 }

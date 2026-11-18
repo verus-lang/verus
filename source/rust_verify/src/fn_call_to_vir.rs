@@ -58,23 +58,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let rust_item = verus_items::get_rust_item(tcx, f);
     let verus_item = bctx.ctxt.get_verus_item(f);
 
-    if bctx.external_body
-        && !matches!(
-            verus_item,
-            Some(
-                VerusItem::Spec(
-                    SpecItem::Requires
-                        | SpecItem::Recommends
-                        | SpecItem::Ensures
-                        | SpecItem::Returns
-                        | SpecItem::OpensInvariantMask
-                        | SpecItem::NoUnwind
-                        | SpecItem::NoUnwindWhen
-                        | SpecItem::Decreases
-                ) | VerusItem::Directive(DirectiveItem::ExtraDependency)
-            )
-        )
-    {
+    if bctx.external_body && !verus_item.is_some_and(crate::pre_header::is_header_verus_item) {
         return Ok(bctx.spanned_typed_new(
             expr.span,
             &expr_typ()?,
@@ -1126,6 +1110,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let bctx = &BodyCtxt { in_old: true, ..bctx.clone() };
                 let arg = expr_to_vir_consume(bctx, &args[0])?;
                 mk_expr(ExprX::Old(arg))
+            }
+            ExprItem::ProphecyDisallowed => {
+                record_spec_fn_pure_args_only(bctx, expr);
+                internal_err_unless!(
+                    args_len == 2,
+                    expr.span,
+                    "expected prophecy_disallowed",
+                    &args
+                );
+                let reason = get_string_lit_arg(&args[0], "prophecy_disallowed")?;
+                let arg = expr_to_vir_consume(bctx, &args[1])?;
+                mk_expr(ExprX::ProphecyDisallowed(Arc::new(reason), arg))
             }
             ExprItem::ArrayIndex => {
                 record_spec_fn(bctx, expr);
@@ -2467,6 +2463,7 @@ fn uncompilable_verus_fn(verus_item: &VerusItem) -> bool {
             ExprItem::Choose
             | ExprItem::ChooseTuple
             | ExprItem::Old
+            | ExprItem::ProphecyDisallowed
             | ExprItem::GetVariantField
             | ExprItem::GetUnionField
             | ExprItem::IsVariant

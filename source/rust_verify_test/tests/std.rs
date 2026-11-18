@@ -2741,3 +2741,465 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] reverse_bits verus_code! {
+        use vstd::prelude::*;
+
+        fn test_spec_and_involution(a: u8, b: u16, c: u32, d: u64) {
+            let ra = a.reverse_bits();
+            let rb = b.reverse_bits();
+            let rc = c.reverse_bits();
+            let rd = d.reverse_bits();
+            assert(ra == a.reverse_bits());
+            assert(ra.reverse_bits() == a);
+            assert(rb.reverse_bits() == b);
+            assert(rc.reverse_bits() == c);
+            assert(rd.reverse_bits() == d);
+        }
+
+        fn test_bits(x: u32) {
+            let r = x.reverse_bits();
+            assert((r >> 31u32) & 1u32 == (x >> sub(31u32, 31u32)) & 1u32);
+            assert((r >> 0u32) & 1u32 == (x >> sub(31u32, 0u32)) & 1u32);
+            assert((x >> sub(31u32, 31u32)) & 1u32 == x & 1u32) by (bit_vector);
+            assert((r >> 31u32) & 1u32 == x & 1u32);
+        }
+
+        fn test_value() {
+            let r = 6u8.reverse_bits();
+            assert(r == 0x60u8) by (bit_vector)
+                requires
+                    (r >> 0u8) & 1u8 == (6u8 >> 7u8) & 1u8,
+                    (r >> 1u8) & 1u8 == (6u8 >> 6u8) & 1u8,
+                    (r >> 2u8) & 1u8 == (6u8 >> 5u8) & 1u8,
+                    (r >> 3u8) & 1u8 == (6u8 >> 4u8) & 1u8,
+                    (r >> 4u8) & 1u8 == (6u8 >> 3u8) & 1u8,
+                    (r >> 5u8) & 1u8 == (6u8 >> 2u8) & 1u8,
+                    (r >> 6u8) & 1u8 == (6u8 >> 1u8) & 1u8,
+                    (r >> 7u8) & 1u8 == (6u8 >> 0u8) & 1u8,
+            ;
+        }
+
+        fn test_no_unwind(a: u8, b: u16, c: u32, d: u64)
+            no_unwind
+        {
+            let _ = a.reverse_bits();
+            let _ = b.reverse_bits();
+            let _ = c.reverse_bits();
+            let _ = d.reverse_bits();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trailing_zeros_u128_usize verus_code! {
+        use vstd::prelude::*;
+
+        fn test_u128(x: u128)
+            requires x != 0,
+        {
+            let t = x.trailing_zeros();
+            assert(t < 128);
+            assert((x >> t as u128) & 1u128 == 1u128);
+            // the low bit is clear whenever there is at least one trailing zero
+            assert(t > 0 ==> (x >> 0u128) & 1u128 == 0u128);
+        }
+
+        fn test_u128_zero() {
+            let t = 0u128.trailing_zeros();
+            assert(t == 128);
+        }
+
+        fn test_usize(x: usize)
+            requires x != 0,
+        {
+            let t = x.trailing_zeros();
+            assert(t < usize::BITS);
+            assert((x >> t as usize) & 1usize == 1usize);
+        }
+
+        fn test_usize_zero() {
+            let t = 0usize.trailing_zeros();
+            assert(t == usize::BITS);
+        }
+
+        spec fn spec_tz(x: usize) -> u32 {
+            x.trailing_zeros()
+        }
+
+        proof fn test_usize_spec(x: usize)
+            requires x != 0,
+        {
+            assert(spec_tz(x) < usize::BITS);
+        }
+
+        fn test_wrong(x: u128)
+            requires x != 0,
+        {
+            let t = x.trailing_zeros();
+            assert(t == 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] leading_zeros_u128_usize verus_code! {
+        use vstd::prelude::*;
+
+        fn test_u128(x: u128)
+            requires x != 0,
+        {
+            let l = x.leading_zeros();
+            assert(l < 128);
+            assert((x >> sub(127u128, l as u128)) & 1u128 != 0u128);
+            assert(x >> sub(128u128, l as u128) == 0);
+        }
+
+        fn test_u128_top() {
+            let l = u128::MAX.leading_zeros();
+            assert((u128::MAX >> 127u128) & 1u128 == 1u128) by (bit_vector);
+            assert(l == 0);
+        }
+
+        fn test_usize(x: usize)
+            requires x != 0,
+        {
+            let l = x.leading_zeros();
+            assert(l < usize::BITS);
+            assert(x >> sub(usize::BITS as usize, l as usize) == 0);
+        }
+
+        fn test_usize_zero() {
+            let l = 0usize.leading_zeros();
+            assert(l == usize::BITS);
+        }
+
+        fn test_wrong(x: usize)
+            requires x != 0,
+        {
+            let l = x.leading_zeros();
+            assert(l == 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] count_ones verus_code! {
+        use vstd::prelude::*;
+
+        fn test_bounds(a: u8, b: u16, c: u32, d: u64, e: u128, f: usize) {
+            assert(a.count_ones() <= 8);
+            assert(b.count_ones() <= 16);
+            assert(c.count_ones() <= 32);
+            assert(d.count_ones() <= 64);
+            assert(e.count_ones() <= 128);
+            assert(f.count_ones() <= usize::BITS);
+        }
+
+        fn test_zero(a: u8, f: usize) {
+            let ca = a.count_ones();
+            assert(ca == 0 <==> a == 0);
+            let cf = f.count_ones();
+            assert(cf == 0 <==> f == 0);
+            assert(0u64.count_ones() == 0);
+        }
+
+        fn test_nonzero(x: u32)
+            requires x != 0,
+        {
+            let c = x.count_ones();
+            assert(c >= 1);
+        }
+
+        fn test_no_unwind(a: u8, b: u16, c: u32, d: u64, e: u128, f: usize)
+            no_unwind
+        {
+            let _ = a.count_ones();
+            let _ = b.count_ones();
+            let _ = c.count_ones();
+            let _ = d.count_ones();
+            let _ = e.count_ones();
+            let _ = f.count_ones();
+        }
+
+        fn test_wrong(x: u64)
+            requires x != 0,
+        {
+            let c = x.count_ones();
+            assert(c == 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] count_ones_values verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::bits::nat_count_ones;
+
+        fn test_small_values() {
+            assert(1u32.count_ones() == 1);
+            assert(0u8.count_ones() == 0);
+            assert(1u128.count_ones() == 1);
+            assert(1usize.count_ones() == 1);
+            let c = 1u64.count_ones();
+            assert(c == 1);
+        }
+
+        fn test_values_with_fuel() {
+            assert(4u16.count_ones() == 1) by {
+                reveal_with_fuel(nat_count_ones, 3);
+            }
+            let c = 7u32.count_ones();
+            assert(c == 3) by {
+                reveal_with_fuel(nat_count_ones, 3);
+            }
+        }
+
+        proof fn test_values_by_compute() {
+            assert(0xffu8.count_ones() == 8) by (compute);
+            assert(0xffff_ffff_ffff_ffffu64.count_ones() == 64) by (compute);
+            assert(0x8000_0000_0000_0000_0000_0000_0000_0001u128.count_ones() == 2) by (compute);
+        }
+
+        spec fn spec_count_ones(x: u8) -> u32 {
+            x.count_ones()
+        }
+
+        proof fn test_spec_values() {
+            assert(spec_count_ones(1) == 1);
+            assert(spec_count_ones(6) == 2) by (compute);
+        }
+
+        proof fn test_wrong() {
+            reveal_with_fuel(nat_count_ones, 2);
+            assert(2u32.count_ones() == 2); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] termination_impl_no_precondition_allowed verus_code! {
+        use vstd::prelude::*;
+
+        struct X { }
+
+        impl std::process::Termination for X {
+            fn report(self) -> std::process::ExitCode
+                requires false
+            {
+                loop{}
+            }
+        }
+
+        fn main() -> X {
+            X { }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `requires` clauses; these can only be inherited from the trait declaration")
+}
+
+test_verify_one_file! {
+    #[test] autoderive_clone_structs_enums verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Clone)]
+        pub struct Single {
+        }
+
+        fn test1() {
+            let x = Single { };
+            let y = x.clone();
+            assert(y == Single { });
+        }
+
+        #[derive(Clone)]
+        pub struct X {
+            pub a: u64
+        }
+
+        fn test2() {
+            let x = X { a: 20 };
+            let y = x.clone();
+            assert(y.a == 20);
+        }
+
+        #[derive(Clone)]
+        pub struct X2 {
+            pub x: X,
+        }
+
+        fn test3() {
+            let x2 = X2 { x: X { a: 20 } };
+            let y = x2.clone();
+            assert(y.x.a == 20);
+        }
+
+        #[derive(Clone)]
+        pub enum Option<A> {
+            Some(A),
+            None,
+        }
+
+        fn test4() {
+            let x = Option::<u64>::None;
+            let y = x.clone();
+            assert(y == Option::<u64>::None);
+        }
+
+        fn test5() {
+            let x = Option::Some(X2 { x: X { a: 5 } });
+            let y = x.clone();
+            assert(y == Option::Some(X2 { x: X { a: 5 } }));
+        }
+
+        pub trait Tr {
+            type R: Clone;
+        }
+
+        #[derive(Clone)]
+        pub enum ComplexOption<A: Tr> {
+            Some(A::R),
+            None,
+        }
+
+        #[derive(Clone)]
+        pub struct Z;
+
+        impl Tr for Z {
+            type R = X2;
+        }
+
+        fn test6() {
+            let x = ComplexOption::<Z>::Some(X2 { x: X { a: 5 } });
+            let y = x.clone();
+            assert(y == ComplexOption::<Z>::Some(X2 { x: X { a: 5 } }));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] autoderive_clone_with_visibility verus_code! {
+        #[derive(Clone)]
+        pub struct X {
+            pub a: u64
+        }
+
+        #[derive(Clone)]
+        pub struct X2 {
+            pub x: X,
+        }
+
+        mod inner_mod {
+            use vstd::prelude::*;
+            use super::X2;
+            use super::X;
+
+            #[derive(Clone)]
+            pub(crate) struct Foo {
+                pub j: u64,
+                x: X2,
+            }
+
+            fn test_from_inside() {
+                let foo = Foo { j: 1, x: X2 { x: X { a: 2 } } };
+                let foo2 = foo.clone();
+                assert(foo2 == Foo { j: 1, x: X2 { x: X { a: 2 } } });
+            }
+
+            pub(crate) fn new() -> Foo {
+                Foo { j: 1, x: X2 { x: X { a: 2 } } }
+            }
+        }
+        use inner_mod::Foo;
+
+        fn test_from_outside() {
+            let foo = inner_mod::new();
+            let foo2 = foo.clone();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] slice_sorts verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::OrdSpec;
+        use std::cmp::Ordering;
+        fn sorted(v: &mut Vec<u8>)
+            requires old(v)@.len() == 2,
+            ensures final(v)@[0] <= final(v)@[1], final(v)@.to_multiset() == old(v)@.to_multiset(),
+        {
+            v.sort();
+        }
+        fn sorted_unstable(v: &mut [u8])
+            requires old(v)@.len() == 2,
+            ensures final(v)@[0] <= final(v)@[1],
+        {
+            v.sort_unstable();
+        }
+        fn by(v: &mut Vec<u8>) ensures final(v)@.len() == old(v)@.len() {
+            v.sort_by(|a: &u8, b: &u8| -> (o: Ordering) ensures o == (*a).cmp_spec(b) { a.cmp(b) });
+        }
+        fn by_key(v: &mut Vec<(u8, u8)>) ensures final(v)@.len() == old(v)@.len() {
+            v.sort_by_key(|p: &(u8, u8)| -> (k: u8) ensures k == p.0 { p.0 });
+        }
+        fn by_sorted_by_compare(v: &mut Vec<u8>)
+            requires old(v)@.len() == 2,
+            ensures final(v)@[0] >= final(v)@[1],
+        {
+            // sorted by the comparator's order (here: descending); calling the comparator on
+            // two elements shows what it says about them
+            let c = |a: &u8, b: &u8| -> (o: Ordering) ensures o == (*b).cmp_spec(a) { b.cmp(a) };
+            v.sort_by(c);
+            let o = c(&v[0], &v[1]);
+            assert(o != Ordering::Greater);
+        }
+        fn by_key_sorted(v: &mut Vec<(u8, u8)>)
+            requires old(v)@.len() == 2,
+            ensures final(v)@[0].0 <= final(v)@[1].0,
+        {
+            let f = |p: &(u8, u8)| -> (k: u8) ensures k == p.0 { p.0 };
+            v.sort_by_key(f);
+            let k0 = f(&v[0]);
+            let k1 = f(&v[1]);
+            assert(k0 <= k1);
+        }
+        fn by_not_sorted(v: &mut Vec<u8>) requires old(v)@.len() == 2 {
+            // only the comparator's order is known, not `<=`
+            v.sort_by(|a: &u8, b: &u8| -> (o: Ordering) ensures o == (*b).cmp_spec(a) { b.cmp(a) });
+            assert(v@[0] <= v@[1]); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // std's sorts may panic if the order is not total (Rust >= 1.81): the comparator must be
+    // a total order on the elements, so an unannotated comparator is rejected
+    #[test] sort_by_requires_total_order verus_code! {
+        use vstd::prelude::*;
+        fn unannotated(v: &mut Vec<u8>) {
+            v.sort_by(|a: &u8, b: &u8| a.cmp(b)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // the key function must be deterministic (std calls it more than once per element)
+    #[test] sort_by_key_requires_deterministic_key verus_code! {
+        use vstd::prelude::*;
+        fn unannotated(v: &mut Vec<(u8, u8)>) {
+            v.sort_by_key(|p: &(u8, u8)| p.0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // a type whose `Ord` is not known to be lawful cannot be sorted with `sort`
+    #[test] sort_requires_lawful_ord verus_code! {
+        use vstd::prelude::*;
+        #[derive(PartialEq, Eq, PartialOrd, Ord)]
+        struct K(u8);
+        fn f(v: &mut Vec<K>) {
+            v.sort(); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
