@@ -53,10 +53,27 @@ test_verify_one_file! {
             let _ = b.saturating_add(b);
             let _ = b.saturating_sub(b);
         }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] signed_saturating_add_does_not_wrap verus_code! {
+        use vstd::prelude::*;
 
         fn test_wrong() {
             let a = 100i8.saturating_add(100);
             assert(a == 200 - 256); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] signed_saturating_add_does_not_exceed_max verus_code! {
+        use vstd::prelude::*;
+
+        fn test_wrong(a: i8) {
+            let x = a.saturating_add(1);
+            assert(x == a + 1); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -166,6 +183,13 @@ test_verify_one_file! {
             let _ = u32::from_be_bytes(b4);
             let _ = u64::from_be_bytes(b8);
         }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] from_be_bytes_is_not_little_endian verus_code! {
+        use vstd::prelude::*;
+        use vstd::bytes::*;
 
         fn test_wrong() {
             let b: [u8; 4] = [0x01, 0x02, 0x03, 0x04];
