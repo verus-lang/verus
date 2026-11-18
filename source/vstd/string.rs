@@ -28,7 +28,7 @@ use super::view::*;
 
 #[cfg(verus_keep_ghost)]
 #[cfg(not(verus_verify_core))]
-use super::std_specs::cmp::PartialEqSpecImpl;
+use super::std_specs::cmp::{OrdSpecImpl, PartialEqSpecImpl, PartialOrdSpecImpl};
 
 verus! {
 
@@ -61,6 +61,98 @@ impl PartialEqSpecImpl for str {
         self@ == other@
     }
 }
+
+/// The order of `str` and `String`: Rust compares their UTF-8 bytes lexicographically, and UTF-8
+/// preserves the order of code points, so this is the lexicographic order of the characters by
+/// code point (a proper prefix is smaller).
+#[cfg(not(verus_verify_core))]
+pub open spec fn char_seq_cmp(a: Seq<char>, b: Seq<char>) -> core::cmp::Ordering
+    decreases a.len(),
+{
+    if a.len() == 0 {
+        if b.len() == 0 {
+            core::cmp::Ordering::Equal
+        } else {
+            core::cmp::Ordering::Less
+        }
+    } else if b.len() == 0 {
+        core::cmp::Ordering::Greater
+    } else if (a[0] as u32) < (b[0] as u32) {
+        core::cmp::Ordering::Less
+    } else if (a[0] as u32) > (b[0] as u32) {
+        core::cmp::Ordering::Greater
+    } else {
+        char_seq_cmp(a.drop_first(), b.drop_first())
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(not(verus_verify_core))]
+impl PartialOrdSpecImpl for str {
+    open spec fn obeys_partial_cmp_spec() -> bool {
+        true
+    }
+
+    open spec fn partial_cmp_spec(&self, other: &str) -> Option<core::cmp::Ordering> {
+        Some(char_seq_cmp(self@, other@))
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(not(verus_verify_core))]
+impl OrdSpecImpl for str {
+    open spec fn obeys_cmp_spec() -> bool {
+        true
+    }
+
+    open spec fn cmp_spec(&self, other: &str) -> core::cmp::Ordering {
+        char_seq_cmp(self@, other@)
+    }
+}
+
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ <str as PartialOrd>::partial_cmp ](x: &str, y: &str) -> Option<
+    core::cmp::Ordering,
+>
+;
+
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ <str as Ord>::cmp ](x: &str, y: &str) -> core::cmp::Ordering
+;
+
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl PartialOrdSpecImpl for String {
+    open spec fn obeys_partial_cmp_spec() -> bool {
+        true
+    }
+
+    open spec fn partial_cmp_spec(&self, other: &String) -> Option<core::cmp::Ordering> {
+        Some(char_seq_cmp(self@, other@))
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl OrdSpecImpl for String {
+    open spec fn obeys_cmp_spec() -> bool {
+        true
+    }
+
+    open spec fn cmp_spec(&self, other: &String) -> core::cmp::Ordering {
+        char_seq_cmp(self@, other@)
+    }
+}
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ <String as PartialOrd>::partial_cmp ](x: &String, y: &String) -> Option<
+    core::cmp::Ordering,
+>
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ <String as Ord>::cmp ](x: &String, y: &String) -> core::cmp::Ordering
+;
 
 #[cfg(not(verus_verify_core))]
 pub trait StringSliceAdditionalSpecFns {

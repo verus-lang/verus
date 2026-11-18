@@ -266,6 +266,130 @@ pub broadcast proof fn lemma_option_obeys_cmp_spec<T: Ord>()
     }
 }
 
+#[cfg(not(verus_verify_core))]
+proof fn lemma_char_seq_cmp_equal(a: Seq<char>, b: Seq<char>)
+    ensures
+        (crate::string::char_seq_cmp(a, b) == Ordering::Equal) <==> a == b,
+    decreases a.len(),
+{
+    broadcast use crate::seq::group_seq_axioms;
+
+    if a.len() > 0 && b.len() > 0 {
+        let (a1, b1) = (a.drop_first(), b.drop_first());
+        assert(a1.len() == a.len() - 1 && b1.len() == b.len() - 1);
+        lemma_char_seq_cmp_equal(a1, b1);
+        if (a[0] as u32) == (b[0] as u32) {
+            // a char is determined by its code point
+            assert(a[0] == b[0]);
+            if a1 == b1 {
+                assert forall|i: int| 0 <= i < a.len() implies a[i] == b[i] by {
+                    if i > 0 {
+                        assert(a[i] == a1[i - 1]);
+                        assert(b[i] == b1[i - 1]);
+                    }
+                }
+                assert(a =~= b);
+            }
+            if a == b {
+                assert(a1 =~= b1);
+            }
+        }
+    } else if a.len() == 0 && b.len() == 0 {
+        assert(a =~= b);
+    }
+}
+
+#[cfg(not(verus_verify_core))]
+proof fn lemma_char_seq_cmp_antisym(a: Seq<char>, b: Seq<char>)
+    ensures
+        (crate::string::char_seq_cmp(a, b) == Ordering::Less) <==> (crate::string::char_seq_cmp(
+            b,
+            a,
+        ) == Ordering::Greater),
+    decreases a.len(),
+{
+    broadcast use crate::seq::group_seq_axioms;
+
+    if a.len() > 0 && b.len() > 0 && (a[0] as u32) == (b[0] as u32) {
+        assert(a.drop_first().len() == a.len() - 1);
+        lemma_char_seq_cmp_antisym(a.drop_first(), b.drop_first());
+    }
+}
+
+#[cfg(not(verus_verify_core))]
+proof fn lemma_char_seq_cmp_trans(a: Seq<char>, b: Seq<char>, c: Seq<char>)
+    requires
+        crate::string::char_seq_cmp(a, b) == Ordering::Less,
+        crate::string::char_seq_cmp(b, c) == Ordering::Less,
+    ensures
+        crate::string::char_seq_cmp(a, c) == Ordering::Less,
+    decreases a.len(),
+{
+    broadcast use crate::seq::group_seq_axioms;
+
+    if a.len() > 0 && b.len() > 0 && c.len() > 0 && (a[0] as u32) == (b[0] as u32) && (b[0] as u32)
+        == (c[0] as u32) {
+        assert(a.drop_first().len() == a.len() - 1);
+        lemma_char_seq_cmp_trans(a.drop_first(), b.drop_first(), c.drop_first());
+    }
+}
+
+/// `String`'s order is the lexicographic order of its characters by code point
+/// (`string::char_seq_cmp`), a total order.
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub broadcast proof fn lemma_string_obeys_cmp_spec()
+    ensures
+        #[trigger] obeys_cmp::<alloc::string::String>(),
+{
+    use alloc::string::String;
+    use crate::string::char_seq_cmp;
+
+    assert(obeys_eq::<String>()) by {
+        reveal(obeys_eq_spec_properties);
+    }
+    assert(obeys_cmp_partial_ord::<String>()) by {
+        reveal(obeys_cmp_partial_ord);
+        assert forall|x: String, y: String|
+            x.eq_spec(&y) <==> x.partial_cmp_spec(&y) == Some(Ordering::Equal) by {
+            lemma_char_seq_cmp_equal(x@, y@);
+        }
+    }
+    assert(obeys_cmp_ord::<String>()) by {
+        reveal(obeys_cmp_ord);
+    }
+    assert(obeys_partial_cmp_spec_properties::<String>()) by {
+        reveal(obeys_partial_cmp_spec_properties);
+        reveal(obeys_eq_spec_properties);
+        assert forall|x: String, y: String| #[trigger]
+            x.partial_cmp_spec(&y) == Some(Ordering::Equal) <==> x.eq_spec(&y) by {
+            lemma_char_seq_cmp_equal(x@, y@);
+        }
+        assert forall|x: String, y: String| #[trigger]
+            x.partial_cmp_spec(&y) == Some(Ordering::Less) <==> y.partial_cmp_spec(&x) == Some(
+                Ordering::Greater,
+            ) by {
+            lemma_char_seq_cmp_antisym(x@, y@);
+        }
+        assert forall|x: String, y: String, z: String|
+            x.partial_cmp_spec(&y) == Some(Ordering::Less) && #[trigger] y.partial_cmp_spec(&z)
+                == Some(Ordering::Less) implies #[trigger] x.partial_cmp_spec(&z) == Some(
+            Ordering::Less,
+        ) by {
+            lemma_char_seq_cmp_trans(x@, y@, z@);
+        }
+        assert forall|x: String, y: String, z: String|
+            x.partial_cmp_spec(&y) == Some(Ordering::Greater) && #[trigger] y.partial_cmp_spec(&z)
+                == Some(Ordering::Greater) implies #[trigger] x.partial_cmp_spec(&z) == Some(
+            Ordering::Greater,
+        ) by {
+            lemma_char_seq_cmp_antisym(y@, x@);
+            lemma_char_seq_cmp_antisym(z@, y@);
+            lemma_char_seq_cmp_antisym(z@, x@);
+            lemma_char_seq_cmp_trans(z@, y@, x@);
+        }
+    }
+}
+
 pub broadcast group group_laws_cmp {
     u8_laws::lemma_obeys_cmp_spec,
     i8_laws::lemma_obeys_cmp_spec,
@@ -281,6 +405,8 @@ pub broadcast group group_laws_cmp {
     isize_laws::lemma_obeys_cmp_spec,
     lemma_ref_obeys_cmp_spec,
     lemma_option_obeys_cmp_spec,
+    #[cfg(all(feature = "alloc", not(verus_verify_core)))]
+    lemma_string_obeys_cmp_spec,
     tuple_1_laws::lemma_obeys_cmp_spec,
     tuple_2_laws::lemma_obeys_cmp_spec,
     tuple_3_laws::lemma_obeys_cmp_spec,
