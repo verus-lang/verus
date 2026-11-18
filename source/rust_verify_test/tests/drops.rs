@@ -1891,6 +1891,81 @@ bb0 (entry, exit):
     );
 }
 
+/// `for` loops (which are wrapped in a loop isolation boundary), in both editions
+#[test]
+fn test_for_loop() {
+    for edition in ["--edition 2021", "--edition 2024"] {
+        let code = verus_code! {
+            fn test() {
+                for i in 0..use_ref(&mk()) {
+                    let a = mk();
+                }
+                let k = mk();
+            }
+        };
+        check_cfg(code, "test", &[edition], FOR_LOOP_CFG);
+    }
+}
+
+const FOR_LOOP_CFG: &str = r#"
+bb0 (entry, may_unwind):
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    Overwrite(Temp_2)        // Range { start: 0, end: use_ref(&mk()) }
+    MoveFrom(Temp_2)         // Range { start: 0, end: use_ref(&mk()) }
+    Overwrite(VERUS_iter_init)
+    ScopeDrop(Temp_0)        // mk()
+    MoveFrom(VERUS_iter_init)
+    -> bb2
+bb2 (may_unwind):
+    Overwrite(Temp_3)        // into_iter({ VERUS_iter_init })
+    MoveFrom(Temp_3)         // into_iter({ VERUS_iter_init })
+    Overwrite(VERUS_exec_iter)
+    MoveFrom(VERUS_exec_iter)
+    -> bb4
+bb4:
+    Overwrite(Temp_4)        // new({ VERUS_exec_iter })
+    MoveFrom(Temp_4)         // new({ VERUS_exec_iter })
+    Overwrite(VERUS_iter)
+    -> bb5
+bb5:
+    MoveFrom(VERUS_iter)
+    Overwrite(VERUS_ghost_iter)
+    -> bb6
+bb6 (may_unwind):
+    Uninitialize(VERUS_loop_next)
+    Mutate(VERUS_ghost_iter)
+    -> bb9
+bb7:
+    -> bb13
+bb9:
+    Overwrite(Temp_5)        // next({ &mut VERUS_ghost_iter })
+    -> bb10, bb11
+bb10:
+    Overwrite(VERUS_loop_val)
+    Overwrite(VERUS_loop_next)
+    -> bb12
+bb11:
+    -> bb7
+bb12:
+    Overwrite(i)
+    Overwrite(Temp_6)        // mk()
+    MoveFrom(Temp_6)         // mk()
+    Overwrite(a)
+    ScopeDrop(Temp_6)        // mk()
+    ScopeDrop(a)
+    Overwrite(Temp_7)        // {...}
+    -> bb6
+bb13 (exit):
+    Overwrite(Temp_8)        // match VERUS_iter {...}
+    Overwrite(VERUS_loop_result)
+    Overwrite(Temp_9)        // mk()
+    MoveFrom(Temp_9)         // mk()
+    Overwrite(k)
+    ScopeDrop(Temp_9)        // mk()
+    ScopeDrop(k)
+"#;
+
 /// Closures have their own scopes; closure params are dropped after the closure body.
 #[test]
 fn test_closure() {
@@ -2101,17 +2176,27 @@ fn vir_log(code: String) -> String {
 /// nodes in the VIR, in order, as a space-separated list of `<node><idx>` (with `idx` = `r`
 /// for `AssignRhs`), where each distinct node id is replaced by a letter (`A`, `B`, ...)
 /// in order of first appearance.
+/// To show where the drops are, the list also includes the early exits
+/// (`return`, `break`, `continue`), which the drops should immediately precede.
 /// (resolution_inference doesn't track the operand temporaries of calls, constructors,
 /// and assignments, so these drops don't appear in the CFG.)
 fn operand_drops(code: String) -> String {
     let log = vir_log(code);
     let re = regex::Regex::new(
-        r"Drop\s+\(LocalOrTemp\s+(?:CallArg\s+(\d+)\s+(\d+)|AssignRhs\s+(\d+))\)",
+        r"Drop\s+\(LocalOrTemp\s+(?:CallArg\s+(\d+)\s+(\d+)|AssignRhs\s+(\d+))\)|> (Return)\s|> BreakOrContinue\s+:label\s+\(Label[^)]*\)\s+:is_break\s+(true|false)",
     )
     .unwrap();
     let mut ids: Vec<String> = vec![];
     let mut drops: Vec<String> = vec![];
     for cap in re.captures_iter(&log) {
+        if cap.get(4).is_some() {
+            drops.push("return".to_string());
+            continue;
+        }
+        if let Some(is_break) = cap.get(5) {
+            drops.push(if is_break.as_str() == "true" { "break" } else { "continue" }.to_string());
+            continue;
+        }
         let (id, idx) = match cap.get(1) {
             Some(id) => (id.as_str().to_string(), cap[2].to_string()),
             None => (cap[3].to_string(), "r".to_string()),
@@ -2142,7 +2227,7 @@ fn test_operand_drops() {
             three(mk(), mk(), mk());
         }
     };
-    assert_eq!(operand_drops(code), "A1 A0");
+    assert_eq!(operand_drops(code), "A1 A0 return return");
 }
 
 /// For nested calls, the inner call's arguments are dropped first
@@ -2154,7 +2239,7 @@ fn test_call_arg_drops_nested() {
             two(mk(), two(mk(), if c { return; } else { mk() }));
         }
     };
-    assert_eq!(operand_drops(code), "A0 B0");
+    assert_eq!(operand_drops(code), "A0 B0 return");
 }
 
 /// Method receivers are call arguments; `break` drops them too
@@ -2168,7 +2253,7 @@ fn test_call_arg_drops_method_break() {
             }
         }
     };
-    assert_eq!(operand_drops(code), "A0");
+    assert_eq!(operand_drops(code), "A0 break");
 }
 
 /// The fields of constructors (tuples, tuple structs, and structs) and the elements
@@ -2185,7 +2270,7 @@ fn test_ctor_arg_drops() {
             let a = [mk(), mk(), if c { return; } else { mk() }];
         }
     };
-    assert_eq!(operand_drops(code), "A0 B0 C0 D1 D0");
+    assert_eq!(operand_drops(code), "A0 return B0 return C0 return D1 D0 return");
 }
 
 /// The operands of overloaded operators, and the arguments of closure calls
@@ -2200,7 +2285,7 @@ fn test_call_arg_drops_operator_closure() {
             f(mk(), if c { return; } else { mk() });
         }
     };
-    assert_eq!(operand_drops(code), "A0 B0");
+    assert_eq!(operand_drops(code), "A0 return B0 return");
 }
 
 /// The right-hand side of an assignment is evaluated before the place,
@@ -2216,7 +2301,7 @@ fn test_assign_rhs_drops() {
             x = mk();
         }
     };
-    assert_eq!(operand_drops(code), "Ar Br");
+    assert_eq!(operand_drops(code), "Ar return Br return");
 }
 
 /// The awaited future is moved into a binding (`__awaitee`) in the desugaring of `.await`,
