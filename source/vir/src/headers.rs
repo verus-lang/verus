@@ -348,7 +348,7 @@ pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, Vir
                             if let StmtX::Expr(e) = &s.x {
                                 if let ExprX::Header(_h) = &e.x {
                                     block.push(s.clone());
-                                    nested_header_block = NestedHeaderBlock::Yes;
+                                    nested_header_block.join(NestedHeaderBlock::Yes);
                                 } else {
                                     nested_header_block.join(NestedHeaderBlock::No);
                                 }
@@ -359,6 +359,8 @@ pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, Vir
                         if let Some(e) = &e {
                             if let ExprX::Header(_h) = &e.x {
                                 nested_header_block = NestedHeaderBlock::Conflict;
+                            } else {
+                                nested_header_block.join(NestedHeaderBlock::No);
                             }
                         }
                     } else {

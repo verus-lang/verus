@@ -1708,3 +1708,16 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] inline_quant_shadows_outer_quant_var verus_code! {
+        spec fn f(x: int) -> int { x }
+
+        #[verifier::inline]
+        spec fn inl(b: int) -> bool { forall|x: int| #[trigger] f(x) == f(b) }
+
+        proof fn test() {
+            assert(forall|x: int| { let y = x; inl(y) }) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

@@ -43,6 +43,7 @@ use rustc_hir::attrs::lang_items::LangItem;
 use rustc_hir::def_id::LocalDefId;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::{self as hir, HirId, find_attr};
+use rustc_lint_defs::builtin::RUST_2021_INCOMPATIBLE_CLOSURE_CAPTURES;
 use rustc_middle::hir::place::{Place, PlaceBase, PlaceWithHirId, Projection, ProjectionKind};
 use rustc_middle::mir::FakeReadCause;
 use rustc_middle::traits::ObligationCauseCode;
@@ -50,9 +51,7 @@ use rustc_middle::ty::{
     self, BorrowKind, ClosureSizeProfileData, Ty, TyCtxt, TypeVisitableExt as _, TypeckResults,
     Unnormalized, UpvarArgs, UpvarCapture,
 };
-use rustc_middle::{bug, span_bug};
-use rustc_session::lint;
-use rustc_span::{BytePos, Pos, Span, Symbol, sym};
+use rustc_span::{BytePos, Pos, Span, Symbol, bug, span_bug, sym};
 use rustc_trait_selection::infer::InferCtxtExt;
 use tracing::{debug, instrument};
 
@@ -244,7 +243,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         // NOTE(verus): we never need to worry about infer_kind
         assert!(!infer_kind);
 
-        let args = self.resolve_vars_if_possible(args);
+        let args = self.deeply_resolve_ignoring_regions(args);
         let closure_def_id = closure_def_id.expect_local();
 
         assert_eq!(self.tcx.hir_body_owner_def_id(body.id()), closure_def_id);
@@ -263,18 +262,12 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         // moved, and so on.
         let _ = euv::ExprUseVisitor::new(&closure_fcx, &mut delegate).consume_body(body);
 
-        // `consume_body` only sees how the lowered closure body uses those
-        // places. For `move(foo).clone()`, the body may only borrow the
-        // synthetic local for `foo`, but the source `move(...)` still requires
-        // capturing that local by value.
+        // Save the captures that must be upgraded to by-value after inferring
+        // the closure kind from the operations in the body.
         let explicit_captures = match self.tcx.hir_node(closure_hir_id).expect_expr().kind {
             hir::ExprKind::Closure(closure) => closure.explicit_captures,
             _ => bug!("expected closure expr for {:?}", closure_hir_id),
         };
-        for capture in explicit_captures {
-            let place = closure_fcx.place_for_root_variable(closure_def_id, capture.var_hir_id);
-            delegate.consume(&PlaceWithHirId { hir_id: capture.var_hir_id, place }, closure_hir_id);
-        }
 
         // There are several curious situations with coroutine-closures where
         // analysis is too aggressive with borrows when the coroutine-closure is
@@ -371,8 +364,24 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             closure_def_id, delegate.capture_information
         );
 
-        let (capture_information, _closure_kind, _origin) = self
+        let (mut capture_information, _closure_kind, _origin) = self
             .process_collected_capture_information(capture_clause, &delegate.capture_information);
+
+        // `move(expr)` requires its synthetic local to be captured by value,
+        // regardless of how the closure body uses it. Apply that requirement
+        // after closure-kind inference so capturing a value does not by itself
+        // make the closure `FnOnce`.
+        for capture in explicit_captures {
+            let place = closure_fcx.place_for_root_variable(closure_def_id, capture.var_hir_id);
+            capture_information.push((
+                place,
+                ty::CaptureInfo {
+                    capture_kind_expr_id: Some(closure_hir_id),
+                    path_expr_id: Some(closure_hir_id),
+                    capture_kind: UpvarCapture::ByValue,
+                },
+            ));
+        }
 
         self.compute_min_captures(closure_def_id, capture_information, span);
 
@@ -1074,25 +1083,17 @@ fn apply_capture_kind_on_capture_ty<'tcx>(
 }
 
 /// Returns the Span of where the value with the provided HirId would be dropped
-fn drop_location_span(tcx: TyCtxt<'_>, hir_id: HirId) -> Span {
-    let owner_id = tcx.hir_get_enclosing_scope(hir_id).unwrap();
+fn drop_location_span(tcx: TyCtxt<'_>, hir_id: HirId) -> Option<Span> {
+    let owner_id = tcx.hir_get_enclosing_scope(hir_id)?;
 
-    let owner_node = tcx.hir_node(owner_id);
-    let owner_span = match owner_node {
-        hir::Node::Item(item) => match item.kind {
-            hir::ItemKind::Fn { body: owner_id, .. } => tcx.hir_span(owner_id.hir_id),
-            _ => {
-                bug!("Drop location span error: need to handle more ItemKind '{:?}'", item.kind);
-            }
-        },
-        hir::Node::Block(block) => tcx.hir_span(block.hir_id),
-        hir::Node::TraitItem(item) => tcx.hir_span(item.hir_id()),
-        hir::Node::ImplItem(item) => tcx.hir_span(item.hir_id()),
-        _ => {
-            bug!("Drop location span error: need to handle more Node '{:?}'", owner_node);
-        }
+    let hir_id = match tcx.hir_node(owner_id) {
+        hir::Node::Item(hir::Item { kind: hir::ItemKind::Fn { body, .. }, .. }) => body.hir_id,
+        hir::Node::Block(block) => block.hir_id,
+        hir::Node::TraitItem(item) => item.hir_id(),
+        hir::Node::ImplItem(item) => item.hir_id(),
+        _ => return None,
     };
-    tcx.sess.source_map().end_point(owner_span)
+    Some(tcx.sess.source_map().end_point(tcx.hir_span(hir_id)))
 }
 
 struct InferBorrowKind<'a, 'tcx> {
@@ -1245,9 +1246,7 @@ fn restrict_precision_for_drop_types<'a, 'tcx>(
     mut place: Place<'tcx>,
     mut curr_mode: ty::UpvarCapture,
 ) -> (Place<'tcx>, ty::UpvarCapture) {
-    let is_copy_type = fcx.type_is_copy_modulo_regions(place.ty());
-
-    if let (false, UpvarCapture::ByValue) = (is_copy_type, curr_mode) {
+    if curr_mode == UpvarCapture::ByValue && !fcx.type_is_copy_modulo_regions(place.ty()) {
         for i in 0..place.projections.len() {
             match place.ty_before_projection(i).kind() {
                 ty::Adt(def, _) if def.destructor(fcx.tcx).is_some() => {

@@ -1576,8 +1576,6 @@ pub struct AutoExtEqual {
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]
 pub struct FunctionAttrsX {
-    /// Erasure and lifetime checking based on ghost blocks
-    pub uses_ghost_blocks: bool,
     /// Inline spec function for SMT
     pub inline: bool,
     /// Create a global axiom saying forall params, require ==> ensure
@@ -1630,6 +1628,10 @@ pub struct FunctionAttrsX {
     pub impls_cannot_extend_spec: bool,
     /// Whether to assume that this function terminates
     pub exec_assume_termination: bool,
+    /// For a trait method impl whose method isn't declared in the trait's Verus spec
+    /// (e.g., an incomplete `external_trait_specification`), assume compatibility
+    /// and treat the impl as a static function rather than erroring
+    pub assume_compatibility_with_trait_spec: bool,
     /// Whether to allow this function to not terminate
     pub exec_allows_no_decreases_clause: bool,
     /// Is this function `tracked_swap`, which requires special handling
@@ -1642,6 +1644,9 @@ pub struct FunctionAttrsX {
     pub is_async: bool,
     /// Is this a types's drop implementation
     pub is_drop: bool,
+    /// Is this the `clone` method of a `Clone` impl for a type that also implements
+    /// `TrivialClone`? If so, we add the postcondition `ensures ret == self`.
+    pub has_trivial_clone: bool,
 }
 
 /// Function specification of its invariant mask
@@ -2001,6 +2006,7 @@ pub struct TraitImplX {
     pub auto_imported: bool,
     // Is a blanket implementation declared by external_trait_extension:
     pub external_trait_blanket: bool,
+    pub is_unsafe: bool,
 }
 
 pub type ModuleReveals = Arc<Spanned<Vec<Fun>>>;

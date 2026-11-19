@@ -13,7 +13,7 @@
 #![cfg_attr(verus_keep_ghost, feature(atomic_internals))]
 #![cfg_attr(verus_keep_ghost, feature(generic_atomic))]
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
-#![cfg_attr(any(verus_keep_ghost, feature = "allocator"), feature(allocator_api))]
+#![cfg_attr(any(verus_keep_ghost, feature = "allocator"), feature(allocator_ext))]
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
 #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
@@ -32,6 +32,7 @@
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(btree_cursors))]
 #![cfg_attr(verus_keep_ghost, feature(panic_internals))]
 #![cfg_attr(verus_keep_ghost, feature(maybe_uninit_array_assume_init))]
+#![cfg_attr(verus_keep_ghost, feature(trivial_clone))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

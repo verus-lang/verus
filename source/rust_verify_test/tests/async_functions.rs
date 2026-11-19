@@ -453,7 +453,7 @@ test_verify_one_file! {
             let r = [0u8; core::mem::size_of_val(&N)];
             consumes_opaque(f1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -831,6 +831,40 @@ test_verify_one_file! {
             ensures r == n + 1, // FAILS
         {
             Gen { n }.await
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] async_fn_mut_param ["--edition 2024"] => verus_code! {
+        use vstd::prelude::*;
+        async fn f(mut a: u8) -> (r: u8)
+            ensures r == 2,
+        {
+            a = 1;
+            let b = &mut a;
+            *b = 2;
+            a
+        }
+        async fn g(mut a: Option<u8>) -> (r: bool)
+            ensures r == a is Some,
+        {
+            match a.as_mut() {
+                Some(x) => { *x = 1; true }
+                None => false,
+            }
+        }
+        async fn h(mut a: u8, b: u8) -> (r: u8)
+            ensures r == b,
+        {
+            a = b;
+            a
+        }
+        async fn wrong(mut a: u8) -> (r: u8)
+            ensures r == 2, // FAILS
+        {
+            a = 1;
+            a
         }
     } => Err(err) => assert_one_fails(err)
 }

@@ -477,7 +477,6 @@ fn mk_spec_function_stub(
             decreases_len: 0,
             item_kind: ItemKind::Function,
             attrs: Arc::new(FunctionAttrsX {
-                uses_ghost_blocks: true,
                 inline: false,
                 broadcast_forall: false,
                 broadcast_forall_only: false,
@@ -513,6 +512,8 @@ fn mk_spec_function_stub(
                 impls_cannot_extend_spec: false,
                 is_drop: false,
                 create_open_invariant_credit: false,
+                has_trivial_clone: false,
+                assume_compatibility_with_trait_spec: false,
             }),
         },
     )

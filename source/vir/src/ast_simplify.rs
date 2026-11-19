@@ -830,11 +830,8 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
                 .collect();
             Ok(Arc::new(TypX::Datatype(path, Arc::new(typ_args), Arc::new(vec![]))))
         }
-        TypX::FnDef(fun, _typs, resolved) => {
+        TypX::FnDef(fun, _typs, _resolved) => {
             state.fndef_typs.insert(fun.clone());
-            if let Some(resolved_fun) = resolved {
-                state.fndef_typs.insert(resolved_fun.clone());
-            }
             Ok(typ.clone())
         }
         TypX::TypParam(x) => {
@@ -1239,6 +1236,7 @@ fn add_fndef_axioms_to_function(
                 owning_module: None,
                 auto_imported: true,
                 external_trait_blanket: false,
+                is_unsafe: false,
             };
             trait_impls_out.push(Spanned::new(function.span.clone(), trait_implx));
         }
@@ -1339,6 +1337,27 @@ fn simplify_function(
             // We need to do this anyway since a unit-return function might
             // not have a return-arg to the ensures.
         }
+    }
+
+    if functionx.attrs.has_trivial_clone {
+        // This is the `clone` method of a `Clone` impl for a type that also implements
+        // `TrivialClone`, so the clone must be equivalent to a copy: `ensures ret == self`
+        if functionx.params.len() != 1 {
+            return Err(error(&function.span, "expected `clone` to have one parameter"));
+        }
+        let self_param = &functionx.params[0];
+        let self_var = SpannedTyped::new(
+            &function.span,
+            &self_param.x.typ,
+            ExprX::Var(self_param.x.name.clone()),
+        );
+        let ret_var = SpannedTyped::new(
+            &function.span,
+            &functionx.inner_ret.x.typ,
+            ExprX::Var(functionx.inner_ret.x.name.clone()),
+        );
+        let eq = mk_eq(&function.span, &ret_var, &self_var);
+        Arc::make_mut(&mut functionx.ensure.0).push(eq);
     }
 
     let local = LocalCtxt {
@@ -1548,6 +1567,7 @@ fn add_tuple_auto_impl(
         owning_module: None,
         auto_imported: true,
         external_trait_blanket: false,
+        is_unsafe: false,
     };
     trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
 }
@@ -1747,6 +1767,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             owning_module: None,
             auto_imported: true,
             external_trait_blanket: false,
+            is_unsafe: false,
         };
         trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
 

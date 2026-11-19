@@ -85,6 +85,12 @@ pub trait ExAllocator {
     type ExternalTraitSpecificationFor: core::alloc::Allocator;
 }
 
+#[cfg(not(verus_verify_core))]
+#[verifier::external_trait_specification]
+pub trait ExAllocatorClone: core::alloc::Allocator + Clone {
+    type ExternalTraitSpecificationFor: core::alloc::AllocatorClone;
+}
+
 #[verifier::external_trait_specification]
 pub trait ExFreeze: PointeeSized {
     type ExternalTraitSpecificationFor: core::marker::Freeze;
