@@ -858,8 +858,11 @@ impl Visitor {
             }
             GenericParam::Const(_) => None,
         });
+        let type_params = generics.type_params().map(|param| &param.ident);
 
         self.additional_items.push(parse_quote_spanned!(full_span =>
+            #[verifier::external_body]
+            #(#[verifier::reject_recursive_types(#type_params)])*
             #vis struct #pred_ident #impl_generics #where_clause {
                 _marker: ::core::marker::PhantomData<( #(#marker_types,)* )>,
             }
