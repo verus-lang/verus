@@ -7,7 +7,6 @@
 use std::borrow::Cow;
 use std::fmt::{self, Write};
 use std::hash::Hash;
-use std::mem;
 use std::num::NonZero;
 
 use either::{Left, Right};
@@ -19,14 +18,13 @@ use rustc_abi::{
 use rustc_ast::Mutability;
 use rustc_data_structures::fx::FxHashSet;
 use rustc_hir as hir;
-use rustc_middle::bug;
 use rustc_middle::mir::interpret::{
     InterpErrorKind, InvalidMetaKind, Misalignment, PointerArithmetic, Provenance, alloc_range,
     interp_ok,
 };
 use rustc_middle::ty::layout::{LayoutCx, TyAndLayout};
 use rustc_middle::ty::{self, Ty};
-use rustc_span::{Symbol, sym};
+use rustc_span::{Symbol, bug, sym};
 use tracing::trace;
 
 use super::machine::AllocMap;
@@ -530,7 +528,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
         let tail = self.ecx.tcx.struct_tail_for_codegen(pointee.ty, self.ecx.typing_env);
         match tail.kind() {
             ty::Dynamic(data, _) => {
-                let vtable = meta.unwrap_meta().to_pointer(self.ecx)?;
+                let vtable = meta.unwrap_meta().to_pointer(self.ecx);
                 // Make sure it is a genuine vtable pointer for the right trait.
                 try_validation!(
                     self.ecx.get_ptr_vtable_ty(vtable, Some(data)),
@@ -930,7 +928,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
 
                 // If we check references recursively, also check that this points to a function.
                 if let Some(_) = self.ref_tracking {
-                    let ptr = scalar.to_pointer(self.ecx)?;
+                    let ptr = scalar.to_pointer(self.ecx);
                     let _fn = try_validation!(
                         self.ecx.get_ptr_fn(ptr),
                         self.path,
@@ -1528,15 +1526,10 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValueVisitor<'tcx, M> for ValidityVisitor<'rt,
                     BackendRepr::Memory { .. } => unreachable!()
                 }
             }
-            ty::Adt(adt, _) if adt.is_maybe_dangling() => {
-                let old_may_dangle = mem::replace(&mut self.may_dangle, true);
-
-                let inner = self.ecx.project_field(val, FieldIdx::ZERO)?;
-                self.visit_value(&inner)?;
-
-                self.may_dangle = old_may_dangle;
-            }
             _ => {
+                let old_may_dangle = self.may_dangle;
+                self.may_dangle |= val.layout.ty.is_like_maybe_dangling();
+
                 // default handler
                 try_validation!(
                     self.walk_value(val),
@@ -1546,6 +1539,8 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValueVisitor<'tcx, M> for ValidityVisitor<'rt,
                     Ub(InvalidVTableTrait { vtable_dyn_type, expected_dyn_type }) =>
                         InvalidMetaWrongTrait { expected_dyn_type, vtable_dyn_type },
                 );
+
+                self.may_dangle = old_may_dangle;
             }
         }
 
@@ -1611,7 +1606,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         trace!("validate_place_internal: {:?}, {:?}", *val, val.layout.ty);
 
         // Run the visitor.
-        self.run_for_validation_mut(|ecx| {
+        self.ghost_run_mut(|ecx| {
             let reset_padding = reset_provenance_and_padding && {
                 // Check if `val` is actually stored in memory. If not, padding is not even
                 // represented and we need not reset it.

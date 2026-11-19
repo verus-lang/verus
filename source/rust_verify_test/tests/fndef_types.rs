@@ -2190,3 +2190,43 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] trait_method_impl_fndef_bounds verus_code! {
+        trait Foo {}
+        struct Yes;
+        struct No;
+        impl Foo for Yes {}
+        struct S<A>(A);
+
+        trait T {
+            fn m() -> u8;
+        }
+
+        impl<A: Foo> T for S<A> {
+            fn m() -> (r: u8)
+                ensures r == 1,
+            {
+                1
+            }
+        }
+
+        impl T for S<No> {
+            fn m() -> (r: u8)
+                ensures r == 2,
+            {
+                2
+            }
+        }
+
+        proof fn test(r1: u8, r2: u8)
+            requires
+                call_ensures(<S<Yes> as T>::m, (), r1),
+                call_ensures(<S<No> as T>::m, (), r2),
+        {
+            assert(r1 == 1);
+            assert(r2 == 2);
+            assert(r2 == 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

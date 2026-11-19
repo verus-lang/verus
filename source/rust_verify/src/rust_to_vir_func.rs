@@ -4,10 +4,10 @@ use crate::context::{BodyCtxt, Context, ContextX, ErasureInfo, HeaderSetting};
 use crate::pre_header::PreHeader;
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir::State;
+use crate::rust_to_vir_base::{alias_const_def_id, mk_visibility, qpath_to_ident};
 use crate::rust_to_vir_base::{
     check_fn_opaque_ty, check_generics_bounds_no_polarity, local_to_var, no_body_param_to_var,
 };
-use crate::rust_to_vir_base::{mk_visibility, qpath_to_ident};
 use crate::rust_to_vir_expr::{
     add_param_decls, expr_to_vir_consume, param_pat_to_decl, param_pat_to_destructure,
     param_pat_to_mut_var,
@@ -20,10 +20,11 @@ use rustc_hir::{
     Attribute, Body, BodyId, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
     HirId, Param, Pat, PatKind, Safety,
 };
+use rustc_middle::ty::consts::ConstExt;
 use rustc_middle::ty::{
     AdtDef, AliasTermKind, AliasTyKind, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind,
-    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionExt, RegionKind,
-    TyCtxt, TyKind, TypingEnv, ValTreeKind, Value,
+    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, TyCtxt,
+    TyKind, TypingEnv, ValTreeKind, Value,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
@@ -775,7 +776,7 @@ fn array_len_eq<'tcx>(
     let eval = |len: rustc_middle::ty::Const<'tcx>| -> Option<u64> {
         let len = match len.kind() {
             ConstKind::Alias(IsRigid::No, alias) => {
-                let typing_env = TypingEnv::post_analysis(tcx, alias.kind.opt_def_id()?);
+                let typing_env = TypingEnv::post_analysis(tcx, alias_const_def_id(alias.kind));
                 tcx.try_normalize_erasing_regions(
                     typing_env,
                     rustc_middle::ty::Unnormalized::new_wip(len),
@@ -1404,10 +1405,7 @@ fn mismatch_type_error_user_str_early<'tcx>(
                         let mut r = r;
                         r.name = rustc_span::Symbol::intern(&format!("'_{:}", idx));
                         idx += 1;
-                        GenericArg::from(Region::new_from_kind(
-                            ctxt.tcx,
-                            RegionKind::ReEarlyParam(r),
-                        ))
+                        GenericArg::from(Region::new_early_param(ctxt.tcx, r))
                     } else {
                         arg
                     }
@@ -2836,14 +2834,17 @@ fn param_names_for_async_func<'tcx>(
                 );
             }
             rustc_hir::StmtKind::Let(rustc_hir::LetStmt {
-                pat: rustc_hir::Pat { kind: rustc_hir::PatKind::Binding(_, id, ident, _), .. },
+                pat: rustc_hir::Pat { kind: rustc_hir::PatKind::Binding(bm, id, ident, _), .. },
                 init: Some(rustc_hir::Expr { kind: rustc_hir::ExprKind::Path(qpath), .. }),
                 ..
             }) => {
                 let pat = local_to_var(ident, id.local_id);
                 let init = qpath_to_ident(ctxt.tcx, &qpath)
                     .expect("internal error, async closure rebindings has no init value");
-                async_body_modes.insert(init.clone(), pat.clone());
+                // `async fn f(mut x: T)` becomes `fn f(x: T) { async move { let mut x = x; .. } }`:
+                // the `mut` is on the rebinding
+                let is_mut = bm.1 == rustc_middle::ty::Mutability::Mut;
+                async_body_modes.insert(init.clone(), (pat.clone(), is_mut));
             }
             _ => {}
         }
@@ -2854,11 +2855,11 @@ fn param_names_for_async_func<'tcx>(
         rewitten_params.push(Spanned::new(
             param.span.clone(),
             ParamX {
-                name: async_body_modes[&param.x.name].clone(),
+                name: async_body_modes[&param.x.name].0.clone(),
                 typ: param.x.typ.clone(),
                 mode: param.x.mode,
                 unwrapped_info: param.x.unwrapped_info.clone(),
-                user_mut: param.x.user_mut,
+                user_mut: param.x.user_mut || async_body_modes[&param.x.name].1,
             },
         ));
     }
@@ -3943,7 +3944,7 @@ fn get_async_inner_return_ty<'tcx>(
         typing_env,
         ctxt.tcx.item_bounds(alias_def_id).instantiate(ctxt.tcx, al_ty.args),
     );
-    // We are looking for a ProjectionPredicate that <F as Future>::Output = X
+    // We are looking for a ProjectionClause that <F as Future>::Output = X
     // where F is the opaque type.
     let ty_list = instantiated_bounds
         .iter()

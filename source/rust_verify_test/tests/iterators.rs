@@ -1600,7 +1600,7 @@ test_verify_one_file! {
             let _ = v.into_iter().enumerate();
         }
 
-        // ... and for the iterators over other collections, `str`, and slice chunks
+        // ... and for the iterators over other (well-formed) collections, `str`, and slice chunks
         fn other_sources(
             hm: &HashMap<u32, u32>,
             hs: &HashSet<u32>,
@@ -1609,7 +1609,13 @@ test_verify_one_file! {
             vd: &VecDeque<u32>,
             st: &str,
             s: &[u32],
-        ) {
+        )
+            requires
+                vstd::std_specs::hash::hash_map_wf(hm),
+                vstd::std_specs::hash::hash_set_wf(hs),
+                vstd::std_specs::btree::btree_map_wf(bm),
+                vstd::std_specs::btree::btree_set_wf(bs),
+        {
             let _ = hm.iter().enumerate();
             let _ = hm.keys().enumerate();
             let _ = hm.values().enumerate();
@@ -1722,4 +1728,19 @@ test_verify_one_file! {
             it.position(|x: u8| x > 1) // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] range_iterator_impl_with_destruct_bound verus_code! {
+        // Since Rust 1.100, `impl Iterator for Range<A>` requires `A: [const] Destruct`
+        use vstd::prelude::*;
+
+        fn first<I: Iterator<Item = u8>>(mut i: I) -> Option<u8> {
+            i.next()
+        }
+
+        fn test() {
+            let x = first(0u8..3);
+        }
+    } => Ok(())
 }
