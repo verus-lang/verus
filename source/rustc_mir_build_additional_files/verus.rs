@@ -2438,6 +2438,9 @@ fn mk_call_no_args_kind<'tcx>(
 /// Is the given expression ghost code, according to the full-erasure criteria?
 /// (See `FullErasureCtxt` and `GhostDetectionCtxt`.) Note that this only looks at the node itself;
 /// any subexpression of a ghost expression is also ghost code.
+/// A `proof_with_callee(verified, compiled)` call is not ghost code: in normal erasure,
+/// `verified` is the exec call that is checked (with `compiled` erased),
+/// and full erasure replaces the call by `compiled` (see `full_erasure_proof_with_callee`).
 fn is_ghost_expr<'tcx>(
     tcx: TyCtxt<'tcx>,
     typeck_results: &ty::TypeckResults<'tcx>,
