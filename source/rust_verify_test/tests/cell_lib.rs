@@ -246,8 +246,7 @@ test_verify_one_file! {
             layout_for_type_is_valid::<u32>();
             let (ptr1, Tracked(mut token1)) = allocate(4, 4);
             let (ptr2, Tracked(mut token2)) = allocate(4, 4);
-            // The facts that the `Dealloc` token carried are now on the pointer's provenance,
-            // so the counterpart of passing the other allocation's `Dealloc` is passing its pointer.
+            // The pointer is from a different allocation than the permission.
             deallocate(ptr2, 4, 4, Tracked(token1)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)

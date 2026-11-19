@@ -167,7 +167,6 @@ pub tracked struct PointsTo<V> {
 #[verusfmt::skip]
 broadcast use {
     super::raw_ptr::group_raw_ptr_axioms,
-    super::raw_ptr::group_points_to_lemmas,
     super::layout::group_layout_axioms,
     super::set_lib::group_set_lib_default,
     super::set::group_set_axioms};
@@ -364,10 +363,6 @@ impl<V> PPtr<V> {
             );
             let Tracked(exposed) = expose_provenance(p);
             let tracked points_to = raw_ptr::PointsTo::<V>::from_untyped(pt_untyped, ());
-            proof {
-                points_to.lemma_wf_basic();
-                points_to.is_nonnull();
-            }
             let tracked pt = PointsTo { points_to, exposed };
             let pptr = PPtr(p as usize, PhantomData);
 

@@ -168,16 +168,13 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
 {
     // Drop the old value from the permission, then write the bytes.
     proof {
-        perm.leak_contents();
+        perm.is_aligned();
     }
-    let ghost empty = *perm;
-    proof {
-        PointsTo::<T>::lemma_pt_parts_wf(empty);
-    }
-    let tracked (pt_untyped, _) = perm.as_raw_parts_mut().as_raw_parts_mut();
+    let tracked pt_untyped = perm.as_untyped_mut();
     let Tracked(val) = unsafe { ptr_write_untyped(ptr, v, Tracked(pt_untyped)) };
     proof {
-        PointsTo::<T>::lemma_pt_parts_wf(*perm);
+        broadcast use SeqPointsTo::lemma_ptrs_len_same_untyped;
+
         encode_decode_inverse(&val);
         perm.put(val);
     }
@@ -208,13 +205,10 @@ pub const fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo
 {
     // Move the value out of the permission, then read it from the bytes.
     proof {
-        PointsTo::<T>::lemma_pt_parts_wf(*perm);
+        perm.is_aligned();
     }
     let tracked val = perm.take();
-    proof {
-        PointsTo::<T>::lemma_pt_parts_wf(*perm);
-    }
-    let tracked pt_untyped = perm.tracked_pt_unaligned().tracked_pt_untyped();
+    let tracked pt_untyped = perm.as_untyped();
     unsafe { ptr_read_untyped(ptr, Tracked(pt_untyped), Tracked(val)) }
 }
 
