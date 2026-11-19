@@ -2413,6 +2413,7 @@ bb2:
     Overwrite(Temp_2)        // _VERUS_VERIFIED_f(&mk(), 0)
     -> bb3
 bb3:
+    Overwrite(__verus_tmp_tuple_var__)
     Overwrite(__verus_tmp_expr_var__)
     Overwrite(verus_tmp_z)
     -> bb4
@@ -2440,6 +2441,7 @@ bb2:
     Overwrite(Temp_2)        // _VERUS_VERIFIED_f(&mk(), 0)
     -> bb3
 bb3:
+    Overwrite(__verus_tmp_tuple_var__)
     Overwrite(__verus_tmp_expr_var__)
     Overwrite(verus_tmp_z)
     -> bb4
@@ -2688,4 +2690,66 @@ bb6:
     -> bb1
 "#,
     );
+}
+
+// The result of a `proof_with!` call with ghost outputs (`=>`) isn't a temporary
+// that lives until the end of the statement (which would extend the borrow in it)
+test_verify_one_file_with_options! {
+    #[test] test_proof_with_outputs_borrow_2021 ["--edition 2021"] => code! {
+        verus! {
+            pub struct G<'a> { pub r: &'a mut u64 }
+            impl<'a> Drop for G<'a> {
+                fn drop(&mut self)
+                    opens_invariants none
+                    no_unwind
+                {}
+            }
+            pub fn consume(g: G) -> (r: u64) ensures r == 0 { 0 }
+            pub fn use_mut(x: &mut u64) -> (r: u64) ensures r == 0 { 0 }
+        }
+
+        #[verus_spec(ret => with Ghost(w): Ghost<u32> -> z: Ghost<u32>)]
+        fn g(x: &mut u64) -> G<'_> {
+            proof_with!{|= Ghost(0u32)}
+            G { r: x }
+        }
+
+        #[verus_spec]
+        fn test(mut x: u64) -> u64 {
+            proof_decl!{ let ghost mut z = 0u32; }
+            let a = consume({ proof_with!{Ghost(0) => Ghost(z)} g(&mut x) }) + use_mut(&mut x);
+            a
+        }
+    } => Ok(())
+}
+
+// The result of a `proof_with!` call with ghost outputs (`=>`) isn't a temporary
+// that lives until the end of the statement (which would extend the borrow in it)
+test_verify_one_file_with_options! {
+    #[test] test_proof_with_outputs_borrow_2024 ["--edition 2024"] => code! {
+        verus! {
+            pub struct G<'a> { pub r: &'a mut u64 }
+            impl<'a> Drop for G<'a> {
+                fn drop(&mut self)
+                    opens_invariants none
+                    no_unwind
+                {}
+            }
+            pub fn consume(g: G) -> (r: u64) ensures r == 0 { 0 }
+            pub fn use_mut(x: &mut u64) -> (r: u64) ensures r == 0 { 0 }
+        }
+
+        #[verus_spec(ret => with Ghost(w): Ghost<u32> -> z: Ghost<u32>)]
+        fn g(x: &mut u64) -> G<'_> {
+            proof_with!{|= Ghost(0u32)}
+            G { r: x }
+        }
+
+        #[verus_spec]
+        fn test(mut x: u64) -> u64 {
+            proof_decl!{ let ghost mut z = 0u32; }
+            let a = consume({ proof_with!{Ghost(0) => Ghost(z)} g(&mut x) }) + use_mut(&mut x);
+            a
+        }
+    } => Ok(())
 }
