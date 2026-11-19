@@ -9719,6 +9719,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] mut_let_in_transition IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X {
+            fields { pub x: int }
+            transition!{ tr() {
+                let mut a: int = 1;
+                if true {
+                    let b: int = { a = 2; 0 };
+                }
+                assert(a == 2);
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "mutable bindings are not allowed in transition definitions")
+}
+
+test_verify_one_file! {
+    #[test] assign_to_immutable_binding_in_transition IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X {
+            fields { pub x: int }
+            transition!{ tr() {
+                let a: int = 1;
+                if true {
+                    let b: int = { a = 2; 0 };
+                }
+                assert(a == 2);
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "variable `a` is not marked mutable")
+}
+
+test_verify_one_file! {
     #[test] forge_instance_in_normal_fn IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
