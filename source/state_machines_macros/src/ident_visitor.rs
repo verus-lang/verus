@@ -190,7 +190,25 @@ fn validate_idents_pat(pat: &Pat, kind: TransitionKind) -> parse::Result<()> {
     let mut idv = IdentVisitor::new(kind, HashSet::new(), HashSet::new());
     idv.visit_pat(pat);
 
-    combine_errors_or_ok(idv.errors)
+    let mut mv = MutBindingVisitor { errors: idv.errors };
+    mv.visit_pat(pat);
+    combine_errors_or_ok(mv.errors)
+}
+
+struct MutBindingVisitor {
+    pub errors: Vec<Error>,
+}
+
+impl<'ast> Visit<'ast> for MutBindingVisitor {
+    fn visit_pat_ident(&mut self, node: &'ast PatIdent) {
+        if node.mutability.is_some() {
+            self.errors.push(Error::new(
+                node.span(),
+                "mutable bindings are not allowed in transition definitions",
+            ));
+        }
+        visit::visit_pat_ident(self, node);
+    }
 }
 
 struct IdentVisitor {
