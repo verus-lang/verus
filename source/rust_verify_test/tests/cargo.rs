@@ -173,6 +173,7 @@ vstd = {{ path = {vstd_path} }}
 
 [package.metadata.verus]
 verify = true
+# Skip vstd verification to speed up setup; trust settings stay fixed across runs.
 trusted_crates = ["vstd"]
 
 [workspace]
