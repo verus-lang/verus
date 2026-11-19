@@ -38,7 +38,7 @@ If a project has verification errors, `verita` also preserves a copy of the clon
 
 ## Locating Verus
 
-Projects are cloned side by side into a work directory, which also contains a `verus` symlink to `--verus-repo`. This lets projects that refer to Verus crates via paths like `../verus/source/vstd` use the Verus being tested. For `cargo_verus` projects, `verita` also patches registry and Git dependencies on Verus crates to use `--verus-repo`.
+Projects are cloned side by side into a work directory, which also contains a `verus` symlink to `--verus-repo` (a directory junction on Windows if symlinks are not permitted). This lets projects that refer to Verus crates via paths like `../verus/source/vstd` use the Verus being tested; preserved copies of failed projects get the same link. For `cargo_verus` projects, `verita` also patches registry and Git dependencies on Verus crates to use `--verus-repo`.
 
 ## Verus logs
 

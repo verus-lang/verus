@@ -417,6 +417,45 @@ fn process_target(
     ))
 }
 
+/// Create `{dir}/verus` pointing at the Verus repo, so that projects cloned into
+/// `dir` can refer to Verus via sibling paths like `../verus/source/vstd`.
+/// Failure only produces a warning, since most projects do not need the link.
+fn link_verus_sibling(verus_repo: &Path, dir: &Path) {
+    let link = dir.join("verus");
+    if fs::symlink_metadata(&link).is_ok() {
+        return;
+    }
+    #[cfg(unix)]
+    let result = std::os::unix::fs::symlink(verus_repo, &link);
+    #[cfg(windows)]
+    let result = std::os::windows::fs::symlink_dir(verus_repo, &link).or_else(|_| {
+        // Directory junctions do not require the symbolic-link privilege.
+        let status = std::process::Command::new("cmd")
+            .arg("/C")
+            .arg("mklink")
+            .arg("/J")
+            .arg(&link)
+            .arg(verus_repo)
+            .stdout(std::process::Stdio::null())
+            .status()?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(std::io::Error::other(format!(
+                "mklink /J exited with {status}"
+            )))
+        }
+    });
+    if let Err(e) = result {
+        warn!(
+            "Failed to link {} to {}: {}",
+            link.display(),
+            verus_repo.display(),
+            e
+        );
+    }
+}
+
 /// Process a single project: clone, checkout, prepare, and run all crate root targets.
 /// Returns (summaries, any_verus_failure, warnings) or an error.
 fn process_project(
@@ -712,18 +751,12 @@ fn main() -> anyhow::Result<()> {
 
     // Some projects (e.g., verified-storage) refer to Verus via paths like
     // `../verus/source/vstd`, expecting a Verus checkout next to their own.
-    let verus_link = workdir.join("verus");
     if active_projects.iter().any(|p| p.name == "verus") {
         return Err(anyhow!(
             "a project named `verus` conflicts with the Verus symlink"
         ));
     }
-    if fs::symlink_metadata(&verus_link).is_err() {
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&verus_repo, &verus_link)?;
-        #[cfg(windows)]
-        std::os::windows::fs::symlink_dir(&verus_repo, &verus_link)?;
-    }
+    link_verus_sibling(&verus_repo, workdir);
 
     let ctx = RunContext {
         sh: &sh,
@@ -768,6 +801,7 @@ fn main() -> anyhow::Result<()> {
                                     project.name, e
                                 );
                             } else {
+                                link_verus_sibling(&verus_repo, &perm_temp_dir);
                                 println!(
                                     "Preserved repo for {} (had verification errors) at: {}",
                                     project.name,
