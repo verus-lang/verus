@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use std::collections::{hash_map::Entry, BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tracing::{debug, warn};
 
@@ -32,300 +32,51 @@ fn build_verus_crate_map(verus_repo: &Path) -> HashMap<String, PathBuf> {
     map
 }
 
-fn normalize_join(base: &Path, relative: &str) -> PathBuf {
-    let mut path = PathBuf::new();
-    for component in base.join(relative).components() {
-        match component {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                path.pop();
-            }
-            component => path.push(component),
-        }
-    }
-    path
-}
-
-/// Mirror Cargo's literal prefix matching, where explicit `members` entries override `exclude`.
-fn workspace_excludes(
-    workspace_root: &Path,
-    members: &[&str],
-    exclude: &[&str],
-    manifest_path: &Path,
-) -> bool {
-    let under = |entries: &[&str]| {
-        entries
-            .iter()
-            .any(|entry| manifest_path.starts_with(normalize_join(workspace_root, entry)))
-    };
-    !under(members) && under(exclude)
-}
-
-fn toml_strings(value: Option<&toml::Value>) -> Vec<&str> {
-    value
-        .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
-        .unwrap_or_default()
-}
-
-fn toml_edit_strings(value: Option<&toml_edit::Item>) -> Vec<&str> {
-    value
-        .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
-        .unwrap_or_default()
-}
-
-/// Resolve the package's own workspace, an explicit `package.workspace`, or the
-/// nearest ancestor workspace that does not exclude the package.
-fn find_workspace_root(target_dir: &Path, repo_root: &Path) -> anyhow::Result<PathBuf> {
-    let target_dir = dunce::canonicalize(target_dir)?;
-    let repo_root = dunce::canonicalize(repo_root)?;
-    if !target_dir.starts_with(&repo_root) {
-        return Err(anyhow!(
-            "package {} is outside the repository",
-            target_dir.display()
-        ));
-    }
-    let target_manifest = target_dir.join("Cargo.toml");
-    let mut current = target_dir.as_path();
+/// Walk up from `target_dir` to `repo_root`, returning the highest ancestor that
+/// has a `[workspace]` section in its `Cargo.toml`. Falls back to `target_dir`.
+fn find_workspace_root(target_dir: &Path, repo_root: &Path) -> PathBuf {
+    let mut ancestors: Vec<PathBuf> = Vec::new();
+    let mut current = target_dir.to_path_buf();
     loop {
-        if let Ok(content) = std::fs::read_to_string(current.join("Cargo.toml")) {
-            let manifest: toml::Value = toml::from_str(&content)?;
-            if let Some(workspace) = manifest.get("workspace") {
-                if current == target_dir
-                    || !workspace_excludes(
-                        current,
-                        &toml_strings(workspace.get("members")),
-                        &toml_strings(workspace.get("exclude")),
-                        &target_manifest,
-                    )
-                {
-                    return Ok(current.to_path_buf());
-                }
-            }
-            if current == target_dir {
-                if let Some(workspace) = manifest
-                    .get("package")
-                    .and_then(|p| p.get("workspace"))
-                    .and_then(|w| w.as_str())
-                {
-                    let workspace = dunce::canonicalize(current.join(workspace))?;
-                    if !workspace.starts_with(&repo_root) {
-                        return Err(anyhow!(
-                            "workspace {} is outside the repository",
-                            workspace.display()
-                        ));
-                    }
-                    return Ok(workspace);
-                }
-            }
-        }
+        ancestors.push(current.clone());
         if current == repo_root {
             break;
         }
         match current.parent() {
-            Some(parent) => current = parent,
+            Some(parent) if parent != current => current = parent.to_path_buf(),
             _ => break,
         }
     }
-    Ok(target_dir)
-}
-
-fn visit_dependency_sections(
-    table: &mut dyn toml_edit::TableLike,
-    visit: &mut impl FnMut(&str, &mut toml_edit::Item),
-) {
-    for section in &["dependencies", "dev-dependencies", "build-dependencies"] {
-        if let Some(deps) = table.get_mut(section).and_then(|d| d.as_table_like_mut()) {
-            for (name, dep) in deps.iter_mut() {
-                visit(name.get(), dep);
-            }
-        }
-    }
-    if let Some(targets) = table.get_mut("target").and_then(|t| t.as_table_like_mut()) {
-        for (_, target) in targets.iter_mut() {
-            if let Some(target) = target.as_table_like_mut() {
-                visit_dependency_sections(target, visit);
-            }
-        }
-    }
-}
-
-fn visit_dependencies(
-    table: &mut dyn toml_edit::TableLike,
-    visit: &mut impl FnMut(&str, &mut toml_edit::Item),
-) {
-    // Inherited entries are handled at their workspace declaration.
-    let mut visit_declared = |name: &str, dep: &mut toml_edit::Item| {
-        if dep.get("workspace").and_then(|w| w.as_bool()) != Some(true) {
-            visit(name, dep);
-        }
-    };
-    visit_dependency_sections(table, &mut visit_declared);
-    if let Some(workspace) = table
-        .get_mut("workspace")
-        .and_then(|w| w.as_table_like_mut())
-    {
-        visit_dependency_sections(workspace, &mut visit_declared);
-    }
-}
-
-fn dependency_package_name<'a>(name: &'a str, dep: &'a toml_edit::Item) -> &'a str {
-    dep.get("package").and_then(|p| p.as_str()).unwrap_or(name)
-}
-
-fn visit_patch_dependencies(
-    table: &mut dyn toml_edit::TableLike,
-    visit: &mut impl FnMut(&str, &mut toml_edit::Item),
-) {
-    if let Some(sources) = table.get_mut("patch").and_then(|p| p.as_table_like_mut()) {
-        for (_, source) in sources.iter_mut() {
-            if let Some(deps) = source.as_table_like_mut() {
-                for (name, dep) in deps.iter_mut() {
-                    visit(name.get(), dep);
+    // Search from repo_root toward target_dir; return first one with [workspace]
+    for dir in ancestors.iter().rev() {
+        if let Ok(content) = std::fs::read_to_string(dir.join("Cargo.toml")) {
+            if let Ok(value) = toml::from_str::<toml::Value>(&content) {
+                if value.get("workspace").is_some() {
+                    return dir.clone();
                 }
             }
         }
     }
+    target_dir.to_path_buf()
 }
 
-fn collect_dep_names(
-    manifest: &mut toml_edit::DocumentMut,
-    include_patches: bool,
-) -> HashSet<String> {
+/// Collect all dependency names declared in a manifest (all dep sections +
+/// workspace.dependencies).
+fn collect_dep_names(manifest: &toml::Value) -> HashSet<String> {
     let mut names = HashSet::new();
-    let mut collect = |name: &str, dep: &mut toml_edit::Item| {
-        names.insert(dependency_package_name(name, dep).to_string());
-    };
-    visit_dependencies(manifest.as_table_mut(), &mut collect);
-    if include_patches {
-        visit_patch_dependencies(manifest.as_table_mut(), &mut collect);
+    for section in &["dependencies", "dev-dependencies", "build-dependencies"] {
+        if let Some(deps) = manifest.get(section).and_then(|d| d.as_table()) {
+            names.extend(deps.keys().cloned());
+        }
+    }
+    if let Some(wdeps) = manifest
+        .get("workspace")
+        .and_then(|w| w.get("dependencies"))
+        .and_then(|d| d.as_table())
+    {
+        names.extend(wdeps.keys().cloned());
     }
     names
-}
-
-fn expand_workspace_paths(
-    workspace_root: &Path,
-    patterns: Option<&toml_edit::Item>,
-) -> anyhow::Result<Vec<PathBuf>> {
-    let mut paths = Vec::new();
-    if let Some(patterns) = patterns.and_then(|p| p.as_array()) {
-        let root = glob::Pattern::escape(&workspace_root.to_string_lossy().replace('\\', "/"));
-        for pattern in patterns.iter().filter_map(|p| p.as_str()) {
-            let normalized = pattern.replace('\\', "/");
-            let full_pattern = if Path::new(pattern).is_absolute() {
-                normalized
-            } else {
-                format!("{root}/{normalized}")
-            };
-            for path in glob::glob(&full_pattern)? {
-                let path = path?;
-                if path.is_dir() {
-                    paths.push(dunce::canonicalize(path)?);
-                }
-            }
-        }
-    }
-    Ok(paths)
-}
-
-fn queue_local_dependency(
-    name: &str,
-    dep: &toml_edit::Item,
-    base: &Path,
-    repo_root: &Path,
-    verus_crate_map: &HashMap<String, PathBuf>,
-    pending: &mut Vec<PathBuf>,
-) {
-    // These paths will be redirected, so the old Verus checkout must not be loaded.
-    if verus_crate_map.contains_key(dependency_package_name(name, dep)) {
-        return;
-    }
-    if let Some(path) = dep.get("path").and_then(|p| p.as_str()) {
-        if let Ok(path) = dunce::canonicalize(base.join(path)) {
-            if path.starts_with(repo_root) {
-                pending.push(path.join("Cargo.toml"));
-            }
-        }
-    }
-}
-
-/// Discover members and reachable in-repo dependencies without loading Cargo metadata.
-fn collect_workspace_manifests(
-    workspace_root: &Path,
-    target_dir: &Path,
-    repo_root: &Path,
-    verus_crate_map: &HashMap<String, PathBuf>,
-) -> anyhow::Result<Vec<PathBuf>> {
-    let workspace_root = dunce::canonicalize(workspace_root)?;
-    let repo_root = dunce::canonicalize(repo_root)?;
-    let mut root_manifest = std::fs::read_to_string(workspace_root.join("Cargo.toml"))?
-        .parse::<toml_edit::DocumentMut>()?;
-    let workspace = root_manifest.get("workspace");
-    let members = toml_edit_strings(workspace.and_then(|w| w.get("members")));
-    let exclude = toml_edit_strings(workspace.and_then(|w| w.get("exclude")));
-    let mut pending = vec![
-        workspace_root.join("Cargo.toml"),
-        target_dir.join("Cargo.toml"),
-    ];
-    pending.extend(
-        expand_workspace_paths(&workspace_root, workspace.and_then(|w| w.get("members")))?
-            .into_iter()
-            .map(|path| path.join("Cargo.toml"))
-            .filter(|path| !workspace_excludes(&workspace_root, &members, &exclude, path)),
-    );
-    visit_patch_dependencies(root_manifest.as_table_mut(), &mut |name, dep| {
-        queue_local_dependency(
-            name,
-            dep,
-            &workspace_root,
-            &repo_root,
-            verus_crate_map,
-            &mut pending,
-        );
-    });
-    let mut workspaces = HashMap::from([(workspace_root, root_manifest)]);
-    let mut manifests = BTreeSet::new();
-    let mut visited = HashSet::new();
-    while let Some(path) = pending.pop() {
-        let path = match dunce::canonicalize(path) {
-            Ok(path) => path,
-            Err(_) => continue,
-        };
-        let dir = path.parent().expect("manifest must have a parent");
-        if !path.starts_with(&repo_root) || !visited.insert(path.clone()) {
-            continue;
-        }
-        manifests.insert(path.clone());
-        let content = std::fs::read_to_string(&path)?;
-        let mut manifest = content.parse::<toml_edit::DocumentMut>()?;
-        let package_workspace = find_workspace_root(dir, &repo_root)?;
-        let workspace_path = package_workspace.join("Cargo.toml");
-        // Other workspaces supply declarations, not additional member roots to traverse.
-        manifests.insert(workspace_path.clone());
-        let workspace_manifest = match workspaces.entry(package_workspace.clone()) {
-            Entry::Occupied(entry) => entry.into_mut(),
-            Entry::Vacant(entry) => entry.insert(
-                std::fs::read_to_string(workspace_path)?.parse::<toml_edit::DocumentMut>()?,
-            ),
-        };
-        let workspace = workspace_manifest.get("workspace");
-        visit_dependency_sections(manifest.as_table_mut(), &mut |name, dep| {
-            let (dep, base) = if dep.get("workspace").and_then(|w| w.as_bool()) == Some(true) {
-                match workspace
-                    .and_then(|w| w.get("dependencies"))
-                    .and_then(|d| d.get(name))
-                {
-                    Some(dep) => (dep, package_workspace.as_path()),
-                    None => return,
-                }
-            } else {
-                (&*dep, dir)
-            };
-            queue_local_dependency(name, dep, base, &repo_root, verus_crate_map, &mut pending);
-        });
-    }
-    Ok(manifests.into_iter().collect())
 }
 
 /// Read `package.version` from a local crate's `Cargo.toml`.
@@ -374,51 +125,20 @@ fn relax_dep_item(dep: &mut toml_edit::Item, local_ver: &str) -> bool {
     false
 }
 
-fn update_string_value(value: &mut toml_edit::Value, new_value: &str) -> bool {
-    if value.as_str() == Some(new_value) {
-        return false;
-    }
-    let decor = value.decor().clone();
-    *value = toml_edit::Value::from(new_value);
-    *value.decor_mut() = decor;
-    true
-}
-
-fn update_dep_item(dep: &mut toml_edit::Item, crate_path: &Path, local_ver: Option<&str>) -> bool {
-    let mut changed = false;
-    let mut path_dependency = false;
-    if let Some(table) = dep.as_table_like_mut() {
-        if let Some(path) = table.get_mut("path").and_then(|p| p.as_value_mut()) {
-            path_dependency = true;
-            let path_str = crate_path.to_string_lossy().replace('\\', "/");
-            changed |= update_string_value(path, &path_str);
-        }
-        if path_dependency {
-            if let Some(local_ver) = local_ver {
-                if let Some(version) = table.get_mut("version").and_then(|v| v.as_value_mut()) {
-                    changed |= update_string_value(version, &format!("={local_ver}"));
-                }
-            }
-        }
-    }
-    if !path_dependency {
-        if let Some(local_ver) = local_ver {
-            changed |= relax_dep_item(dep, local_ver);
-        }
-    }
-    changed
-}
-
-/// Redirect Verus path dependencies and their version requirements to the local
-/// checkout. For registry/git dependencies, update only mismatched exact pins.
+/// In the `Cargo.toml` at `path`, rewrite any exact-version pins (`=X.Y.Z`)
+/// on crates in `local_versions` that don't match the local version. This
+/// allows Cargo's `[patch]` entries to take effect: Cargo only applies a patch
+/// when the patch version satisfies the dependency's version constraint.
 ///
 /// Uses `toml_edit` so that the rest of the file is left byte-for-byte
 /// identical (key order, comments, blank lines, etc.).
-fn update_verus_dependencies(
+fn relax_exact_version_pins(
     path: &Path,
-    patches: &[(String, PathBuf)],
     local_versions: &HashMap<String, String>,
 ) -> anyhow::Result<()> {
+    if local_versions.is_empty() {
+        return Ok(());
+    }
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return Ok(()),
@@ -429,24 +149,37 @@ fn update_verus_dependencies(
     };
     let mut changed = false;
 
-    visit_dependencies(doc.as_table_mut(), &mut |name, dep| {
-        if let Some((crate_name, crate_path)) = patches
-            .iter()
-            .find(|(crate_name, _)| dependency_package_name(name, dep) == crate_name)
-        {
-            changed |= update_dep_item(
-                dep,
-                crate_path,
-                local_versions.get(crate_name).map(String::as_str),
-            );
+    for section in &["dependencies", "dev-dependencies", "build-dependencies"] {
+        if let Some(deps) = doc.get_mut(section).and_then(|d| d.as_table_mut()) {
+            for (crate_name, local_ver) in local_versions {
+                if let Some(dep) = deps.get_mut(crate_name.as_str()) {
+                    changed |= relax_dep_item(dep, local_ver);
+                }
+            }
         }
-    });
+    }
+
+    // [workspace.dependencies] requires two levels of navigation.
+    if doc
+        .get("workspace")
+        .and_then(|w| w.get("dependencies"))
+        .is_some()
+    {
+        if let Some(wdeps) = doc["workspace"]
+            .as_table_mut()
+            .and_then(|w| w.get_mut("dependencies"))
+            .and_then(|d| d.as_table_mut())
+        {
+            for (crate_name, local_ver) in local_versions {
+                if let Some(dep) = wdeps.get_mut(crate_name.as_str()) {
+                    changed |= relax_dep_item(dep, local_ver);
+                }
+            }
+        }
+    }
 
     if changed {
-        debug!(
-            "Updated Verus dependency paths and version pins in {}",
-            path.display()
-        );
+        debug!("Updated exact version pins in {}", path.display());
         std::fs::write(path, doc.to_string())
             .map_err(|e| anyhow!("cannot write {}: {}", path.display(), e))?;
     }
@@ -457,8 +190,8 @@ fn update_verus_dependencies(
 /// to the workspace root `Cargo.toml` so those crates resolve to the local Verus
 /// repo rather than whatever version/source the project specified.
 ///
-/// Two patch sources are written – `crates-io` and the Verus git URL – and
-/// existing path dependencies are redirected to the local Verus repo.
+/// Two patch sources are written – `crates-io` and the Verus git URL – so the
+/// override works regardless of how the project declared its dependency.
 ///
 /// Uses `toml_edit` so that the rest of the file is left byte-for-byte
 /// identical (key order, comments, blank lines, etc.).
@@ -473,19 +206,15 @@ pub fn inject_verus_patches(
         return Ok(());
     }
 
-    let workspace_root = find_workspace_root(target_dir, repo_root)?;
+    let workspace_root = find_workspace_root(target_dir, repo_root);
     let workspace_cargo_toml = workspace_root.join("Cargo.toml");
-    let manifests =
-        collect_workspace_manifests(&workspace_root, target_dir, repo_root, &verus_crate_map)?;
 
+    // Collect dep names from both the workspace root and the target crate
     let mut all_dep_names: HashSet<String> = HashSet::new();
-    for path in &manifests {
+    for path in [&workspace_cargo_toml, &target_dir.join("Cargo.toml")] {
         if let Ok(content) = std::fs::read_to_string(path) {
-            if let Ok(mut manifest) = content.parse::<toml_edit::DocumentMut>() {
-                all_dep_names.extend(collect_dep_names(
-                    &mut manifest,
-                    path == &workspace_cargo_toml,
-                ));
+            if let Ok(manifest) = toml::from_str::<toml::Value>(&content) {
+                all_dep_names.extend(collect_dep_names(&manifest));
             }
         }
     }
@@ -517,47 +246,23 @@ pub fn inject_verus_patches(
         doc["patch"] = toml_edit::table();
     }
     let patch_section = doc["patch"]
-        .as_table_like_mut()
+        .as_table_mut()
         .ok_or_else(|| anyhow!("[patch] is not a table"))?;
 
     for source in &["crates-io", verus_git_url] {
         if !patch_section.contains_key(source) {
-            patch_section.insert(source, toml_edit::table());
+            patch_section[*source] = toml_edit::table();
         }
-    }
-    for (source, entries) in patch_section.iter_mut() {
-        let source = source.get();
-        let source_section = entries
-            .as_table_like_mut()
+        let source_section = patch_section[*source]
+            .as_table_mut()
             .ok_or_else(|| anyhow!("[patch.{}] is not a table", source))?;
+
         for (crate_name, crate_path) in &patches {
-            let existing: Vec<String> = source_section
-                .iter()
-                .filter(|(name, dep)| dependency_package_name(name, dep) == crate_name)
-                .map(|(name, _)| name.to_string())
-                .collect();
-            if existing.is_empty() && source != "crates-io" && source != verus_git_url {
-                continue;
-            }
-            let key = existing.first().cloned().unwrap_or_else(|| {
-                let mut key = crate_name.clone();
-                while source_section.contains_key(&key) {
-                    key.push('_');
-                }
-                key
-            });
-            // Redirected aliases all provide the same local package version.
-            for duplicate in existing.iter().skip(1) {
-                source_section.remove(duplicate);
-            }
             let path_str = crate_path.to_string_lossy().replace('\\', "/");
             let mut entry = toml_edit::InlineTable::new();
             entry.insert("path", toml_edit::Value::from(path_str.as_str()));
-            if key != *crate_name {
-                entry.insert("package", toml_edit::Value::from(crate_name.as_str()));
-            }
             source_section.insert(
-                &key,
+                crate_name.as_str(),
                 toml_edit::Item::Value(toml_edit::Value::InlineTable(entry)),
             );
             debug!("  {} -> {}", crate_name, crate_path.display());
@@ -567,20 +272,22 @@ pub fn inject_verus_patches(
     std::fs::write(&workspace_cargo_toml, doc.to_string())
         .map_err(|e| anyhow!("cannot write {}: {}", workspace_cargo_toml.display(), e))?;
 
-    // Path dependencies need direct updates: registry/git patches do not
-    // replace their source, and Cargo still tries to load the original path.
+    // Relax exact-version pins on the patched crates so Cargo actually uses the
+    // patches. Cargo only applies a [patch] when its version satisfies the
+    // dependency's constraint; an exact pin like `=0.0.0-old` won't match a
+    // local crate at a newer version, causing the patch to be silently ignored.
     let local_versions: HashMap<String, String> = patches
         .iter()
         .filter_map(|(name, path)| get_local_version(path).map(|v| (name.clone(), v)))
         .collect();
 
-    for path in &manifests {
-        if let Err(e) = update_verus_dependencies(path, &patches, &local_versions) {
-            warn!(
-                "Failed to update Verus dependencies in {}: {}",
-                path.display(),
-                e
-            );
+    if !local_versions.is_empty() {
+        // Process the workspace root and, if different, the target crate's Cargo.toml.
+        let target_cargo_toml = target_dir.join("Cargo.toml");
+        for path in [&workspace_cargo_toml, &target_cargo_toml] {
+            if let Err(e) = relax_exact_version_pins(path, &local_versions) {
+                warn!("Failed to relax version pins in {}: {}", path.display(), e);
+            }
         }
     }
 

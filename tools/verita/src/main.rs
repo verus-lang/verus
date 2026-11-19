@@ -710,6 +710,21 @@ fn main() -> anyhow::Result<()> {
     };
     debug!("Work directory: {}", &workdir.display());
 
+    // Some projects (e.g., verified-storage) refer to Verus via paths like
+    // `../verus/source/vstd`, expecting a Verus checkout next to their own.
+    let verus_link = workdir.join("verus");
+    if active_projects.iter().any(|p| p.name == "verus") {
+        return Err(anyhow!(
+            "a project named `verus` conflicts with the Verus symlink"
+        ));
+    }
+    if fs::symlink_metadata(&verus_link).is_err() {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&verus_repo, &verus_link)?;
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(&verus_repo, &verus_link)?;
+    }
+
     let ctx = RunContext {
         sh: &sh,
         verus_binary_path: &verus_binary_path,

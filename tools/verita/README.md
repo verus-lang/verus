@@ -36,6 +36,10 @@ Inside that directory there is one JSON file per project (or per crate root, for
 
 If a project has verification errors, `verita` also preserves a copy of the cloned repository in a temporary directory for debugging purposes.
 
+## Locating Verus
+
+Projects are cloned side by side into a work directory, which also contains a `verus` symlink to `--verus-repo`. This lets projects that refer to Verus crates via paths like `../verus/source/vstd` use the Verus being tested. For `cargo_verus` projects, `verita` also patches registry and Git dependencies on Verus crates to use `--verus-repo`.
+
 ## Verus logs
 
 Verus is invoked with a per-project `--log-dir` set to `<output-dir>/logs/<name>/`.  To gather Verus logs across all projects, provide `--log` Verus arguments either via the configuration file (below) or directly on the command-line after `--`.
