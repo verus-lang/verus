@@ -2345,6 +2345,15 @@ test_verify_one_file! {
         }
         #[allow(path_statements)]
         pub exec const E: u64 = { None::<Vec<u8>>; 0 };
+        trait Tr {
+            const TC: u64;
+            #[allow(path_statements)]
+            const TD: u64 = { None::<Vec<u8>>; 0 };
+        }
+        impl Tr for T {
+            #[allow(path_statements)]
+            const TC: u64 = { None::<Vec<u8>>; 0 };
+        }
     } => Ok(())
 }
 
@@ -2754,4 +2763,213 @@ test_verify_one_file_with_options! {
             a
         }
     } => Ok(())
+}
+
+/// Other forms of `proof_with!` with ghost outputs (method calls, `?`, nested `proof_with!`,
+/// and `#[verus_spec(with ..)] let`): the temporaries in the call are dropped where they
+/// would be dropped without `proof_with!`
+#[test]
+fn test_proof_with_outputs_forms() {
+    let code = || {
+        code! {
+            #[verus_spec(ret => with Ghost(w): Ghost<u32> -> z: Ghost<u32>)]
+            fn f(x: &D) -> u64 { proof_with!{|= Ghost(0u32)} 0 }
+
+            #[verus_spec(ret => with Ghost(w): Ghost<u32> -> z: Ghost<u32>)]
+            fn fr(x: &D) -> Option<u64> { proof_with!{|= Ghost(0u32)} Some(0) }
+
+            #[verifier::verify]
+            struct S;
+            impl S {
+                #[verus_spec(ret => with Ghost(w): Ghost<u32> -> z: Ghost<u32>)]
+                fn m(&self, x: &D) -> u64 { proof_with!{|= Ghost(0u32)} 0 }
+            }
+
+            #[verus_spec(ret => with Ghost(w): Ghost<u32>)]
+            fn h(x: u64, y: &D) -> u64 { x }
+
+            #[verus_spec]
+            fn t_method(s: S) -> (u64, u64) {
+                proof_decl!{ let ghost mut z = 0u32; }
+                let b = (use_ref(&mk()), { proof_with!{Ghost(0) => Ghost(z)} s.m(&mk()) });
+                b
+            }
+
+            #[verus_spec]
+            fn t_try() -> Option<u64> {
+                proof_decl!{ let ghost mut z = 0u32; }
+                let a = { proof_with!{Ghost(0) => Ghost(z)} fr(&mk())? };
+                Some(a)
+            }
+
+            #[verus_spec]
+            fn t_nested() -> u64 {
+                proof_decl!{ let ghost mut z = 0u32; }
+                let c = { proof_with!{Ghost(1)} h({ proof_with!{Ghost(0) => Ghost(z)} f(&mk()) }, &mk()) };
+                c
+            }
+
+            #[verus_spec]
+            fn t_let() -> u64 {
+                proof_decl!{ let ghost mut z = 0u32; }
+                #[verus_spec(with Ghost(0) => Ghost(z))]
+                let d = f(&mk());
+                let k = mk();
+                d
+            }
+        }
+    };
+    check_cfg(
+        code(),
+        "t_method",
+        &["--edition 2021"],
+        r#"
+bb0 (entry, may_unwind):
+    Overwrite(s)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    Overwrite(Temp_2)        // mk()
+    Overwrite(Temp_3)        // &mk()
+    -> bb2
+bb2:
+    Overwrite(Temp_4)        // _VERUS_VERIFIED_m(&s, &mk(), 0)
+    -> bb3
+bb3:
+    Overwrite(__verus_tmp_tuple_var__)
+    Overwrite(__verus_tmp_expr_var__)
+    Overwrite(verus_tmp_z)
+    -> bb4
+bb4 (exit):
+    Overwrite(Temp_5)        // (use_ref(&mk()), { match ... {...} })
+    Overwrite(b)
+    ScopeDrop(Temp_2)        // mk()
+    ScopeDrop(Temp_0)        // mk()
+"#,
+    );
+    check_cfg(
+        code(),
+        "t_try",
+        &["--edition 2021"],
+        r#"
+bb0 (entry, may_unwind):
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    -> bb2
+bb2:
+    Overwrite(Temp_2)        // _VERUS_VERIFIED_fr(&mk(), 0)
+    -> bb3
+bb3:
+    Overwrite(__verus_tmp_tuple_var__)
+    Overwrite(__verus_tmp_expr_var__)
+    Overwrite(verus_tmp_z)
+    -> bb4
+bb4 (may_unwind):
+    -> bb6
+bb6:
+    Overwrite(Temp_3)        // branch(match _VERUS_VERIFIED_fr(&mk(), 0) {...})
+    -> bb7, bb10
+bb7 (may_unwind):
+    Overwrite(residual)
+    -> bb9
+bb9 (exit):
+    ScopeDrop(Temp_0)        // mk()
+bb10:
+    Overwrite(val)
+    -> bb11
+bb11 (exit):
+    Overwrite(Temp_4)        // { match branch(match ... {...}) {...} }
+    Overwrite(a)
+    ScopeDrop(Temp_0)        // mk()
+"#,
+    );
+    check_cfg(
+        code(),
+        "t_nested",
+        &["--edition 2021"],
+        r#"
+bb0 (entry, may_unwind):
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    -> bb2
+bb2:
+    Overwrite(Temp_2)        // _VERUS_VERIFIED_f(&mk(), 0)
+    -> bb3
+bb3:
+    Overwrite(__verus_tmp_tuple_var__)
+    Overwrite(__verus_tmp_expr_var__)
+    Overwrite(verus_tmp_z)
+    -> bb4
+bb4 (may_unwind):
+    Overwrite(Temp_3)        // mk()
+    Overwrite(Temp_4)        // &mk()
+    -> bb6
+bb6 (exit):
+    Overwrite(Temp_5)        // { _VERUS_VERIFIED_h({ match ... {...} }, &mk(), 1) }
+    Overwrite(c)
+    ScopeDrop(Temp_3)        // mk()
+    ScopeDrop(Temp_0)        // mk()
+"#,
+    );
+    check_cfg(
+        code(),
+        "t_let",
+        &["--edition 2021"],
+        r#"
+bb0 (entry, may_unwind):
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    -> bb2
+bb2:
+    Overwrite(Temp_2)        // _VERUS_VERIFIED_f(&mk(), 0)
+    -> bb3
+bb3:
+    Overwrite(__verus_tmp_tuple_var__)
+    Overwrite(__verus_tmp_expr_var__)
+    Overwrite(verus_tmp_z)
+    -> bb4
+bb4 (exit):
+    Overwrite(Temp_3)        // match _VERUS_VERIFIED_f(&mk(), 0) {...}
+    Overwrite(d)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_4)        // mk()
+    MoveFrom(Temp_4)         // mk()
+    Overwrite(k)
+    ScopeDrop(Temp_4)        // mk()
+    ScopeDrop(k)
+"#,
+    );
+}
+
+/// A `proof_fn` closure created in exec code is proof code, so it doesn't get drops
+/// (and its tracked parameter isn't dropped)
+#[test]
+fn test_proof_fn_closure() {
+    let code = verus_code! {
+        fn test() {
+            let tracked f = proof_fn|tracked d: D| -> (r: u64) { 0 };
+            let k = mk();
+        }
+    };
+    check_cfg(
+        code,
+        "test",
+        &[],
+        r#"
+bb0 (entry, exit):
+    Overwrite(verus_tmp)
+    MoveFrom(verus_tmp)
+    Overwrite(verus_tmp_f)
+    MoveFrom(verus_tmp_f)
+    Overwrite(f)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
+    Overwrite(k)
+    ScopeDrop(Temp_0)        // mk()
+    ScopeDrop(k)
+bb1 (entry):
+    Overwrite(d)
+    -> bb2
+bb2 (exit):
+"#,
+    );
 }
