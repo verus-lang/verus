@@ -99,3 +99,38 @@ test_verify_one_file_with_options! {
         ));
     }
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_crate_named_alloc_rc_not_treated_as_std_rc ["--crate-name=alloc"] => verus_code! {
+        // Has the same path as alloc::rc::Rc, but should not be treated as std's Rc
+        pub mod rc {
+            pub struct Rc<T>(pub T);
+        }
+        fn f(x: rc::Rc<u8>) -> (r: u8)
+            ensures r == x.0,
+        {
+            x.0
+        }
+    } => Ok(())
+}
+
+// Defining lang items is not allowed outside of the standard library.
+// (Use no_std so that the real alloc crate isn't present, and there is no duplicate lang item.)
+test_verify_one_file_with_options! {
+    #[test] test_no_std_crate_named_alloc_cannot_define_owned_box_lang_item
+        ["--crate-name=alloc", "no-auto-import-verus_builtin"] =>
+        code! {
+            #![no_std]
+            #![feature(lang_items)]
+            use verus_builtin::*;
+            use verus_builtin_macros::*;
+            pub mod boxed {
+                #[lang = "owned_box"]
+                pub struct Box<T: ?Sized>(*mut T);
+            }
+            verus! {
+                fn f() {}
+            }
+        }
+    => Err(err) => assert_vir_error_msg(err, "Verus does not support defining lang items (found `owned_box`)")
+}
