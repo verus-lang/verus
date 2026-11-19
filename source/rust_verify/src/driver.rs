@@ -358,12 +358,7 @@ pub fn run(
     let time2 = if first_pass_failed { time1 } else { Instant::now() };
 
     // Rustc writes dep-info after after_expansion, so combine files after the passes return.
-    let first_pass_dep_info = first_pass_dep_info.filter(|path| path.is_file());
-    let second_pass_dep_info = second_pass_result
-        .as_ref()
-        .ok()
-        .and_then(|path| path.as_ref())
-        .filter(|path| path.is_file());
+    let second_pass_dep_info = second_pass_result.as_ref().ok().and_then(|path| path.as_ref());
     match (first_pass_dep_info, second_pass_dep_info) {
         (Some(first), Some(second)) => {
             let info_1 = rustc_dep_info::Contents::read_file(&first).unwrap_or_else(|err| {
@@ -406,7 +401,13 @@ pub fn run(
                 panic!("failed to restore dep-info `{}`: {err}", destination.display())
             });
         }
-        (None, _) => {}
+        (None, Some(second)) => {
+            panic!(
+                "second-pass dep-info `{}` has no corresponding first-pass dep-info",
+                second.display()
+            );
+        }
+        (None, None) => {}
     }
 
     let stats = Stats {
