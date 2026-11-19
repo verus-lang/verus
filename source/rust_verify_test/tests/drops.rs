@@ -2455,3 +2455,237 @@ bb6 (exit):
 "#,
     );
 }
+
+/// `?` returns early with the residual, dropping the locals and parameters
+#[test]
+fn test_question_mark() {
+    let code = verus_code! {
+        fn test(o: Option<D>, p: D) -> Option<u64> {
+            let a = mk();
+            let d = o?;
+            Some(use_ref(&d))
+        }
+    };
+    check_cfg(
+        code,
+        "test",
+        &[],
+        r#"
+bb0 (entry, may_unwind):
+    Overwrite(o)
+    Overwrite(p)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
+    Overwrite(a)
+    ScopeDrop(Temp_0)        // mk()
+    MoveFrom(o)
+    -> bb2
+bb2:
+    Overwrite(Temp_1)        // branch(o)
+    -> bb3, bb6
+bb3 (may_unwind):
+    Overwrite(residual)
+    -> bb5
+bb5 (exit):
+    ScopeDrop(Temp_1)        // branch(o)
+    ScopeDrop(a)
+    ScopeDrop(p)
+    ScopeDrop(o)
+bb6:
+    MoveFrom(Temp_1.Continue_0) // branch(o)
+    Overwrite(val)
+    MoveFrom(val)
+    ScopeDrop(val)
+    -> bb7
+bb7 (exit):
+    Overwrite(Temp_2)        // match branch(o) {...}
+    MoveFrom(Temp_2)         // match branch(o) {...}
+    Overwrite(d)
+    ScopeDrop(Temp_2)        // match branch(o) {...}
+    ScopeDrop(Temp_1)        // branch(o)
+    Overwrite(Temp_3)        // &d
+    ScopeDrop(d)
+    ScopeDrop(a)
+    ScopeDrop(p)
+    ScopeDrop(o)
+"#,
+    );
+}
+
+/// The parameters of an async fn are dropped after the locals of its body
+#[test]
+fn test_async_params() {
+    let code = verus_code! {
+        async fn test(a: D, b: D) -> u64 {
+            let x = mk();
+            if use_ref(&x) == 0 {
+                return 1;
+            }
+            use_ref(&a)
+        }
+    };
+    check_cfg(
+        code,
+        "test",
+        &[],
+        r#"
+bb0 (entry):
+    Overwrite(a)
+    Overwrite(b)
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
+    Overwrite(x)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &x
+    -> bb1, bb2
+bb1 (exit):
+    ScopeDrop(x)
+    ScopeDrop(b)
+    ScopeDrop(a)
+bb2:
+    -> bb3
+bb3 (exit):
+    Overwrite(Temp_2)        // &a
+    ScopeDrop(x)
+    ScopeDrop(b)
+    ScopeDrop(a)
+"#,
+    );
+}
+
+/// A closure with a specification, whose parameter is dropped after its body
+#[test]
+fn test_closure_with_spec() {
+    let code = verus_code! {
+        fn test() {
+            let f = |a: D| -> (r: u64)
+                requires a.x == 0
+                ensures r == 0
+            {
+                let b = mk();
+                0
+            };
+        }
+    };
+    check_cfg(
+        code,
+        "test",
+        &[],
+        r#"
+bb0 (entry, exit):
+    Overwrite(Temp_1)        // { |...| ... }
+    Overwrite(f)
+bb1 (entry):
+    Overwrite(a)
+    -> bb2
+bb2 (exit):
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
+    Overwrite(b)
+    ScopeDrop(Temp_0)        // mk()
+    ScopeDrop(b)
+    ScopeDrop(a)
+"#,
+    );
+}
+
+/// In edition 2021, the temporaries of the tail expression of a `while` body
+/// are dropped at the end of each iteration
+#[test]
+fn test_while_body_tail_2021() {
+    let code = verus_code! {
+        fn unit_ref(d: &D) no_unwind {}
+        fn test() {
+            let mut i: u64 = 0;
+            while i < 10
+                invariant i <= 10,
+                decreases 10 - i,
+            {
+                i = i + 1;
+                unit_ref(&mk())
+            }
+        }
+    };
+    check_cfg(
+        code,
+        "test",
+        &["--edition 2021"],
+        r#"
+bb0 (entry):
+    Overwrite(Temp_0)        // 0
+    Overwrite(i)
+    -> bb1
+bb1:
+    -> bb3, bb4
+bb2 (exit):
+bb3:
+    -> bb2
+bb4:
+    Overwrite(i)
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
+    ScopeDrop(Temp_1)        // mk()
+    -> bb1
+"#,
+    );
+}
+
+/// If the pattern of a let-else fails to match, the temporaries of the initializer are
+/// dropped before the else block, which can `break` or `continue` out of an enclosing loop
+#[test]
+fn test_let_else_break_continue() {
+    let code = verus_code! {
+        fn test() {
+            loop {
+                let a = mk();
+                let Some(v) = opt(&mk()) else { break };
+                let Some(w) = opt(&mk()) else { continue };
+                let b = mk();
+            }
+        }
+    };
+    check_cfg(
+        code,
+        "test",
+        &[],
+        r#"
+bb0 (entry):
+    -> bb1
+bb1:
+    Overwrite(Temp_0)        // mk()
+    MoveFrom(Temp_0)         // mk()
+    Overwrite(a)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
+    Overwrite(Temp_3)        // opt(&mk())
+    -> bb3, bb4
+bb2 (exit):
+bb3:
+    ScopeDrop(Temp_1)        // mk()
+    ScopeDrop(a)
+    -> bb2
+bb4:
+    Overwrite(v)
+    ScopeDrop(Temp_1)        // mk()
+    Overwrite(Temp_4)        // mk()
+    Overwrite(Temp_5)        // &mk()
+    Overwrite(Temp_6)        // opt(&mk())
+    -> bb5, bb6
+bb5:
+    ScopeDrop(Temp_4)        // mk()
+    ScopeDrop(a)
+    -> bb1
+bb6:
+    Overwrite(w)
+    ScopeDrop(Temp_4)        // mk()
+    Overwrite(Temp_7)        // mk()
+    MoveFrom(Temp_7)         // mk()
+    Overwrite(b)
+    ScopeDrop(Temp_7)        // mk()
+    ScopeDrop(b)
+    ScopeDrop(a)
+    -> bb1
+"#,
+    );
+}
