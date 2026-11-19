@@ -61,7 +61,11 @@ impl<'tcx> BodyCtxt<'tcx> {
     }
 
     fn emits_drops(&self) -> bool {
-        self.mode == Mode::Exec && !self.in_ghost && !self.external_body && !self.in_fn_sig
+        self.emit_drops
+            && self.mode == Mode::Exec
+            && !self.in_ghost
+            && !self.external_body
+            && !self.in_fn_sig
     }
 
     fn mk_drop(&self, local_or_temp: &LocalOrTemp, span: Span) -> Expr {

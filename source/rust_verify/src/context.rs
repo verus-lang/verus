@@ -157,6 +157,9 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) erasure_info: ErasureInfoRef,
     /// Stack of drop scopes for the current function or closure body (see drop_scopes.rs)
     pub(crate) drop_scopes: Rc<RefCell<crate::drop_scopes::DropScopes>>,
+    /// Should we emit drops in exec code? (false for the body of a dual-mode const,
+    /// which is mode-checked as spec code)
+    pub(crate) emit_drops: bool,
 }
 
 pub(crate) struct AtomicallyCtxt {

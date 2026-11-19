@@ -402,6 +402,7 @@ fn mk_bctx<'tcx>(
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     param_names: Vec<VarIdent>,
     external_opaque_type_map: Option<HashMap<Path, Path>>,
+    emit_drops: bool,
 ) -> BodyCtxt<'tcx> {
     BodyCtxt {
         ctxt: ctxt.clone(),
@@ -423,6 +424,7 @@ fn mk_bctx<'tcx>(
         label_map: std::rc::Rc::new(std::cell::RefCell::new((HashMap::new(), 0))),
         erasure_info: std::rc::Rc::new(std::cell::RefCell::new(ErasureInfo::new())),
         drop_scopes: Default::default(),
+        emit_drops,
     }
 }
 
@@ -440,6 +442,7 @@ fn body_to_vir<'tcx>(
     param_tys: &[Ty<'tcx>],
     external_opaque_type_map: Option<HashMap<Path, Path>>,
     is_async: bool,
+    emit_drops: bool,
 ) -> Result<(vir::ast::Expr, Vec<(vir::ast::Stmt, vir::ast::Stmt)>, BodyCtxt<'tcx>), VirErr> {
     let param_names: Vec<VarIdent> = params.iter().map(|p| p.x.name.clone()).collect();
     let bctx = mk_bctx(
@@ -452,6 +455,7 @@ fn body_to_vir<'tcx>(
         migrate_postcondition_vars,
         param_names.clone(),
         external_opaque_type_map,
+        emit_drops,
     );
     let body_expr =
         if is_async { extract_desugared_async_body(&bctx.ctxt, body)? } else { &body.value };
@@ -2047,6 +2051,7 @@ pub(crate) fn check_item_fn<'tcx>(
             &inputs,
             assume_specification_opaque_type_map.clone(),
             false,
+            true,
         )?;
         create_reveal_group(
             ctxt,
@@ -2466,6 +2471,7 @@ pub(crate) fn finish_function<'tcx>(
                 &inputs,
                 assume_specification_opaque_type_map.clone(),
                 is_async,
+                true,
             )?;
             let mut header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
@@ -3585,6 +3591,9 @@ pub(crate) fn finish_const_or_static<'tcx>(
     } = function.x.clone();
 
     let body = find_body(ctxt, &body_id);
+    // The body of a dual-mode const (spec function, exec body and return value)
+    // is mode-checked as spec code, so it can't contain drops
+    let dual_mode = func_mode == Mode::Spec && body_mode == Mode::Exec;
     let (mut vir_body, _, bctx) = body_to_vir(
         ctxt,
         id,
@@ -3599,6 +3608,7 @@ pub(crate) fn finish_const_or_static<'tcx>(
         &[],
         None,
         false,
+        !dual_mode,
     )?;
     let header = vir::headers::read_header(
         &mut vir_body,

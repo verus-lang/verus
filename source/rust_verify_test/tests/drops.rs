@@ -2328,3 +2328,20 @@ fn test_await_drops() {
         .collect();
     assert_eq!(events.join(" "), "await __awaitee d");
 }
+
+// The body of a dual-mode const is mode-checked as spec code, so it doesn't get drops
+// (but the body of an exec const does)
+test_verify_one_file! {
+    #[test] test_dual_mode_const_no_drops verus_code! {
+        use vstd::prelude::*;
+        #[allow(path_statements)]
+        pub const C: u64 = { None::<Vec<u8>>; 0 };
+        struct T;
+        impl T {
+            #[allow(path_statements)]
+            pub const AC: u64 = { None::<Vec<u8>>; 0 };
+        }
+        #[allow(path_statements)]
+        pub exec const E: u64 = { None::<Vec<u8>>; 0 };
+    } => Ok(())
+}
