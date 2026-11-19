@@ -372,11 +372,23 @@ pub fn run(
             let info_2 = rustc_dep_info::Contents::read_file(&second).unwrap_or_else(|err| {
                 panic!("failed to read second-pass dep-info from `{}`: {err}", second.display())
             });
-            // Prefer second-pass metadata and environment values when both are present.
+            // Shared dependencies must not change between verification and compilation.
             let merged = info_1.merge(
                 info_2,
-                |meta_1, meta_2| meta_2.or(meta_1),
-                |env_1, env_2| env_2.or(env_1),
+                |meta_1, meta_2| {
+                    assert_eq!(
+                        meta_1, meta_2,
+                        "dep-info checksum changed between compilation passes"
+                    );
+                    meta_1
+                },
+                |env_1, env_2| {
+                    assert_eq!(
+                        env_1, env_2,
+                        "dep-info environment dependency changed between compilation passes"
+                    );
+                    env_1
+                },
             );
             merged.write_file(&second).unwrap_or_else(|err| {
                 panic!("failed to write combined dep-info to `{}`: {err}", second.display())
