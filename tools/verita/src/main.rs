@@ -428,24 +428,9 @@ fn link_verus_sibling(verus_repo: &Path, dir: &Path) {
     #[cfg(unix)]
     let result = std::os::unix::fs::symlink(verus_repo, &link);
     #[cfg(windows)]
-    let result = std::os::windows::fs::symlink_dir(verus_repo, &link).or_else(|_| {
-        // Directory junctions do not require the symbolic-link privilege.
-        let status = std::process::Command::new("cmd")
-            .arg("/C")
-            .arg("mklink")
-            .arg("/J")
-            .arg(&link)
-            .arg(verus_repo)
-            .stdout(std::process::Stdio::null())
-            .status()?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(std::io::Error::other(format!(
-                "mklink /J exited with {status}"
-            )))
-        }
-    });
+    // Directory junctions do not require the symbolic-link privilege.
+    let result = std::os::windows::fs::symlink_dir(verus_repo, &link)
+        .or_else(|_| junction::create(verus_repo, &link));
     if let Err(e) = result {
         warn!(
             "Failed to link {} to {}: {}",
