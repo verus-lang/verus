@@ -156,6 +156,95 @@ fn cargo_new_builds() {
     assert!(run.status.success());
 }
 
+fn cache_invalidation_project() -> tempfile::TempDir {
+    let project = tempdir().expect("Failed to create temporary project directory");
+    let vstd_path = compute_test_dir("vstd");
+    let vstd_path = Value::String(vstd_path.to_str().expect("valid unicode path").to_owned());
+    fs::write(
+        project.path().join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "cache-invalidation"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = {{ path = {vstd_path} }}
+
+[package.metadata.verus]
+verify = true
+trusted_crates = ["vstd"]
+
+[workspace]
+"#
+        ),
+    )
+    .expect("write project manifest");
+    fs::create_dir(project.path().join("src")).expect("create source directory");
+    fs::write(
+        project.path().join("src/lib.rs"),
+        r#"pub mod good {
+    use vstd::prelude::*;
+    verus! {
+        pub proof fn valid() { assert(1 + 1 == 2); }
+    }
+}
+
+pub mod bad {
+    use vstd::prelude::*;
+    verus! {
+        pub proof fn invalid() ensures false {}
+    }
+}
+"#,
+    )
+    .expect("write project source");
+    project
+}
+
+#[test]
+fn cargo_verify_invalidates_cached_arguments() {
+    let project = cache_invalidation_project();
+    let target_dir = tempdir().expect("Failed to create temporary target directory");
+
+    // Populate the cache without checking the invalid proof.
+    let run = run_cargo_verus_with_target(
+        &["verify", "--fwd-verus-args-to", "roots", "--", "--no-verify"],
+        project.path(),
+        target_dir.path(),
+    );
+    assert!(run.status.success());
+
+    // Removing --no-verify must invalidate the cached success without any source changes.
+    let run = run_cargo_verus_with_target(&["verify"], project.path(), target_dir.path());
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert!(!run.status.success(), "verification reused a cached success: {}", stderr);
+    assert!(stderr.contains("postcondition not satisfied"), "{}", stderr);
+}
+
+#[test]
+fn cargo_focus_invalidates_cached_module() {
+    let project = cache_invalidation_project();
+    let target_dir = tempdir().expect("Failed to create temporary target directory");
+
+    let run = run_cargo_verus_with_target(
+        &["focus", "--", "--verify-module", "good"],
+        project.path(),
+        target_dir.path(),
+    );
+    assert!(run.status.success());
+
+    // Changing only the selector must verify the newly requested module.
+    let run = run_cargo_verus_with_target(
+        &["focus", "--", "--verify-module", "bad"],
+        project.path(),
+        target_dir.path(),
+    );
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert!(!run.status.success(), "focus reused a cached success: {}", stderr);
+    assert!(stderr.contains("postcondition not satisfied"), "{}", stderr);
+}
+
 // Tests that run `cargo verus {verify, build}` on each crate in the cargo-tests/verified directory
 cargo_examples!(true);
 
