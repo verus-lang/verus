@@ -333,11 +333,9 @@ pub fn output_primary_stuff(
 
         // For prophetic state machines, prophecy is only allowed in `require` and
         // `assert` statements; wrap all other expressions in `prophecy_disallowed`.
-        let body = if sm.prophetic {
-            crate::disallow_prophecy::disallow_prophecy(&trans.body)
-        } else {
-            trans.body.clone()
-        };
+        // This is useful for non-prophetic systems as well, as the `prophecy_disallowed`
+        // builtin also forces the expression to be pure.
+        let body = crate::disallow_prophecy::disallow_prophecy(sm, &trans.body);
 
         let simplified_body = simplify_ops(sm, &body, trans.kind);
 
