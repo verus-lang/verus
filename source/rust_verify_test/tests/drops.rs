@@ -2973,3 +2973,201 @@ bb2 (exit):
 "#,
     );
 }
+
+/// `proof_with!` with ghost outputs (`=>`) on a call whose result needs dropping
+/// (and with a tracked output), and in a condition or scrutinee
+#[test]
+fn test_proof_with_outputs_positions() {
+    let code = || {
+        code! {
+            #[verus_spec(ret => with Tracked(w): Tracked<&mut u32> -> z: Tracked<u32>)]
+            fn f(x: &D) -> D {
+                proof_with!{|= Tracked(0u32)}
+                mk()
+            }
+
+            #[verus_spec(ret => with Ghost(w): Ghost<u32> -> z: Ghost<u32>)]
+            fn g(x: &D) -> D {
+                proof_with!{|= Ghost(0u32)}
+                mk()
+            }
+
+            #[verus_spec(ret => with Ghost(w): Ghost<u32> -> z: Ghost<u32>)]
+            fn gb(x: &D) -> bool {
+                proof_with!{|= Ghost(0u32)}
+                true
+            }
+
+            #[verus_spec]
+            fn t_drop_result() -> u64 {
+                proof_decl!{ let tracked mut t = 0u32; let tracked mut z = 0u32; }
+                let a = { proof_with!{Tracked(&mut t) => Tracked(z)} f(&mk()) };
+                let k = use_ref(&a);
+                k
+            }
+
+            #[verus_spec]
+            fn t_if() -> u64 {
+                proof_decl!{ let ghost mut z = 0u32; }
+                if { proof_with!{Ghost(0) => Ghost(z)} gb(&mk()) } { 1 } else { 2 }
+            }
+
+            #[verus_spec]
+            fn t_while() -> u64 {
+                proof_decl!{ let ghost mut z = 0u32; }
+                let mut i = 0;
+                #[verus_spec(invariant i <= 10, decreases 10 - i)]
+                while { proof_with!{Ghost(0) => Ghost(z)} gb(&mk()) } && i < 10
+                { i += 1; }
+                i
+            }
+
+            #[verus_spec]
+            fn t_match() -> u64 {
+                proof_decl!{ let ghost mut z = 0u32; }
+                let x = match { proof_with!{Ghost(0) => Ghost(z)} g(&mk()) } { d => use_ref(&d) };
+                x
+            }
+        }
+    };
+    for f in ["t_drop_result", "t_if", "t_while", "t_match"] {
+        let expected = match f {
+            "t_drop_result" => {
+                r#"
+bb0 (entry, may_unwind):
+    Overwrite(verus_tmp)
+    Overwrite(verus_tmp_t)
+    Overwrite(t)
+    Overwrite(verus_tmp)
+    Overwrite(verus_tmp_z)
+    Overwrite(z)
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    Mutate(t)
+    -> bb2
+bb2:
+    Overwrite(Temp_2)        // _VERUS_VERIFIED_f(&mk(), &mut t)
+    -> bb3
+bb3:
+    MoveFrom(Temp_2)         // _VERUS_VERIFIED_f(&mk(), &mut t)
+    Overwrite(__verus_tmp_tuple_var__)
+    MoveFrom(__verus_tmp_tuple_var__.0)
+    Overwrite(__verus_tmp_expr_var__)
+    Overwrite(verus_tmp_z)
+    Overwrite(z)
+    MoveFrom(__verus_tmp_expr_var__)
+    ScopeDrop(__verus_tmp_expr_var__)
+    ScopeDrop(__verus_tmp_tuple_var__)
+    -> bb4
+bb4 (exit):
+    Overwrite(Temp_3)        // { match _VERUS_VERIFIED_f(&mk(), &mut t) {...} }
+    MoveFrom(Temp_3)         // { match _VERUS_VERIFIED_f(&mk(), &mut t) {...} }
+    Overwrite(a)
+    ScopeDrop(Temp_3)        // { match _VERUS_VERIFIED_f(&mk(), &mut t) {...} }
+    ScopeDrop(Temp_2)        // _VERUS_VERIFIED_f(&mk(), &mut t)
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_4)        // &a
+    Overwrite(Temp_5)        // use_ref(&a)
+    Overwrite(k)
+    ScopeDrop(a)
+"#
+            }
+            "t_if" => {
+                r#"
+bb0 (entry, may_unwind):
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    -> bb2
+bb2:
+    Overwrite(Temp_2)        // _VERUS_VERIFIED_gb(&mk(), 0)
+    -> bb3
+bb3:
+    Overwrite(__verus_tmp_tuple_var__)
+    Overwrite(__verus_tmp_expr_var__)
+    Overwrite(verus_tmp_z)
+    -> bb4
+bb4:
+    -> bb5, bb6
+bb5:
+    ScopeDrop(Temp_0)        // mk()
+    -> bb7
+bb6:
+    ScopeDrop(Temp_0)        // mk()
+    -> bb7
+bb7 (exit):
+"#
+            }
+            "t_while" => {
+                r#"
+bb0 (entry):
+    Overwrite(Temp_0)        // 0
+    Overwrite(i)
+    -> bb1
+bb1 (may_unwind):
+    Overwrite(Temp_1)        // mk()
+    Overwrite(Temp_2)        // &mk()
+    -> bb4
+bb2 (exit):
+bb4:
+    Overwrite(Temp_3)        // _VERUS_VERIFIED_gb(&mk(), 0)
+    -> bb5
+bb5:
+    Overwrite(__verus_tmp_tuple_var__)
+    Overwrite(__verus_tmp_expr_var__)
+    Overwrite(verus_tmp_z)
+    -> bb6
+bb6:
+    ScopeDrop(Temp_1)        // mk()
+    -> bb7, bb8
+bb7:
+    -> bb8
+bb8:
+    -> bb9, bb10
+bb9:
+    -> bb2
+bb10:
+    Mutate(i)
+    -> bb1
+"#
+            }
+            "t_match" => {
+                r#"
+bb0 (entry, may_unwind):
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    -> bb2
+bb2:
+    Overwrite(Temp_2)        // _VERUS_VERIFIED_g(&mk(), 0)
+    -> bb3
+bb3:
+    MoveFrom(Temp_2)         // _VERUS_VERIFIED_g(&mk(), 0)
+    Overwrite(__verus_tmp_tuple_var__)
+    MoveFrom(__verus_tmp_tuple_var__.0)
+    Overwrite(__verus_tmp_expr_var__)
+    Overwrite(verus_tmp_z)
+    MoveFrom(__verus_tmp_expr_var__)
+    ScopeDrop(__verus_tmp_expr_var__)
+    ScopeDrop(__verus_tmp_tuple_var__)
+    -> bb4
+bb4:
+    Overwrite(Temp_3)        // { match _VERUS_VERIFIED_g(&mk(), 0) {...} }
+    -> bb5
+bb5:
+    MoveFrom(Temp_3)         // { match _VERUS_VERIFIED_g(&mk(), 0) {...} }
+    Overwrite(d)
+    Overwrite(Temp_4)        // &d
+    ScopeDrop(d)
+    -> bb6
+bb6 (exit):
+    Overwrite(Temp_5)        // match { match _VERUS_VERIFIED_g(&..., 0) {...} } {...}
+    Overwrite(x)
+    ScopeDrop(Temp_3)        // { match _VERUS_VERIFIED_g(&mk(), 0) {...} }
+    ScopeDrop(Temp_2)        // _VERUS_VERIFIED_g(&mk(), 0)
+    ScopeDrop(Temp_0)        // mk()
+"#
+            }
+            _ => unreachable!(),
+        };
+        check_cfg(code(), f, &["--edition 2021"], expected);
+    }
+}
