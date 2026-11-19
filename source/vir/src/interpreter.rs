@@ -898,10 +898,6 @@ pub enum SeqFn {
 /// Identify sequence functions for which we provide custom interpretation
 pub(crate) fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     use SeqFn::*;
-    // trait impls for Seq outside vstd get the same friendly names as Seq's own methods
-    if !fun.path.is_vstd_path() {
-        return None;
-    }
     match path_as_vstd_name(&fun.path).as_ref().map(|x| x.as_str()) {
         Some("seq::Seq::empty") => Some(Empty),
         Some("seq::Seq::new") => Some(New),
