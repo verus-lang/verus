@@ -241,7 +241,9 @@ impl<'tcx> BodyCtxt<'tcx> {
     /// its temporary in the scope of `expr` (`schedule_operand_drop`). The call or constructor moves
     /// the operands out of their temporaries, so we unschedule these drops when all operands
     /// have been evaluated (`end_operands`). Thus the drops only appear on early exits
-    /// from the later operands.
+    /// from the later operands. (rustc's MIR builder only unschedules them for calls;
+    /// for constructors, array literals, and assignments, it keeps the drops of the moved-from
+    /// temporaries, which are no-ops.)
     pub(crate) fn begin_operands(&self, expr: &rustc_hir::Expr<'tcx>) -> Operands {
         Operands { scope: node_scope(expr.hir_id), span: self.ctxt.spans.to_air_span(expr.span) }
     }
