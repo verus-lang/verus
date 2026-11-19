@@ -53,3 +53,49 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_vir_error_msg(err, "`external_body`/`assume_specification` not allowed with `--no-cheating`")
 }
+
+// A crate cannot claim to be core/alloc/vstd by redefining the items used to identify them;
+// rustc rejects duplicate lang items and duplicate diagnostic items.
+
+test_verify_one_file_with_options! {
+    #[test] test_crate_named_core_cannot_redefine_sized_lang_item
+        ["--crate-name=core", "no-auto-import-verus_builtin"] =>
+        FEATURE_PRELUDE.to_string() + code_str! {
+            #![feature(lang_items)]
+            use vstd::prelude::*;
+            #[lang = "sized"]
+            pub trait MySized {}
+        }
+    => Err(err) => assert_rust_error_msg(err, "found duplicate lang item `sized`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_crate_named_alloc_cannot_redefine_owned_box_lang_item
+        ["--crate-name=alloc", "no-auto-import-verus_builtin"] =>
+        FEATURE_PRELUDE.to_string() + code_str! {
+            #![feature(lang_items)]
+            use vstd::prelude::*;
+            #[lang = "owned_box"]
+            pub struct MyBox<T: ?Sized>(*mut T);
+        }
+    => Err(err) => assert_rust_error_msg(err, "found duplicate lang item `owned_box`")
+}
+
+// -Cmetadata makes the crate distinguishable from the real vstd, avoiding an earlier E0519
+// error, so that this test exercises the duplicate diagnostic item check
+test_verify_one_file_with_options! {
+    #[test] test_crate_named_vstd_cannot_redefine_vstd_diagnostic_item
+        ["--crate-name=vstd", "-Cmetadata=not_vstd", "--no-cheating", "no-auto-import-verus_builtin"] =>
+        FEATURE_PRELUDE.to_string() + code_str! {
+            #![feature(rustc_attrs)]
+            use vstd::prelude::*;
+            #[rustc_diagnostic_item = "verus::vstd::invariant::open_invariant_end"]
+            pub fn fake() {}
+        }
+    => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        assert!(err.errors[0].message.contains(
+            "duplicate diagnostic item in crate `vstd`: `verus::vstd::invariant::open_invariant_end`"
+        ));
+    }
+}
