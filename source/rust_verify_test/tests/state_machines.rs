@@ -9747,3 +9747,39 @@ test_verify_one_file! {
         }}
     } => Err(err) => assert_vir_error_msg(err, "variable `a` is not marked mutable")
 }
+
+test_verify_one_file! {
+    #[test] forge_instance_in_normal_fn IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub v: int,
+            }
+
+            #[invariant]
+            pub spec fn inv(&self) -> bool { false }
+
+            property!{ boom() { assert(false); } }
+
+            pub proof fn forge() -> (tracked i: Instance) {
+                Instance { send_sync: arbitrary(), state: None, location: 0 }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: constructor for an opaque datatype")
+}
+
+test_verify_one_file! {
+    #[test] forge_token_in_normal_fn IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(persistent_option)] pub p: Option<int>,
+            }
+
+            #[invariant]
+            pub spec fn inv(&self) -> bool { true }
+
+            pub proof fn forge(tracked i: Instance) -> (tracked t: p) {
+                p { dummy_instance: i }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: constructor for an opaque datatype")
+}

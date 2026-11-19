@@ -858,17 +858,15 @@ impl Visitor {
             }
             GenericParam::Const(_) => None,
         });
+        let type_params = generics.type_params().map(|param| &param.ident);
 
         self.additional_items.push(parse_quote_spanned!(full_span =>
+            #[verifier::external_body]
+            #(#[verifier::reject_recursive_types(#type_params)])*
             #vis struct #pred_ident #impl_generics #where_clause {
                 _marker: ::core::marker::PhantomData<( #(#marker_types,)* )>,
             }
         ));
-
-        let update_arg: FnArg = parse_quote_spanned_vstd!(vstd, full_span =>
-            tracked #atomic_update: #vstd::atomic::AtomicUpdate
-                < #old_ty, #new_ty, #pred_ident #ty_generics >
-        );
 
         let mut old_pat = TokenStream::new();
         let mut new_pat = TokenStream::new();
@@ -951,9 +949,13 @@ impl Visitor {
             for #pred_ident #ty_generics #where_clause { #impl_members }
         ));
 
-        if self.erase_ghost == EraseGhost::Keep {
-            sig.inputs.push(update_arg);
+        // This is desugared by `rewrite_args_unwrap_ghost_tracked` later.
+        sig.inputs.push(parse_quote_spanned_vstd!(vstd, full_span =>
+            Tracked(#atomic_update): Tracked<#vstd::atomic::AtomicUpdate<
+                #old_ty, #new_ty, #pred_ident #ty_generics>>
+        ));
 
+        if self.erase_ghost == EraseGhost::Keep {
             stmts.push(Stmt::Expr(
                 Expr::Verbatim(quote_spanned_builtin!(builtin, full_span =>
                     #builtin::atomic_spec( #atomic_update )
@@ -3892,10 +3894,6 @@ impl Visitor {
             return;
         };
 
-        if self.erase_ghost != EraseGhost::Keep {
-            return;
-        };
-
         let span = atomically.span();
         let AtomicallyBlock {
             label,
@@ -3909,8 +3907,16 @@ impl Visitor {
             ..
         } = atomically;
 
+        if self.erase_ghost != EraseGhost::Keep {
+            args.push(Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                #verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!())
+            )));
+
+            return;
+        };
+
         attrs.push(parse_quote_spanned!(span =>
-            #[verifier::atomic_call]
+            #[verus::internal(logatom_function_call)]
         ));
 
         // handle loop invariants
@@ -4008,7 +4014,7 @@ impl Visitor {
             ),
         };
 
-        let extra_arg = quote_spanned_builtin_builtin_macros_vstd!(builtin, _macros, vstd, span =>
+        let extra_arg = quote_spanned_builtin_builtin_macros_vstd!(builtin, _m, vstd, span =>
             #vstd::atomic::atomically({
                 let _verus_internal_identifier_for_closures = #vstd::prelude::dummy_capture_new();
                 |#update_fn_binder, _verus_internal_ghost_atomic_update| {

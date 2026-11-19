@@ -3427,7 +3427,7 @@ fn check_expr(
         }
         ExprX::AtomicUpdateInitDummy => {
             // Nothing to do here.
-            Ok((outer_mode, outer_proph.clone()))
+            Ok((Mode::Exec, Proph::No))
         }
         ExprX::Atomically(_kind, au, e) => {
             // REVIEW: This is rather complicated since the atomic function call is encoded

@@ -282,7 +282,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
     // REVIEW: The atomic function call is encoded using the following construction:
     //
-    // #[verifier::atomic_call]
+    // #[verus::internal(logatom_function_call)]
     // function(x1, x2, x3, ::vstd::atomic::atomically(|update| {
     //     ...
     //     ay = update(ax);
@@ -310,17 +310,29 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
     let is_atomic_function_call = || -> Result<bool, VirErr> {
         let hir_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
         let vir_attrs = crate::attributes::parse_attrs(hir_attrs, None)?;
-        Ok(vir_attrs.contains(&crate::attributes::Attr::AtomicCall))
+        Ok(vir_attrs.contains(&crate::attributes::Attr::LogatomFunctionCall))
+    };
+
+    let malformed_atomic_call = || -> Result<_, VirErr> {
+        err_span(
+            expr.span,
+            "malformed atomic function call; use `atomically |update| { ... }` syntax instead",
+        )
     };
 
     let (vir_args, call_body) = match args.as_deref() {
         Some(arg_slice) if is_atomic_function_call()? => {
             let [prefix @ .., au] = arg_slice else {
-                panic!("atomic call must have at least one argument");
+                return malformed_atomic_call();
             };
 
             let mut vir_args = mk_vir_args(bctx, prefix)?;
             let au_expr = expr_to_vir_consume(&bctx, au)?;
+
+            let ExprX::Atomically(..) = &au_expr.x else {
+                return malformed_atomic_call();
+            };
+
             vir_args.push(bctx.spanned_typed_new(
                 au.span,
                 &au_expr.typ,
@@ -910,7 +922,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     //     ...
                     // }
                     //
-                    // #[verifier::atomic_call]
+                    // #[verus::internal(logatom_function_call)]
                     // function(x1, x2, x3, ::vstd::atomic::atomically({
                     //     let _verus_internal_identifier_for_closures = ::vstd::prelude::dummy_capture_new();
                     //     |update, atomic_update| {
