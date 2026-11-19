@@ -1995,6 +1995,23 @@ impl<T> PointsTo<T> {
         PointsTo::<T>::lemma_pt_parts_wf(*final(self_ref));
         val
     }
+
+    /// "Forgets" about the value stored behind the pointer.
+    /// Updates the `PointsTo` value to [`TypedValue::Empty`].
+    /// Note that this is a `proof` function, i.e.,
+    /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
+    /// Only the proof-code representation changes.
+    pub proof fn leak_contents(tracked &mut self)
+        requires
+            self.wf(),
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).is_empty(),
+            final(self).wf(),
+    {
+        let tracked _ = self.take_typed_value();
+    }
 }
 
 impl<T: ?Sized> PointsToUnaligned<T> {

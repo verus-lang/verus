@@ -1325,19 +1325,19 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_proof_with_struct code!{
         use vstd::prelude::*;
-        use vstd::raw_ptr::PointsToRaw;
+        use vstd::raw_ptr::PointsToUntyped;
 
         #[verus_verify]
         pub struct STest {
             pub u: u32,
             #[cfg(verus_keep_ghost_body)]
-            pub p: Tracked<PointsToRaw>,
+            pub p: Tracked<PointsToUntyped>,
         }
 
         // Test with trailing comma in struct literal
         #[verus_spec(result =>
             with
-                Tracked(p): Tracked<PointsToRaw>,
+                Tracked(p): Tracked<PointsToUntyped>,
             ensures
                 result.u == u,
         )]
@@ -1352,7 +1352,7 @@ test_verify_one_file! {
         // Test without trailing comma in struct literal
         #[verus_spec(result =>
             with
-                Tracked(p): Tracked<PointsToRaw>,
+                Tracked(p): Tracked<PointsToUntyped>,
             ensures
                 result.u == u,
         )]
@@ -1365,7 +1365,7 @@ test_verify_one_file! {
         // Test with let binding
         #[verus_spec(result =>
             with
-                Tracked(p): Tracked<PointsToRaw>,
+                Tracked(p): Tracked<PointsToUntyped>,
             ensures
                 result.u == u,
         )]

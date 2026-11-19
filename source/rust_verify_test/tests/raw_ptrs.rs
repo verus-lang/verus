@@ -41,12 +41,13 @@ test_verify_one_file! {
             let tracked mut pt = pt;
 
             assume(x == pt.ptr());
-            assume(pt.is_uninit());
+            assume(pt.wf());
+            assume(pt.is_empty());
 
             ptr_mut_write(x, Tracked(&mut pt), 20);
 
             assert(x == pt.ptr());
-            assert(pt.is_init());
+            assert(pt.is_valid());
             assert(pt.value() == 20);
 
             let val = ptr_ref(x, Tracked(&pt));
@@ -57,19 +58,20 @@ test_verify_one_file! {
 
             assert(val == 20);
             assert(x == pt.ptr());
-            assert(pt.is_uninit());
+            assert(pt.is_empty());
         }
 
         fn test_manipulating2(x: *mut u8, Tracked(pt): Tracked<PointsTo<u8>>) {
             let tracked mut pt = pt;
 
             assume(x == pt.ptr());
-            assume(pt.is_uninit());
+            assume(pt.wf());
+            assume(pt.is_empty());
 
             ptr_mut_write(x, Tracked(&mut pt), 20);
 
             assert(x == pt.ptr());
-            assert(pt.is_init());
+            assert(pt.is_valid());
             assert(pt.value() == 20);
 
             let val = ptr_ref(x, Tracked(&pt));
@@ -80,35 +82,40 @@ test_verify_one_file! {
 
             assert(val == 20);
             assert(x == pt.ptr());
-            assert(pt.is_uninit());
+            assert(pt.is_empty());
 
             assert(false); // FAILS
         }
 
         fn test_ptr_mut_write_different(x: *mut u8, Tracked(pt): Tracked<PointsTo<u8>>) {
             let tracked mut pt = pt;
-            assume(pt.is_uninit());
+            assume(pt.wf());
+            assume(pt.is_empty());
             ptr_mut_write(x, Tracked(&mut pt), 20); // FAILS
         }
 
         fn test_ptr_mut_read_different(x: *mut u8, Tracked(pt): Tracked<PointsTo<u8>>) {
             let tracked mut pt = pt;
-            assume(pt.is_init());
+            assume(pt.wf());
+            assume(pt.is_valid());
             let _ = ptr_mut_read(x, Tracked(&mut pt)); // FAILS
         }
 
         fn test_ptr_ref_different(x: *mut u8, Tracked(pt): Tracked<PointsTo<u8>>) {
-            assume(pt.is_init());
+            assume(pt.wf());
+            assume(pt.is_valid());
             let _ = ptr_ref(x, Tracked(&pt)); // FAILS
         }
 
         fn test_ptr_mut_read_uninit(x: *mut u8, Tracked(pt): Tracked<PointsTo<u8>>) {
             let tracked mut pt = pt;
+            assume(pt.wf());
             assume(pt.ptr() == x);
             let _ = ptr_mut_read(x, Tracked(&mut pt)); // FAILS
         }
 
         fn test_ptr_ref_uninit(x: *mut u8, Tracked(pt): Tracked<PointsTo<u8>>) {
+            assume(pt.wf());
             assume(pt.ptr() == x);
             let _ = ptr_ref(x, Tracked(&pt)); // FAILS
         }
@@ -178,12 +185,12 @@ test_verify_one_file! {
         }
 
         fn test_extensionality_sized<T>(a: *const T, b: *const T) {
-            assume(a.addr() == b.addr() && a@.provenance == b@.provenance);
+            assume(a.addr() == b.addr() && a@.provenance == b@.provenance && a@.is_real == b@.is_real);
             assert(a == b);
         }
 
         fn test_extensionality_unsized<T: ?Sized>(a: *const T, b: *const T) {
-            assume(a.addr() == b.addr() && a@.provenance == b@.provenance);
+            assume(a.addr() == b.addr() && a@.provenance == b@.provenance && a@.is_real == b@.is_real);
             assert(a == b); // FAILS
         }
 
@@ -319,7 +326,8 @@ test_verify_one_file! {
         }
 
         fn test2(x: *mut u8, Tracked(pt): Tracked<PointsTo<u8>>) {
-            assume(pt.is_init());
+            assume(pt.wf());
+            assume(pt.is_valid());
             assume(pt.ptr() == x);
             let y = ptr_ref(x, Tracked(&pt));
 
@@ -370,21 +378,20 @@ test_verify_one_file! {
     #[test] allocate_in_bounds verus_code! {
         use vstd::raw_ptr::*;
         use vstd::layout::layout_for_type_is_valid;
-        use vstd::prelude::Set;
 
         global layout u32 is size == 4, align == 4;
 
         fn f() {
             layout_for_type_is_valid::<u32>();
 
-            let (block_ptr, Tracked(token), Tracked(dealloc)) = allocate(8, 4);
+            let (block_ptr, Tracked(token)) = allocate(8, 4);
 
             let b1_ptr = block_ptr as *mut u32;
             let b2_ptr = block_ptr.with_addr(block_ptr.addr() + 4) as *mut u32;
 
-            let tracked (token1, token2) = token.split(Set::new(|x: int| block_ptr.addr() <= x < block_ptr.addr() + 4));
-            let tracked mut token1 = token1.into_typed::<u32>(b1_ptr as usize);
-            let tracked mut token2 = token2.into_typed::<u32>(b2_ptr as usize);
+            let tracked (token1, token2) = token.split(4);
+            let tracked mut token1 = PointsTo::<u32>::from_untyped(token1, ());
+            let tracked mut token2 = PointsTo::<u32>::from_untyped(token2, ());
 
             ptr_mut_write(b1_ptr, Tracked(&mut token1), 9);
             ptr_mut_write(b2_ptr, Tracked(&mut token2), 14);

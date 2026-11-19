@@ -12,8 +12,8 @@ impl InvariantPredicate<CellId, PointsTo<u8>> for EvenCell {
     open spec fn inv(cell_id: CellId, points_to: PointsTo<u8>) -> bool {
         points_to.id() == cell_id
           && (match points_to.mem_contents() {
-              TypedValue::Uninit => false,
-              TypedValue::Init(x) => x % 2 == 0,
+              TypedValue::Empty => false,
+              TypedValue::Valid(x) => x@ % 2 == 0,
           })
     }
 }
