@@ -2373,3 +2373,85 @@ fn test_unused_place_drops() {
         .collect();
     assert_eq!(events.join(" "), "unused unused p y x");
 }
+
+/// The temporaries in the arguments of a `proof_with!` call with ghost outputs (`=>`)
+/// are dropped where they would be dropped for the plain call `f(&mk())`
+/// (in edition 2021, at the end of the statement; in edition 2024, at the end of the block)
+#[test]
+fn test_proof_with_outputs() {
+    let code = || {
+        code! {
+            verus! {
+                fn g(a: u64, b: &D) -> u64 { a }
+            }
+
+            #[verus_spec(ret =>
+                with Ghost(w): Ghost<u32>, -> z: Ghost<u32>
+            )]
+            fn f(x: &D) -> u64 {
+                proof_with!{|= Ghost(0u32)}
+                x.x
+            }
+
+            #[verus_spec]
+            fn test() {
+                proof_decl!{ let ghost mut z = 0u32; }
+                let r = g({ proof_with!{Ghost(0) => Ghost(z)} f(&mk()) }, &mk());
+            }
+        }
+    };
+    check_cfg(
+        code(),
+        "test",
+        &["--edition 2021"],
+        r#"
+bb0 (entry, may_unwind):
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    -> bb2
+bb2:
+    Overwrite(Temp_2)        // _VERUS_VERIFIED_f(&mk(), 0)
+    -> bb3
+bb3:
+    Overwrite(__verus_tmp_expr_var__)
+    Overwrite(verus_tmp_z)
+    -> bb4
+bb4 (may_unwind):
+    Overwrite(Temp_3)        // mk()
+    Overwrite(Temp_4)        // &mk()
+    -> bb6
+bb6 (exit):
+    Overwrite(Temp_5)        // g({ match _VERUS_VERIFIED_f(&..., 0) {...} }, &mk())
+    Overwrite(r)
+    ScopeDrop(Temp_3)        // mk()
+    ScopeDrop(Temp_0)        // mk()
+"#,
+    );
+    check_cfg(
+        code(),
+        "test",
+        &["--edition 2024"],
+        r#"
+bb0 (entry, may_unwind):
+    Overwrite(Temp_0)        // mk()
+    Overwrite(Temp_1)        // &mk()
+    -> bb2
+bb2:
+    Overwrite(Temp_2)        // _VERUS_VERIFIED_f(&mk(), 0)
+    -> bb3
+bb3:
+    Overwrite(__verus_tmp_expr_var__)
+    Overwrite(verus_tmp_z)
+    -> bb4
+bb4 (may_unwind):
+    ScopeDrop(Temp_0)        // mk()
+    Overwrite(Temp_3)        // mk()
+    Overwrite(Temp_4)        // &mk()
+    -> bb6
+bb6 (exit):
+    Overwrite(Temp_5)        // g({ Left(match ... {...}, drop) }, &mk())
+    Overwrite(r)
+    ScopeDrop(Temp_3)        // mk()
+"#,
+    );
+}

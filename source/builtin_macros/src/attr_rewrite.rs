@@ -1195,14 +1195,19 @@ fn rewrite_with_expr(
             elems,
         });
         let (x_declares, x_assigns) = syntax::rewrite_exe_pat(&mut pat);
+        // We use a `match` rather than a `let` so that the temporaries in the call
+        // live as long as they would without the `match` (since a `match` scrutinee,
+        // unlike a `let` initializer, isn't a temporary scope boundary).
         *expr = syn::Expr::Verbatim(
-            quote_spanned_builtin_builtin_macros! { _verus_builtin, verus_builtin_macros, expr.span() => {
-                let #pat = #expr;
-                #verus_builtin_macros::proof!{
-                    #(#x_assigns)*
+            quote_spanned_builtin_builtin_macros! { _verus_builtin, verus_builtin_macros, expr.span() =>
+                match #expr {
+                    #pat => {
+                        #verus_builtin_macros::proof!{
+                            #(#x_assigns)*
+                        }
+                        #tmp_pat
+                    }
                 }
-                #tmp_pat
-            }
             },
         );
         x_declares
