@@ -201,16 +201,16 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_erase1 verus_code! {
-        struct S1<A, B>(
-            #[verifier::spec] A,
-            #[verifier::exec] B,
+        tracked struct S1<A, B>(
+            ghost A,
+            tracked B,
         );
 
-        fn test() {
-            let x = S1::<bool, _>(true, false);
+        proof fn test() {
+            let tracked x = S1::<bool, _>(true, false);
             assert(x.0);
             assert(!x.1);
-            let S1(y, z) = x;
+            let tracked S1(y, z) = x;
             assert(y);
             assert(!z);
         }
@@ -219,16 +219,16 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_erase1_fail verus_code! {
-        struct S1<A, B>(
-            #[verifier::spec] A,
-            #[verifier::exec] B,
+        tracked struct S1<A, B>(
+            ghost A,
+            tracked B,
         );
 
-        fn test() {
-            let x = S1::<bool, _>(true, false);
+        proof fn test() {
+            let tracked x = S1::<bool, _>(true, false);
             assert(x.0);
             assert(!x.1);
-            let S1(y, z) = x;
+            let tracked S1(y, z) = x;
             assert(y);
             assert(z); // FAILS
         }
@@ -237,16 +237,16 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_erase2 verus_code! {
-        struct S1<A, B> {
-            #[verifier::spec] a: A,
-            #[verifier::exec] b: B,
+        tracked struct S1<A, B> {
+            ghost a: A,
+            exec b: B,
         }
 
-        fn test() {
-            let x = S1::<bool, _> { a: true, b: false };
+        proof fn test() {
+            let tracked x = S1::<bool, _> { a: true, b: false };
             assert(x.a);
             assert(!x.b);
-            let S1 { a: y, b: z } = x;
+            let tracked S1 { a: y, b: z } = x;
             assert(y);
             assert(!z);
         }

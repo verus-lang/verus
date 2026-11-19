@@ -322,7 +322,7 @@ test_verify_one_file! {
         }
 
         unsafe impl Send for Foo { }
-    } => Err(e) => assert_vir_error_msg(e, "unsafe impl for `Send` is not allowed")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `unsafe impl` for `Send`")
 }
 
 test_verify_one_file! {
@@ -332,5 +332,216 @@ test_verify_one_file! {
         }
 
         unsafe impl Sync for Foo { }
-    } => Err(e) => assert_vir_error_msg(e, "unsafe impl for `Sync` is not allowed")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `unsafe impl` for `Sync`")
+}
+
+test_verify_one_file! {
+    #[test] unsafe_drop verus_code! {
+        pub struct S<'a> { pub r: &'a u64, pub out: u64 }
+        unsafe impl<#[may_dangle] 'a> Drop for S<'a> {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+                self.out = *self.r;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `unsafe impl` for `Drop`")
+}
+
+test_verify_one_file! {
+    #[test] no_demoting_for_unsafe_impl code! {
+        unsafe trait Tr {
+            fn foo(&self);
+        }
+
+        verus!{
+            struct X {}
+
+            unsafe impl Tr for X {
+                fn foo(&self) { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`unsafe impl` of trait `test_crate::Tr` which is unknown to Verus")
+}
+
+test_verify_one_file! {
+    #[test] impl_in_ghost_code_rejected_3426 verus_code! {
+        pub struct S;
+        pub trait Tr { fn m(&self) -> (r: u8) ensures r == 2; }
+        impl Tr for S { fn m(&self) -> (r: u8) { 2 } }
+
+        fn f() -> (r: u8) ensures r == 1 {
+            let s = S;
+            proof {
+                impl S { fn m(&self) -> (r: u8) ensures r == 1 { 1 } }
+            }
+            s.m()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "impl or static items in ghost code")
+}
+
+test_verify_one_file! {
+    #[test] impl_in_exec_nested_fn_in_proof_rejected_3426 verus_code! {
+        pub struct S;
+        fn f() -> (r: u8) ensures r == 1 {
+            let s = S;
+            proof {
+                fn hidden() {
+                    impl S { fn m(&self) -> (r: u8) ensures r == 1 { 1 } }
+                }
+            }
+            s.m()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "exec fn items in ghost code")
+}
+
+test_verify_one_file! {
+    #[test] impl_in_closure_in_exec_nested_fn_in_proof_rejected_3426 verus_code! {
+        pub struct S;
+        proof fn p() {
+            fn hidden() {
+                let c = || { impl S { fn m(&self) -> u8 { 1 } } };
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "exec fn items in ghost code")
+}
+
+test_verify_one_file! {
+    #[test] impl_in_nested_fn_in_spec_fn_rejected_3426 verus_code! {
+        pub struct S;
+        spec fn sp() -> bool {
+            fn hidden() { impl S { fn m(&self) -> u8 { 1 } } }
+            true
+        }
+    } => Err(err) => assert_vir_error_msg(err, "exec fn items in ghost code")
+}
+
+test_verify_one_file! {
+    #[test] impl_in_nested_fn_outside_ghost_still_allowed_3426 verus_code! {
+        pub struct S;
+        fn f() -> (r: u8) ensures r == 1 {
+            #[allow(non_local_definitions)]
+            fn hidden() {
+                impl S { fn m(&self) -> (r: u8) ensures r == 1 { 1 } }
+            }
+            let s = S;
+            s.m()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trivial_clone_ok verus_code! {
+        use vstd::prelude::*;
+        use std::clone::TrivialClone;
+
+        struct X { u: u64 }
+
+        unsafe impl TrivialClone for X { }
+
+        impl Copy for X { }
+
+        impl Clone for X {
+            fn clone(&self) -> Self {
+                X { u: self.u }
+            }
+        }
+
+        fn test(x: X) {
+            let y = x.clone();
+            assert(y == x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trivial_clone_fail verus_code! {
+        use vstd::prelude::*;
+        use std::clone::TrivialClone;
+
+        struct X { u: u64 }
+
+        unsafe impl TrivialClone for X { }
+
+        impl Copy for X { }
+
+        impl Clone for X {
+            fn clone(&self) -> Self { // FAILS
+                X { u: 20 }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trivial_clone_impl_order verus_code! {
+        use vstd::prelude::*;
+        use std::clone::TrivialClone;
+
+        struct X { u: u64 }
+
+        impl Clone for X {
+            fn clone(&self) -> Self { // FAILS
+                X { u: 20 }
+            }
+        }
+
+        unsafe impl TrivialClone for X { }
+
+        impl Copy for X { }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trivial_clone_generic verus_code! {
+        use vstd::prelude::*;
+        use std::clone::TrivialClone;
+
+        struct X<T> { t: T }
+
+        unsafe impl<T: TrivialClone + Copy> TrivialClone for X<T> { }
+
+        impl<T: Copy> Copy for X<T> { }
+
+        impl<T: Clone> Clone for X<T> {
+            fn clone(&self) -> Self { // FAILS
+                X { t: self.t.clone() }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trivial_clone_derive verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Clone, Copy)]
+        struct X { u: u64 }
+
+        fn test(x: X) {
+            let y = x.clone();
+            assert(y == x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trivial_clone_external_clone verus_code! {
+        use vstd::prelude::*;
+        use std::clone::TrivialClone;
+
+        struct X { u: u64 }
+
+        unsafe impl TrivialClone for X { }
+
+        impl Copy for X { }
+
+        #[verifier::external]
+        impl Clone for X {
+            fn clone(&self) -> Self {
+                X { u: 20 }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "the `Clone` impl corresponding to this `TrivialClone` impl is not known to Verus")
 }

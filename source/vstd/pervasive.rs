@@ -415,6 +415,7 @@ impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
 ///
 /// It is usually recommended to use [`cloned`] instead,
 /// which takes the reflexive closure.
+#[rustc_diagnostic_item = "verus::vstd::pervasive::strictly_cloned"]
 pub open spec fn strictly_cloned<T: Clone>(a: T, b: T) -> bool {
     call_ensures(T::clone, (&a,), b)
 }
@@ -427,6 +428,15 @@ pub open spec fn strictly_cloned<T: Clone>(a: T, b: T) -> bool {
 /// optimized to copies. This is particularly common in the Rust stdlib.
 pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
     strictly_cloned(a, b) || a == b
+}
+
+/// Whether `T::clone` returns a value equal to the original.
+///
+/// Integers, `bool`, `char` and the `Clone` impls Verus derives satisfy this. A collection
+/// relies on it when it clones its keys: a key that clones to an unequal value can leave the
+/// copy holding keys in the wrong order or bucket.
+pub open spec fn obeys_clone_eq<T: Clone>() -> bool {
+    forall|a: T, b: T| #[trigger] cloned(a, b) ==> a == b
 }
 
 } // verus!

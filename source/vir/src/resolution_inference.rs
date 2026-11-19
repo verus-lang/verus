@@ -849,6 +849,7 @@ impl<'a> Builder<'a> {
             | ExprX::ProofInSpec(..)
             | ExprX::AirStmt(..)
             | ExprX::Old(..)
+            | ExprX::ProphecyDisallowed(..)
             | ExprX::Nondeterministic => Maybe::Some(bb),
 
             ExprX::AssertAssume { .. }
@@ -1169,8 +1170,11 @@ impl<'a> Builder<'a> {
 
                 Maybe::Some(post_bb)
             }
-            ExprX::OpenInvariant(arg, binder, body, _)
+            ExprX::OpenInvariant(_, arg, binder, body, _)
             | ExprX::TryOpenAtomicUpdate(arg, binder, body) => {
+                if let ExprX::OpenInvariant(credit, ..) = &expr.x {
+                    bb = unwrap!(self.build(credit, bb));
+                }
                 bb = unwrap!(self.build(arg, bb));
 
                 let local = FlattenedPlaceTyped {
@@ -2753,8 +2757,10 @@ impl<'a> LocalCollection<'a> {
                     }
                     Some(PlaceTree::Struct(_, _, variants)) => {
                         let indices = field_opr_to_indices(field_opr, &self.datatypes);
-                        fp.projections.push(Projection::StructField(indices));
                         let child: Option<&PlaceTree> = variants[indices.0][indices.1].as_ref();
+                        if child.is_some() {
+                            fp.projections.push(Projection::StructField(indices));
+                        }
                         (fp, child)
                     }
                 })

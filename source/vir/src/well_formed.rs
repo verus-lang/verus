@@ -515,6 +515,7 @@ fn check_one_expr(
     emit: &mut EmitErrorState,
     warn_config: &Option<WarningConfig>,
 ) -> Result<(), VirErr> {
+    check_typ(ctxt, &expr.typ, &expr.span, emit)?;
     match &expr.x {
         ExprX::ConstVar(x, _) => {
             check_function_access(ctxt, x, disallow_private_access, &expr.span, emit)?;
@@ -615,7 +616,7 @@ fn check_one_expr(
                 ));
             }
         }
-        ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
+        ExprX::OpenInvariant(_credit, _inv, _binder, body, _atomicity) => {
             assert_no_early_exit_in_inv_block(&body.span, body)?;
         }
         ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
@@ -942,6 +943,7 @@ fn check_one_place(
     _area: Area,
     emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
+    check_typ(ctxt, &place.typ, &place.span, emit)?;
     match &place.x {
         PlaceX::Field(
             FieldOpr { datatype: Dt::Path(path), variant: _, field: _, get_variant: _, check: _ },
@@ -1371,6 +1373,14 @@ fn check_function_inner(
         emit.emit_deferred_err(msg);
     }
 
+    if function.x.attrs.assume_compatibility_with_trait_spec && ctxt.no_cheating {
+        let msg = error(
+            &function.span,
+            "`#[verifier::assume_compatibility_with_trait_spec]` not allowed with `--no-cheating`",
+        );
+        emit.emit_deferred_err(msg);
+    }
+
     #[cfg(feature = "singular")]
     if function.x.attrs.integer_ring {
         let _ = match std::env::var("VERUS_SINGULAR_PATH") {
@@ -1764,6 +1774,21 @@ fn check_datatype(ctxt: &Ctxt, dt: &Datatype, emit: &mut EmitErrorState) -> Resu
         for field in variant.fields.iter() {
             let typ = &field.a.0;
             check_typ(ctxt, typ, &dt.span, emit)?;
+
+            if dt.x.mode == Mode::Exec && field.a.1 != Mode::Exec {
+                let (wrapper, mode) = match field.a.1 {
+                    Mode::Spec => ("Ghost", "ghost"),
+                    Mode::Proof => ("Tracked", "tracked"),
+                    Mode::Exec => unreachable!(),
+                };
+                emit.diags.push(VirErrAs::Warning(error(
+                    &dt.span,
+                    "field in an exec-mode datatype cannot have a mode qualifier; this will eventually be a hard error",
+                )
+                .help(format!("try using the `{wrapper:}` type to embed {mode:} data in an exec-mode struct"))
+                .help("if you meant for the datatype to be only used in ghost code, mark it `ghost struct` or `tracked struct`")
+                ));
+            }
         }
     }
 

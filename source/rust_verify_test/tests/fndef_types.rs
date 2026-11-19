@@ -424,6 +424,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion6_via_fn_once verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnOnce(u8) -> bool>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -438,6 +439,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion7_via_fn_once verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnOnce<(u8,)>>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -452,6 +454,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion8_via_fn_once verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnOnce(u8) -> bool>(f: F) -> bool;
 
         fn test(x: u8) -> bool
@@ -464,6 +467,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion9_via_fn_once_with_ref verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnOnce(u8) -> bool>(f: F) -> bool;
 
         fn test(x: u8) -> bool
@@ -476,6 +480,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion10_via_fn verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: Fn(u8)>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -489,6 +494,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion11_via_fn_mut verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnMut(u8)>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -2181,6 +2187,46 @@ test_verify_one_file_with_options! {
             let r = apply(<u8 as T>::f::<u32>);
             assert(r == 3);
             assert(r == 4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_method_impl_fndef_bounds verus_code! {
+        trait Foo {}
+        struct Yes;
+        struct No;
+        impl Foo for Yes {}
+        struct S<A>(A);
+
+        trait T {
+            fn m() -> u8;
+        }
+
+        impl<A: Foo> T for S<A> {
+            fn m() -> (r: u8)
+                ensures r == 1,
+            {
+                1
+            }
+        }
+
+        impl T for S<No> {
+            fn m() -> (r: u8)
+                ensures r == 2,
+            {
+                2
+            }
+        }
+
+        proof fn test(r1: u8, r2: u8)
+            requires
+                call_ensures(<S<Yes> as T>::m, (), r1),
+                call_ensures(<S<No> as T>::m, (), r2),
+        {
+            assert(r1 == 1);
+            assert(r2 == 2);
+            assert(r2 == 1); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

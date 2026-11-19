@@ -968,7 +968,7 @@ pub enum PatternX {
 /// Arms of match expressions
 pub type Arm = Arc<Spanned<ArmX>>;
 pub type Arms = Arc<Vec<Arm>>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode)]
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub struct ArmX {
     /// pattern
     pub pattern: Pattern,
@@ -1247,6 +1247,7 @@ pub enum ExprX {
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
+    /// bool param = assert_irrefutable
     Match(Place, Arms, bool),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
@@ -1264,7 +1265,7 @@ pub enum ExprX {
         source: LoopSource,
     },
     /// Open invariant
-    OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
+    OpenInvariant(Expr, Expr, VarBinder<Typ>, Expr, InvAtomicity),
     /// Open Atomic Update
     TryOpenAtomicUpdate(Expr, VarBinder<Typ>, Expr),
     /// Placeholder expression for the atomic update argument in the atomic function call
@@ -1326,6 +1327,10 @@ pub enum ExprX {
     /// and well-formedness checks, but otherwise has no meaning. The `Old` node is
     /// ignored after these checks are complete.
     Old(Expr),
+    /// Marks an expression that is not allowed to be prophetic.
+    /// The string is a description of the context, used in the error message.
+    /// Like `Old`, this is only used for checks (in modes.rs) and otherwise has no meaning.
+    ProphecyDisallowed(Arc<String>, Expr),
     /// Async await
     Await(Expr),
     /// Used to check that match guards don't mutate the scrutinee, these are used between
@@ -1571,8 +1576,6 @@ pub struct AutoExtEqual {
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]
 pub struct FunctionAttrsX {
-    /// Erasure and lifetime checking based on ghost blocks
-    pub uses_ghost_blocks: bool,
     /// Inline spec function for SMT
     pub inline: bool,
     /// Create a global axiom saying forall params, require ==> ensure
@@ -1625,16 +1628,25 @@ pub struct FunctionAttrsX {
     pub impls_cannot_extend_spec: bool,
     /// Whether to assume that this function terminates
     pub exec_assume_termination: bool,
+    /// For a trait method impl whose method isn't declared in the trait's Verus spec
+    /// (e.g., an incomplete `external_trait_specification`), assume compatibility
+    /// and treat the impl as a static function rather than erroring
+    pub assume_compatibility_with_trait_spec: bool,
     /// Whether to allow this function to not terminate
     pub exec_allows_no_decreases_clause: bool,
     /// Is this function `tracked_swap`, which requires special handling
     pub tracked_swap: bool,
     /// Is this function `Option::tracked_take`, which requires special handling
     pub tracked_take_option: bool,
+    /// Is this function `create_open_invariant_credit`, which requires special handling
+    pub create_open_invariant_credit: bool,
     /// Whether the function is an async function
     pub is_async: bool,
     /// Is this a types's drop implementation
     pub is_drop: bool,
+    /// Is this the `clone` method of a `Clone` impl for a type that also implements
+    /// `TrivialClone`? If so, we add the postcondition `ensures ret == self`.
+    pub has_trivial_clone: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1994,6 +2006,7 @@ pub struct TraitImplX {
     pub auto_imported: bool,
     // Is a blanket implementation declared by external_trait_extension:
     pub external_trait_blanket: bool,
+    pub is_unsafe: bool,
 }
 
 pub type ModuleReveals = Arc<Spanned<Vec<Fun>>>;
