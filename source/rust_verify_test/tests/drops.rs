@@ -2345,3 +2345,31 @@ test_verify_one_file! {
         pub exec const E: u64 = { None::<Vec<u8>>; 0 };
     } => Ok(())
 }
+
+/// An expression statement `p;`, where `p` is a place, moves the value into a temporary
+/// that is dropped at the end of the statement
+#[test]
+fn test_unused_place_drops() {
+    let code = verus_code! {
+        #[allow(path_statements)]
+        fn test() {
+            let x = mk();
+            x;
+            let y = mk();
+            let p = (mk(), mk());
+            p.0;
+        }
+    };
+    let log = vir_log(code);
+    let re =
+        regex::Regex::new(r#"Drop\s+\(LocalOrTemp\s+(?:Local\s+\(VarIdent\s+"(\w+)"|(Unused))"#)
+            .unwrap();
+    let events: Vec<String> = re
+        .captures_iter(&log)
+        .map(|cap| match cap.get(1) {
+            Some(x) => x.as_str().to_string(),
+            None => "unused".to_string(),
+        })
+        .collect();
+    assert_eq!(events.join(" "), "unused unused p y x");
+}

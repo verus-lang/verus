@@ -177,6 +177,25 @@ impl<'tcx> BodyCtxt<'tcx> {
         }
     }
 
+    /// Schedule a drop for the temporary that the value of the place `expr` is moved into
+    /// by an expression statement `expr;` (where `read` is the `ReadPlace` node with
+    /// `ReadKind::Unused`). As in rustc's MIR builder, the temporary is dropped
+    /// at the end of `expr`'s temporary scope (the statement).
+    pub(crate) fn schedule_unused_drop(
+        &self,
+        expr: &rustc_hir::Expr<'tcx>,
+        read: &Expr,
+        ty: Ty<'tcx>,
+    ) {
+        if !self.emits_drops() || !self.ty_needs_drop(ty) {
+            return;
+        }
+        let temp_lifetime = self.scope_tree().temporary_scope(expr.hir_id.local_id);
+        if let Some(scope) = temp_lifetime.temp_lifetime {
+            self.schedule_drop(scope, LocalOrTemp::Unused(read.span.id), expr.span, ty);
+        }
+    }
+
     /// Schedule a drop for a local variable bound at the pattern with id `hir_id`.
     pub(crate) fn schedule_local_drop(
         &self,

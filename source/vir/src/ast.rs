@@ -1369,6 +1369,10 @@ pub enum LocalOrTemp {
     /// (The right-hand side is evaluated before the place, so the drop is only reachable via
     /// an early exit from the evaluation of the place.)
     AssignRhs(AstId),
+    /// The temporary that the value of a place is moved into by an expression statement `p;`,
+    /// identified by the AstId of the `ExprX::ReadPlace` node (with `ReadKind::Unused`).
+    /// (For the purposes of resolution analysis, this read isn't treated as a move.)
+    Unused(AstId),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]

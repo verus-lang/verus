@@ -261,7 +261,15 @@ impl ExprOrPlace {
         let p = self.to_place(bctx, expr, ty)?;
         let rk = vir::ast::ReadKind::Unused;
         let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
-        Ok(bctx.ctxt.spanned_typed_new_vir(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk)))
+        let read =
+            bctx.ctxt.spanned_typed_new_vir(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk));
+        if let ExprOrPlace::Place(_) = self {
+            // As in rustc's MIR builder, the value of the place is moved into a temporary,
+            // which is dropped at the end of the statement.
+            // (An expression already got a temporary, with its own drop, from to_place.)
+            bctx.schedule_unused_drop(expr, &read, ty);
+        }
+        Ok(read)
     }
 
     /// Take a spec snapshot of the give place.

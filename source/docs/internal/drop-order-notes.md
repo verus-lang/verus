@@ -707,7 +707,9 @@ Known deviations and limitations:
   on an early exit from a later operand (`f(mk(), return)`), the already-evaluated operands
   are dropped. Likewise, the right-hand side of an assignment (evaluated before the place)
   is `LocalOrTemp::AssignRhs(node_id)`, dropped on an early exit from the evaluation of the place
-  (`*f(return) = mk()`). `resolution_inference` ignores the `CallArg` and `AssignRhs` drops.
+  (`*f(return) = mk()`). An expression statement `p;` on a place moves the value into a
+  temporary (§6.3), which is `LocalOrTemp::Unused(node_id)`, dropped at the end of the statement.
+  `resolution_inference` ignores the `CallArg`, `AssignRhs`, and `Unused` drops.
 * Unwinding paths have no drops (VIR has no place to put them).
 * `&&`/`||` operands in an `if` condition: MIR drops each operand's temporaries after branching on
   that operand; we drop them before. (Plain `if` condition temporaries are dropped at the start of
