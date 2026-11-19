@@ -733,8 +733,13 @@ Known deviations and limitations:
 * `&&`/`||` operands in an `if` condition: MIR drops each operand's temporaries after branching on
   that operand; we drop them before. (Plain `if` condition temporaries are dropped at the start of
   both branches, as in MIR.)
-* The false exit of a non-`let` `while` condition, and the failure path of a match guard, have no
-  place for drops. Rustc's scoping rules mean those drops are always empty, except for let-chains and if-let guards.
+* Non-`let` `while` conditions: MIR drops the condition's temporaries after branching, at the start of
+  both the body and the false exit (as for `if` conditions). We drop them before branching, at the end of
+  the condition, since VIR has no place for drops on the false exit of a `while` condition.
+  (`test_while_cond` shows our placement.) Other than the condition's own temporaries, nothing is dropped
+  on the false exit.
+* The failure path of a match guard has no place for drops. Rustc's scoping rules mean those drops are
+  always empty (the guard's own temporaries are dropped at the end of the guard), except for if-let guards.
 * VIR has its own temporaries (e.g., for `let` initializers, matched against the pattern) that MIR
   doesn't have, and vice versa (reborrows, operands). MIR also omits drops for types without drop glue.
 * If a `PlaceX::Temporary` is later rewritten or cancelled (e.g. `&mut *temp`), its `Drop` refers to a

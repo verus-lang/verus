@@ -1258,6 +1258,8 @@ bb10:
 }
 
 /// The condition of a `while` loop is a terminating scope.
+/// (Unlike MIR, which drops the condition's temporaries after branching, on both edges,
+/// we drop them before branching, since VIR has no place for drops on the false exit.)
 #[test]
 fn test_while_cond() {
     let code = verus_code! {
