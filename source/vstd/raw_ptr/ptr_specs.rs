@@ -413,42 +413,6 @@ pub axiom fn ref_from_parts_slice<'a, T>(
         shared_ref_ptr(shadow_data(r)) == ptr,
 ;
 
-// /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
-// /// The memory pointed to by `ptr` must be initialized.
-// TODO: move to rustlib
-// #[inline(always)]
-// #[verifier::external_body]
-// pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>) -> (v: &str)
-//     requires
-//         perm.ptr() == ptr,
-//         perm.is_valid(),
-//     ensures
-//         v == perm.value(),
-//     opens_invariants none
-//     no_unwind
-// {
-//     unsafe { &*ptr }
-// }
-// /// Equivalent to `&mut *ptr`, passing in a permission `perm` to ensure safety.
-// /// The memory pointed to by `ptr` must be initialized.
-// TODO: move to rustlib
-// #[inline(always)]
-// #[verifier::external_body]
-// pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo<str>>) -> (v:
-//     &mut str)
-//     requires
-//         old(perm).ptr() == ptr,
-//         old(perm).is_valid(),
-//     ensures
-//         final(perm).ptr() == ptr,
-//         final(perm).is_valid(),
-//         old(perm).value() == &*v,
-//         final(perm).value() == &*final(v),
-//     opens_invariants none
-//     no_unwind
-// {
-//     unsafe { &mut *ptr }
-// }
 //////////////////////////////////////////////////////
 // Specifications for `ptr::addr` and `ptr::with_addr`
 //////////////////////////////////////////////////////
@@ -739,16 +703,6 @@ pub axiom fn mut_ref_from_parts_slice<'a, T>(
         pt_parts_wf_slice(ptr@, *final(pt_untyped), *final(typed_value)),
 ;
 
-// TODO: move to rustlib
-// /// Convert from a shared reference to a `&'a mut str` to a `&'a PointsTo<str>`.
-// pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt:
-//     &'a PointsTo<str>)
-//     ensures
-//         pt.ptr() == mut_ref_ptr(*mut_ref),
-//         pt.is_valid(),
-//         &pt.value() == &(*old(*mut_ref)),
-//         &*final(*mut_ref) == &*old(*mut_ref),
-// ;
 /// Take a `&mut [T]` subrange of a `&mut [T]`.
 pub axiom fn tracked_mut_ref_slice_subrange<T>(
     tracked mut_ref: &mut [T],
