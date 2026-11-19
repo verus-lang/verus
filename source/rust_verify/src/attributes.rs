@@ -313,7 +313,7 @@ pub(crate) enum Attr {
     // specifies an open atomic update block
     AtomicUpdateBlock,
     // for function calls with an `atomically` block
-    AtomicCall,
+    LogatomFunctionCall,
     // mark that a loop was desugared from a for-loop in the syntax macro
     ForLoop,
     // mark the syntax macro inserted a synthetic decreases into a desugared for-loop
@@ -582,7 +582,6 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "open_au_block" => {
                     v.push(Attr::AtomicUpdateBlock)
                 }
-                AttrTree::Fun(_, arg, None) if arg == "atomic_call" => v.push(Attr::AtomicCall),
                 AttrTree::Fun(_, arg, None) if arg == "bit_vector" => v.push(Attr::BitVector),
                 AttrTree::Fun(_, arg, None) if arg == "decreases_by" || arg == "recommends_by" => {
                     v.push(Attr::DecreasesBy)
@@ -930,6 +929,9 @@ pub(crate) fn parse_attrs(
                     }
                     AttrTree::Fun(_, arg, None) if arg == "loop_isolation_boundary" => {
                         v.push(Attr::LoopIsolationBoundary)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "logatom_function_call" => {
+                        v.push(Attr::LogatomFunctionCall)
                     }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
