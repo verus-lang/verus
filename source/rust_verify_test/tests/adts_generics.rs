@@ -5,7 +5,6 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test_box_unbox_struct verus_code! {
-        #[derive(Eq, PartialEq)]
         struct Thing<A> {
             a: A,
         }
@@ -24,7 +23,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_box_enum verus_code! {
-        #[derive(Eq, PartialEq)]
         enum Thing<A> {
             First(A),
         }
@@ -37,6 +35,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_generic_adt_eq verus_code! {
+        use vstd::prelude::*;
         #[derive(Eq, PartialEq)]
         struct Thing<A> {
             a: A,
@@ -55,7 +54,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_generic_adt_u8 verus_code! {
-        #[derive(Eq, PartialEq)]
         struct Thing<A> {
             a: A,
         }

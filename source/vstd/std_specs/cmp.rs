@@ -17,6 +17,8 @@ verus_skip_verusfmt! {
 pub trait ExPartialEq<Rhs: PointeeSized = Self>: PointeeSized {
     type ExternalTraitSpecificationFor: PartialEq<Rhs>;
 
+    /// Usually `true` for specific impls.
+    /// For `#[derive(PartialEq)]` impls with no `PartialEqSpecImpl` impl, Verus supplies `false`.
     spec fn obeys_eq_spec() -> bool;
 
     spec fn eq_spec(&self, other: &Rhs) -> bool;
@@ -35,6 +37,9 @@ pub trait ExPartialEq<Rhs: PointeeSized = Self>: PointeeSized {
 #[verifier::external_trait_specification]
 pub trait ExEq: PartialEq + PointeeSized {
     type ExternalTraitSpecificationFor: Eq;
+
+    // Hidden method that `#[derive(Eq)]` implements
+    fn assert_fields_are_eq(&self);
 }
 
 #[verifier::external_type_specification]

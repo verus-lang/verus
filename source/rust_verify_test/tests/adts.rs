@@ -4,6 +4,8 @@ mod common;
 use common::*;
 
 const STRUCTS: &str = verus_code_str! {
+    use vstd::prelude::*;
+
     #[derive(PartialEq, Eq)]
     struct Car {
         four_doors: bool,
@@ -79,6 +81,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enum_struct verus_code! {
+        use vstd::prelude::*;
+
         #[derive(PartialEq, Eq)]
         enum Thing {
             One { a: int },
@@ -93,6 +97,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enum_unit verus_code! {
+        use vstd::prelude::*;
+
         #[derive(PartialEq, Eq, Structural)]
         enum AB {
             A,
@@ -554,6 +560,8 @@ test_verify_one_file! {
 }
 
 const FIELD_UPDATE: &str = verus_code_str! {
+    use vstd::prelude::*;
+
     #[derive(PartialEq, Eq, Structural)]
     struct S {
         a: usize,
@@ -603,6 +611,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_field_update_poly_pass verus_code! {
+        use vstd::prelude::*;
         #[derive(PartialEq, Eq, Structural)]
         struct S<A> {
             a: A,
@@ -619,6 +628,7 @@ test_verify_one_file! {
 }
 
 const FIELD_UPDATE_2: &str = verus_code_str! {
+    use vstd::prelude::*;
     #[derive(PartialEq, Eq, Structural)]
     struct T {
         s: S,

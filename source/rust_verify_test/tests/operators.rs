@@ -289,6 +289,7 @@ test_verify_one_file! {
     #[test] test_structural_eq verus_code! {
         use vstd::prelude::*;
 
+        #[verifier::external_derive(PartialEq)]
         #[derive(PartialEq, Structural)]
         pub struct S {
             a: u8,

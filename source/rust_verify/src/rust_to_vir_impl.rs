@@ -86,6 +86,7 @@ fn trait_impl_to_vir<'tcx>(
     auto_imported: bool,
     external_trait_blanket: bool,
     is_unsafe: bool,
+    auto_derived: bool,
 ) -> Result<Option<(Path, Typs, TraitImpl)>, VirErr> {
     let trait_polarity = ctxt.tcx.impl_polarity(impl_def_id);
     if trait_polarity == rustc_middle::ty::ImplPolarity::Negative {
@@ -154,6 +155,7 @@ fn trait_impl_to_vir<'tcx>(
         auto_imported,
         external_trait_blanket,
         is_unsafe: is_unsafe,
+        auto_derived,
     };
     let trait_impl = ctxt.spanned_new(span, trait_impl);
     Ok(Some((trait_path, types, trait_impl)))
@@ -576,6 +578,7 @@ pub(crate) fn translate_impl<'tcx>(
                 false,
                 vattrs.external_trait_blanket,
                 *safety != Safety::Safe,
+                is_automatically_derived(attrs),
             )
             .map_err(|e| vec![e])?
             {
@@ -923,6 +926,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             true,
             false,
             tcx.trait_def(trait_ref.def_id()).safety != Safety::Safe,
+            false,
         );
         if let Ok(Some((trait_path, trait_typ_args, trait_impl))) = t_impl_opt {
             let mut assoc_type_impls: Vec<AssocTypeImpl> = Vec::new();
@@ -1067,6 +1071,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             false,
             false,
             tcx.trait_def(trait_did).safety != Safety::Safe,
+            false,
         )? {
             krate.trait_impls.push(trait_impl);
         }

@@ -21,7 +21,6 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test2_expand_error ["--expand-errors"] => verus_code! {
-        #[derive(PartialEq, Eq)]
         pub enum Message {
             Quit(bool),
             Move { x: i32, y: i32 },
@@ -59,7 +58,6 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test3_expand_requires ["--expand-errors"] => verus_code! {
-        #[derive(PartialEq, Eq)]
         pub enum Message {
             Quit(bool),
             Move { x: i32, y: i32 },
@@ -103,7 +101,6 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test4_expand_ensures ["--expand-errors"] => verus_code! {
-        #[derive(PartialEq, Eq)]
         pub enum Message {
             Quit(bool),
             Move { x: i32, y: i32 },
@@ -177,7 +174,6 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     // example: `reveal` does not flow
     #[test] test7_local_reveal ["--expand-errors"] => verus_code! {
-        #[derive(PartialEq, Eq)]
         pub enum Message {
             Quit(bool),
             Move { x: i32, y: i32 },
@@ -214,7 +210,6 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     // example: `reveal` at function exit point
     #[test] test8_ensures_reveal ["--expand-errors"] => verus_code! {
-        #[derive(PartialEq, Eq)]
         pub enum Message {
             Quit(bool),
             Move { x: i32, y: i32 },

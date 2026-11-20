@@ -5,7 +5,6 @@ use common::*;
 
 const M1: &str = verus_code_str! {
     mod M1 {
-        #[derive(PartialEq, Eq)]
         pub struct Car {
             pub four_doors: bool,
         }
@@ -45,7 +44,6 @@ test_verify_one_file! {
 
 const M1_OPAQUE: &str = verus_code_str! {
     mod M1 {
-        #[derive(PartialEq, Eq)]
         pub struct Car {
             pub four_doors: bool,
         }
@@ -91,7 +89,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_mod_adt_no_verify verus_code! {
         #[verifier(external_body)] /* vattr */
-        #[derive(PartialEq, Eq)]
         pub struct Car {
             pub four_doors: bool,
         }
