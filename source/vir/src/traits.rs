@@ -596,6 +596,11 @@ pub fn inherit_default_bodies(
     let mut default_methods: HashMap<Path, Vec<&Function>> = HashMap::new();
     // set of all impl methods (&impl_path, &trait_method_name)
     let mut method_impls: HashSet<(&Path, &Fun)> = HashSet::new();
+    // PartialEqSpec::obeys_eq_spec has no default body in vstd,
+    // but it gets a default body of `false` for automatically derived impls of PartialEq
+    let partial_eq_spec_path = crate::def::partial_eq_spec_trait_path();
+    let obeys_eq_spec_fun = crate::def::obeys_eq_spec_fun();
+    let mut obeys_eq_spec_decl: Option<&Function> = None;
     for tr in &krate.traits {
         if trait_map.contains_key(&tr.x.name) {
             return Err(crate::well_formed::trait_conflict_error(
@@ -611,6 +616,11 @@ pub fn inherit_default_bodies(
     for f in &krate.functions {
         if let FunctionKind::TraitMethodDecl { trait_path, has_default: true } = &f.x.kind {
             default_methods.get_mut(trait_path).expect("trait_path").push(f);
+        }
+        if let FunctionKind::TraitMethodDecl { has_default: false, .. } = &f.x.kind {
+            if f.x.name == obeys_eq_spec_fun {
+                obeys_eq_spec_decl = Some(f);
+            }
         }
         if let FunctionKind::TraitMethodImpl { impl_path, method, .. } = &f.x.kind {
             let p = (impl_path, method);
@@ -637,6 +647,7 @@ pub fn inherit_default_bodies(
         &trait_map,
         &default_methods,
         &extension_to_trait,
+        &partial_eq_spec_path,
     );
     kratex.trait_impls.extend(synthesized_impls.iter().cloned());
 
@@ -656,7 +667,16 @@ pub fn inherit_default_bodies(
             // so the default bodies are valid even for external types)
             continue;
         }
-        for default_function in &default_methods[&trait_impl.x.trait_path] {
+        // Each method to inherit, along with an optional body that overrides
+        // the default method's body
+        let mut inherit_methods: Vec<(&Function, Option<Expr>)> =
+            default_methods[&trait_impl.x.trait_path].iter().map(|f| (*f, None)).collect();
+        if trait_impl.x.trait_path == partial_eq_spec_path && trait_impl.x.auto_derived {
+            if let Some(decl) = obeys_eq_spec_decl {
+                inherit_methods.push((decl, Some(crate::ast_util::mk_bool(&decl.span, false))));
+            }
+        }
+        for (default_function, override_body) in inherit_methods {
             let impl_path = &trait_impl.x.impl_path;
             let method = &default_function.x.name;
             if !method_impls.contains(&(impl_path, method)) {
@@ -668,7 +688,11 @@ pub fn inherit_default_bodies(
                     impl_path: impl_path.clone(),
                     trait_path: trait_impl.x.trait_path.clone(),
                     trait_typ_args: trait_impl.x.trait_typ_args.clone(),
-                    inherit_body_from: Some(default_function.x.name.clone()),
+                    inherit_body_from: if override_body.is_some() {
+                        None
+                    } else {
+                        Some(default_function.x.name.clone())
+                    },
                 };
                 let tr = trait_map[&trait_impl.x.trait_path];
                 let mut subst_map: HashMap<Ident, Typ> = HashMap::new();
@@ -751,9 +775,18 @@ pub fn inherit_default_bodies(
                     proxy: None,
                     kind: inherit_kind,
                     // TODO: we could try to use the impl visibility and owning module for better pruning:
-                    visibility,
-                    body_visibility: default_function.x.body_visibility.clone(),
-                    opaqueness: default_function.x.opaqueness.clone(),
+                    visibility: visibility.clone(),
+                    body_visibility: if override_body.is_some() {
+                        // like an `open` spec fn
+                        crate::ast::BodyVisibility::Visibility(visibility.clone())
+                    } else {
+                        default_function.x.body_visibility.clone()
+                    },
+                    opaqueness: if override_body.is_some() {
+                        crate::ast::Opaqueness::Revealed { visibility: visibility.clone() }
+                    } else {
+                        default_function.x.opaqueness.clone()
+                    },
                     owning_module: trait_impl.x.owning_module.clone(),
                     mode: default_function.x.mode,
                     typ_params: Arc::new(typ_params),
@@ -773,7 +806,7 @@ pub fn inherit_default_bodies(
                     unwind_spec: None,
                     item_kind: default_function.x.item_kind,
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
-                    body: None,
+                    body: override_body,
                     return_opaque_type_eqs: Arc::new(vec![]),
                     extra_dependencies: vec![],
                     hidden: Arc::new(vec![]),
@@ -797,6 +830,10 @@ pub fn inherit_default_bodies(
 /// as if the user had written an empty impl of `TSpecImpl`.
 /// inherit_default_bodies then fills in the synthesized impl with the default bodies.
 ///
+/// As a special case, `PartialEqSpec::obeys_eq_spec` has no default body,
+/// but automatically derived impls of `PartialEq` get the body `false`,
+/// so we also synthesize an impl of `PartialEqSpec` for each unpaired derived impl of `PartialEq`.
+///
 /// Note: to decide whether an impl of `T` is paired, we look at the unpruned crate,
 /// so that we never synthesize a default when a user-written `TSpecImpl` impl exists
 /// (e.g. in another crate) but has been pruned away.
@@ -809,12 +846,16 @@ fn synthesize_extension_impls(
     trait_map: &HashMap<Path, &Trait>,
     default_methods: &HashMap<Path, Vec<&Function>>,
     extension_to_trait: &HashMap<Path, Path>,
+    partial_eq_spec_path: &Path,
 ) -> Vec<TraitImpl> {
+    let has_default_methods =
+        |extension: &Path| default_methods.get(extension).is_some_and(|ms| !ms.is_empty());
     // map T to TSpec, for each extension trait TSpec that has at least one default method
+    // (or that is PartialEqSpec, which gets a default for automatically derived impls)
     let mut trait_to_extension: HashMap<Path, Path> = HashMap::new();
     for (extension, t) in extension_to_trait.iter() {
         if trait_map.contains_key(extension)
-            && default_methods.get(extension).is_some_and(|ms| !ms.is_empty())
+            && (has_default_methods(extension) || extension == partial_eq_spec_path)
         {
             trait_to_extension.insert(t.clone(), extension.clone());
         }
@@ -859,6 +900,10 @@ fn synthesize_extension_impls(
             continue;
         }
         let Some(extension) = trait_to_extension.get(&ti.x.trait_path) else { continue };
+        if !has_default_methods(extension) && !ti.x.auto_derived {
+            // Only automatically derived impls get a default (see inherit_default_bodies)
+            continue;
+        }
         // The bounds on TSpecImpl are the bounds on T plus T itself
         let mut trait_typ_arg_impls = vec![ImplPath::TraitImplPath(ti.x.impl_path.clone())];
         trait_typ_arg_impls.extend(ti.x.trait_typ_arg_impls.x.iter().cloned());
@@ -873,6 +918,7 @@ fn synthesize_extension_impls(
             auto_imported: ti.x.auto_imported,
             external_trait_blanket: false,
             is_unsafe: false,
+            auto_derived: ti.x.auto_derived,
         };
         synthesized.push(ti.new_x(trait_implx));
     }
