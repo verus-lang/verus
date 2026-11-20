@@ -8,10 +8,9 @@ inspect and hence cannot provide any guarantees for code that hasn't opted into
 verification.
 
 For code that *has* opted into verification, a successful Verus verification promises:
-1. The code is memory safe.
+1. The code is memory safe and free of [undefined behavior (UB)](https://doc.rust-lang.org/reference/behavior-considered-undefined.html).
 2. The code is panic free.
-3. The code is free of [undefined behavior (UB)](https://doc.rust-lang.org/reference/behavior-considered-undefined.html).
-4. The code is correct, in the sense that it meets its specification.
+3. The code is correct, in the sense that it meets its specification.
 
 Note that the last guarantee is only as strong as the specification itself.  A weak spec may not provide
 the guarantees you expect.  For example, given a function that returns an `Option<T>`, if the specification
@@ -38,6 +37,7 @@ Equally important are the properties that Verus does not guarantee, even when it
    without explicit recursive calls.
    Proving termination for concurrent programs is even more complex 
    and still requires significant research and development.
+4. Verus is not (and cannot be) defensive against UB in unverified code.   
 
 The guarantees Verus does provide are contingent on the following:
 1. The invocation of Verus is trusted.  Verus supports flags like
