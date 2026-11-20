@@ -27,6 +27,7 @@ cd $VERUS_TMP_DIR
 mkdir -p source/rustc_hir_typeck_closure_files/src
 mkdir -p source/rustc_mir_transform/src
 cp -r $RUST_DIR/compiler/rustc_mir_build $VERUS_TMP_DIR/source/
+cp -r $RUST_DIR/compiler/rustc_hir_typeck $VERUS_TMP_DIR/source/
 cp -r $RUST_DIR/compiler/rustc_hir_analysis $VERUS_TMP_DIR/source/
 cp -r $RUST_DIR/compiler/rustc_const_eval $VERUS_TMP_DIR/source/
 cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/upvar.rs $VERUS_TMP_DIR/source/rustc_hir_typeck_closure_files/src/
@@ -50,6 +51,7 @@ git rm -r source
 mkdir -p source/rustc_hir_typeck_closure_files/src
 mkdir -p source/rustc_mir_transform/src
 cp -r $RUST_DIR/compiler/rustc_mir_build $VERUS_TMP_DIR/source/
+cp -r $RUST_DIR/compiler/rustc_hir_typeck $VERUS_TMP_DIR/source/
 cp -r $RUST_DIR/compiler/rustc_hir_analysis $VERUS_TMP_DIR/source/
 cp -r $RUST_DIR/compiler/rustc_const_eval $VERUS_TMP_DIR/source/
 cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/upvar.rs $VERUS_TMP_DIR/source/rustc_hir_typeck_closure_files/src/
@@ -75,4 +77,3 @@ echo ""
 
 echo "Diff prepared. When you're ready to apply it, run:"
 echo "git cherry-pick $GIT_COMMIT"
-
