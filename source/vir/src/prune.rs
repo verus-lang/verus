@@ -751,6 +751,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
         if let Some(assoc_group) = state.worklist_assoc_type_impls.pop() {
             if let Some(assoc_impls) = ctxt.assoc_type_impl_map.get(&assoc_group) {
                 for assoc_impl in assoc_impls {
+                    if !assoc_type_impl_mentions_only_known_types(ctxt, assoc_impl) {
+                        continue;
+                    }
                     traverse_generic_bounds(ctxt, state, &assoc_impl.x.typ_bounds, false);
                     crate::ast_visitor::map_assoc_type_impl_visitor_env(&assoc_impl, state, &ft)
                         .unwrap();
@@ -787,6 +790,23 @@ impl TraitX {
     fn prune_name(&self, name: &Ident) -> (Path, Ident) {
         (self.name.clone(), name.clone())
     }
+}
+
+/// An associated-type impl can mention a datatype that is not visible to the module being
+/// verified, e.g. `impl TryFrom<Private> for Public` in another module, where `Private` is
+/// private to that module. Such datatypes are pruned entirely, so the impl cannot be encoded;
+/// leaving it out only drops an axiom (code in this module cannot name `Private` anyway).
+fn assoc_type_impl_mentions_only_known_types(ctxt: &Ctxt, assoc_impl: &AssocTypeImpl) -> bool {
+    let ft = |_: &mut (), t: &Typ| {
+        crate::ast_visitor::typ_visitor_check(t, &mut |t: &Typ| match &**t {
+            TypX::Datatype(dt @ Dt::Path(_), _, _) if !ctxt.datatype_map.contains_key(dt) => {
+                Err(crate::messages::error_bare("datatype not visible"))
+            }
+            _ => Ok(()),
+        })?;
+        Ok(t.clone())
+    };
+    crate::ast_visitor::map_assoc_type_impl_visitor_env(assoc_impl, &mut (), &ft).is_ok()
 }
 
 impl AssocTypeImplX {
@@ -1390,7 +1410,10 @@ pub fn prune_krate_for_module_or_krate(
         assoc_type_impls: krate
             .assoc_type_impls
             .iter()
-            .filter(|a| state.reached_assoc_type_impls.contains(&a.x.prune_name()))
+            .filter(|a| {
+                state.reached_assoc_type_impls.contains(&a.x.prune_name())
+                    && assoc_type_impl_mentions_only_known_types(&ctxt, a)
+            })
             .cloned()
             .collect(),
         traits: traits
