@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use vir::{
-    ast::{Fun, Krate, Path},
+    ast::{Fun, Function, Krate, Path},
     ast_util::fun_as_friendly_rust_name,
+    prune::contains_assert_by_compute,
 };
 
 // A "bucket" is a group of functions that are processed together
@@ -11,7 +12,12 @@ use vir::{
 // to be coherent for a single bucket, so a bucket cannot be cross-module).
 //
 // More precisely, we determine the buckets based off the spinoff_prover attribute
-// (see get_buckets).
+// (see get_buckets and needs_own_bucket).
+/// A function gets its own bucket if it's spinoff_prover, or contains
+/// `assert(..) by (compute)` (see vir::prune::functions_reachable_for_compute).
+fn needs_own_bucket(func: &Function) -> bool {
+    func.x.attrs.spinoff_prover || func.x.body.as_ref().is_some_and(contains_assert_by_compute)
+}
 
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub enum BucketId {
@@ -84,7 +90,7 @@ impl Bucket {
 
 /// Arrange the given modules into buckets.
 /// Typically, this means 1 bucket per module;
-/// However, any functions marked 'spinoff_prover' get their own bucket.
+/// However, any function flagged by needs_own_bucket gets its own bucket.
 pub fn get_buckets(
     krate: &Krate,
     modules_to_verify: &Vec<vir::ast::Module>,
@@ -94,7 +100,7 @@ pub fn get_buckets(
     for func in &krate.functions {
         if let Some(owning_module) = &func.x.owning_module {
             if module_set.contains(owning_module) {
-                let bucket_id = if func.x.attrs.spinoff_prover {
+                let bucket_id = if needs_own_bucket(func) {
                     BucketId::Fun(owning_module.clone(), func.x.name.clone())
                 } else {
                     BucketId::Module(owning_module.clone())
