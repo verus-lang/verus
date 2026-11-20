@@ -1393,3 +1393,44 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_str_view_injective verus_code! {
+        use vstd::prelude::*;
+
+        // `str` is determined by its characters: view equality is equality
+        proof fn ext(a: &str, b: &str)
+            requires a@ == b@,
+            ensures a == b,
+        {
+        }
+
+        // distinct literals stay distinct (their views are distinct)
+        proof fn distinct() {
+            assert("a" != "b");
+            assert("a"@ != "b"@);
+        }
+
+        // the exec comparison (whose spec is view equality) establishes spec equality with
+        // the literal
+        fn classify(s: &str) -> (r: u8)
+            ensures
+                r == 1 <==> s == "one",
+                r == 2 <==> s == "two",
+        {
+            if s == "one" {
+                1
+            } else if s == "two" {
+                2
+            } else {
+                0
+            }
+        }
+
+        fn wrong(a: &str, b: &str)
+            requires a@.len() == b@.len(),
+        {
+            assert(a == b); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
