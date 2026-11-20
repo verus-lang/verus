@@ -1,0 +1,14 @@
+[package]
+name = "dyn_trait_use"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { path = "../../../../../vstd" }
+dyn_trait_def = { path = "../dyn_trait_def" }
+
+[package.metadata.verus]
+verify = true
+trusted_crates = ["vstd"]
+
+[workspace]

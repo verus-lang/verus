@@ -161,3 +161,22 @@ cargo_examples!(true);
 
 // Tests that run `cargo {check, build}` on each crate in the cargo-tests/unverified directory
 cargo_examples!(false);
+
+// Runs `cargo verus verify` on a crate in the cargo-tests/failing directory,
+// which must fail with an error containing expected_msg
+fn run_cargo_verus_for_failing_dir(dir: &str, expected_msg: &str) {
+    let test_dir = compute_test_dir(dir);
+    let target_dir = tempdir().expect("Failed to create temporary target directory");
+    let run = run_cargo_verus_with_target(&["verify"], &test_dir, target_dir.path());
+    assert!(!run.status.success());
+    let stderr = std::str::from_utf8(&run.stderr[..]).unwrap();
+    assert!(stderr.contains(expected_msg), "expected {:?} in:\n{}", expected_msg, stderr);
+}
+
+#[test]
+fn failing_dyn_trait_not_dyn_compatible() {
+    run_cargo_verus_for_failing_dir(
+        "rust_verify_test/tests/cargo-tests/failing/dyn_trait_not_dyn_compatible",
+        "trait is not Verus dyn-compatible",
+    );
+}
