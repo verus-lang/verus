@@ -165,7 +165,65 @@ pub struct Stats {
     pub time_compile: Duration,
 }
 
+pub const ERASE_DRIVER_ARG: &'static str = "--internal-erase-compile-driver";
+
+fn vstd_to_str(vstd: Vstd) -> &'static str {
+    match vstd {
+        Vstd::IsVstd => "IsVstd",
+        Vstd::NoVstd => "NoVstd",
+        Vstd::Imported => "Imported",
+        Vstd::IsCore => "IsCore",
+        Vstd::ImportedViaCore => "ImportedViaCore",
+    }
+}
+
+/// Entry point of the subprocess spawned by `run_with_erase_macro_compile`:
+/// `verus ERASE_DRIVER_ARG <do_compile 0|1> <vstd> <rustc args...>`.
+pub fn erase_compile_driver(args: &[String]) -> ! {
+    let do_compile = args[0] == "1";
+    let vstd = match args[1].as_str() {
+        "IsVstd" => Vstd::IsVstd,
+        "NoVstd" => Vstd::NoVstd,
+        "Imported" => Vstd::Imported,
+        "IsCore" => Vstd::IsCore,
+        "ImportedViaCore" => Vstd::ImportedViaCore,
+        other => panic!("erase_compile_driver: unknown vstd mode {other}"),
+    };
+    let rustc_args = args[2..].to_vec();
+    let r = run_with_erase_macro_compile_in_process(rustc_args, do_compile, vstd);
+    std::process::exit(if r.is_ok() { 0 } else { 1 })
+}
+
+/// The erased compilation re-expands every macro. Proc macros may keep global state between
+/// invocations (enum_dispatch records trait and enum definitions, for example), and in the
+/// process that just ran the verification pass that state is no longer fresh, so the second
+/// expansion could differ from the first. Running the pass in a new process gives it the
+/// same starting state as the verification pass (and as a plain `rustc` run).
+/// `VERUS_ERASE_IN_PROCESS=1` restores the old in-process behaviour.
 pub(crate) fn run_with_erase_macro_compile(
+    rustc_args: Vec<String>,
+    do_compile: bool,
+    vstd: Vstd,
+) -> Result<(), ()> {
+    if std::env::var("VERUS_ERASE_IN_PROCESS").as_deref() == Ok("1") {
+        return run_with_erase_macro_compile_in_process(rustc_args, do_compile, vstd);
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return run_with_erase_macro_compile_in_process(rustc_args, do_compile, vstd);
+    };
+    let status = std::process::Command::new(exe)
+        .arg(ERASE_DRIVER_ARG)
+        .arg(if do_compile { "1" } else { "0" })
+        .arg(vstd_to_str(vstd))
+        .args(&rustc_args)
+        .status();
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        _ => Err(()),
+    }
+}
+
+fn run_with_erase_macro_compile_in_process(
     mut rustc_args: Vec<String>,
     do_compile: bool,
     vstd: Vstd,
