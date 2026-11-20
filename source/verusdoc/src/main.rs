@@ -3,8 +3,8 @@
 // which has more high-level details.
 
 use html5ever::{QualName, local_name, namespace_url, ns};
-use kuchiki::NodeRef;
-use kuchiki::traits::TendrilSink;
+use kuchikiki::NodeRef;
+use kuchikiki::traits::TendrilSink;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::Path;
@@ -59,7 +59,7 @@ fn process_file(path: &Path) {
         return;
     }
 
-    let document = kuchiki::parse_html().one(html);
+    let document = kuchikiki::parse_html().one(html);
 
     let opt_trait_info = get_opt_trait_info(path, &document);
 
@@ -383,6 +383,8 @@ fn do_splices_for_info(node: &NodeRef, full_text: &str, fn_idx: usize, info: &Up
             let mut arg_idx = arg0_idx;
 
             for i in 0..info.param_modes.len() {
+                arg_idx = skip_whitespace(&full_text, arg_idx);
+
                 match info.param_modes[i] {
                     ParamMode::Default => {}
                     ParamMode::Tracked => {
@@ -407,8 +409,14 @@ fn do_splices_for_info(node: &NodeRef, full_text: &str, fn_idx: usize, info: &Up
 
                 arg_idx = next_comma_or_rparen(&full_text, arg_idx);
 
-                // skip of the comma and space
-                arg_idx += 2;
+                // Check if we hit a comma (middle arg) or paren (last arg)
+                if arg_idx < full_text.len() && full_text.as_bytes()[arg_idx] == b',' {
+                    // skip comma and space
+                    arg_idx += 2;
+                } else {
+                    // closing paren, just skip it
+                    arg_idx += 1;
+                }
             }
 
             let needs_return_annotation =
@@ -648,6 +656,15 @@ fn get_arg0_idx(s: &str, i: usize) -> usize {
     }
 }
 
+fn skip_whitespace(s: &str, i: usize) -> usize {
+    let b = s.as_bytes();
+    let mut i = i;
+    while i < b.len() && (b[i] == b' ' || b[i] == b'\n' || b[i] == b'\t' || b[i] == b'\r') {
+        i += 1;
+    }
+    i
+}
+
 fn next_comma_or_rparen(s: &str, i: usize) -> usize {
     let s: &[u8] = s.as_bytes();
 
@@ -800,7 +817,7 @@ mod tests {
 
     fn run_sig_update(input_sig: &str, info: DocSigInfo) -> String {
         let html = format!(r#"<h4 class="code-header">{}</h4>"#, input_sig);
-        let document = kuchiki::parse_html().one(html);
+        let document = kuchikiki::parse_html().one(html);
         let node = document.select_first("h4").unwrap().as_node().clone();
 
         let full_text = node.text_contents();
@@ -838,6 +855,24 @@ mod tests {
             },
         );
         assert!(out.contains("foo() -> tracked ()"), "out: {}", out);
+    }
+
+    #[test]
+    fn tracked_lands_before_arg_name_in_multiline_signature() {
+        let out = run_sig_update(
+            "fn apply(\n    self,\n    op: Op,\n    r: &mut Res,\n)",
+            DocSigInfo {
+                fn_mode: "proof".to_string(),
+                ret_mode: ParamMode::Default,
+                ret_name: "".to_string(),
+                param_modes: vec![ParamMode::Tracked, ParamMode::Default, ParamMode::Tracked],
+                broadcast: false,
+            },
+        );
+        assert!(out.contains("tracked self"), "out: {:?}", out);
+        assert!(out.contains("tracked r:"), "out: {:?}", out);
+        assert!(!out.contains("(tracked \n"), "out: {:?}", out);
+        assert!(!out.contains("tracked     r"), "out: {:?}", out);
     }
 
     #[test]

@@ -294,7 +294,7 @@ test_verify_one_file! {
         fn test() {
             let x = foo;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it as mode 'exec'")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it has mode `exec`")
 }
 
 test_verify_one_file! {
@@ -304,7 +304,7 @@ test_verify_one_file! {
         fn test() {
             let x = foo;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it as mode 'exec'")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it has mode `exec`")
 }
 
 test_verify_one_file! {
@@ -314,7 +314,7 @@ test_verify_one_file! {
         spec fn test() -> bool {
             call_requires(foo, ())
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it as mode 'exec'")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it has mode `exec`")
 }
 
 test_verify_one_file! {
@@ -424,6 +424,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion6_via_fn_once verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnOnce(u8) -> bool>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -438,6 +439,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion7_via_fn_once verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnOnce<(u8,)>>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -452,6 +454,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion8_via_fn_once verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnOnce(u8) -> bool>(f: F) -> bool;
 
         fn test(x: u8) -> bool
@@ -464,6 +467,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion9_via_fn_once_with_ref verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnOnce(u8) -> bool>(f: F) -> bool;
 
         fn test(x: u8) -> bool
@@ -476,6 +480,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion10_via_fn verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: Fn(u8)>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -489,6 +494,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion11_via_fn_mut verus_code! {
+        use vstd::prelude::*;
         spec fn foo<F: FnMut(u8)>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -727,7 +733,7 @@ test_verify_one_file! {
         fn b(i: u8)
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "Non-static calls are not supported with --no-vstd")
+    } => Err(err) => assert_vir_error_msg(err, "non-static calls are not supported with `--no-vstd`")
 }
 
 test_verify_one_file! {
@@ -2036,4 +2042,191 @@ test_verify_one_file_with_options! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // Regression test for a panic due to fndef impl path collision across
+    // crates.
+    //
+    // The test defines 12 `Clone` impls in the crate root, which are enough to
+    // collide with the `Clone` impls for `Ghost` and `Tracked` in
+    // `verus_builtin` at the same disambiguator (brought in by `["vstd"]`).
+    #[test] fndef_impl_path_includes_crate ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        struct S0;  impl Clone for S0  { fn clone(&self) -> Self { S0  } }
+        struct S1;  impl Clone for S1  { fn clone(&self) -> Self { S1  } }
+        struct S2;  impl Clone for S2  { fn clone(&self) -> Self { S2  } }
+        struct S3;  impl Clone for S3  { fn clone(&self) -> Self { S3  } }
+        struct S4;  impl Clone for S4  { fn clone(&self) -> Self { S4  } }
+        struct S5;  impl Clone for S5  { fn clone(&self) -> Self { S5  } }
+        struct S6;  impl Clone for S6  { fn clone(&self) -> Self { S6  } }
+        struct S7;  impl Clone for S7  { fn clone(&self) -> Self { S7  } }
+        struct S8;  impl Clone for S8  { fn clone(&self) -> Self { S8  } }
+        struct S9;  impl Clone for S9  { fn clone(&self) -> Self { S9  } }
+        struct S10; impl Clone for S10 { fn clone(&self) -> Self { S10 } }
+        struct S11; impl Clone for S11 { fn clone(&self) -> Self { S11 } }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_broadcast ["vstd"] => verus_code! {
+        // Tests type invariant is emitted
+
+        uninterp spec fn a<T>(x: T) -> bool;
+        uninterp spec fn b<T>(x: T) -> bool;
+
+        broadcast axiom fn test1<T>(x: T)
+            requires #[trigger] a(x),
+            ensures b(x);
+
+        fn some_func() { }
+
+        fn test() {
+            broadcast use test1;
+            let f = some_func;
+            assume(a(f));
+            assert(b(f));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_broadcast_with_generics ["vstd"] => verus_code! {
+        uninterp spec fn a<T>(x: T) -> bool;
+        uninterp spec fn b<T>(x: T) -> bool;
+
+        broadcast axiom fn test1<T>(x: T)
+            requires #[trigger] a(x),
+            ensures b(x);
+
+        fn some_func<U>() { }
+
+        fn test() {
+            broadcast use test1;
+            assume(a(some_func::<u64>));
+            assert(b(some_func::<u64>));
+        }
+
+        fn test_fails() {
+            broadcast use test1;
+            assume(a(some_func::<u64>));
+            assert(b(some_func::<u32>)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] trait_method_generic_fndef verus_code! {
+        trait T<A> {
+            fn f<C>(c: C) -> C;
+        }
+
+        struct S<U>(U);
+
+        impl<U> T<u8> for S<U> {
+            fn f<D>(c: D) -> (r: D)
+                ensures r == c,
+            {
+                c
+            }
+        }
+
+        proof fn test<U>(r: bool)
+            requires call_ensures(<S<U> as T<u8>>::f::<bool>, (true,), r),
+        {
+            assert(r);
+            assert(!r); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_method_generic_fndef_inherited verus_code! {
+        trait T {
+            fn f<C>(c: C) -> (r: C)
+                default_ensures r == c,
+            {
+                c
+            }
+        }
+
+        impl T for u8 {}
+
+        proof fn test(r: bool)
+            requires call_ensures(<u8 as T>::f::<bool>, (true,), r),
+        {
+            assert(r);
+            assert(!r); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] trait_method_generic_fndef_fn_once ["vstd"] => verus_code! {
+        trait T {
+            fn f<C>(c: C) -> C;
+        }
+
+        impl T for u8 {
+            fn f<D>(c: D) -> (r: D)
+                ensures r == c,
+            {
+                c
+            }
+        }
+
+        fn apply<F: FnOnce<(u32,)>>(f: F) -> (r: F::Output)
+            requires call_requires(f, (3,)),
+            ensures call_ensures(f, (3,), r),
+        {
+            f(3)
+        }
+
+        fn test() {
+            let r = apply(<u8 as T>::f::<u32>);
+            assert(r == 3);
+            assert(r == 4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_method_impl_fndef_bounds verus_code! {
+        trait Foo {}
+        struct Yes;
+        struct No;
+        impl Foo for Yes {}
+        struct S<A>(A);
+
+        trait T {
+            fn m() -> u8;
+        }
+
+        impl<A: Foo> T for S<A> {
+            fn m() -> (r: u8)
+                ensures r == 1,
+            {
+                1
+            }
+        }
+
+        impl T for S<No> {
+            fn m() -> (r: u8)
+                ensures r == 2,
+            {
+                2
+            }
+        }
+
+        proof fn test(r1: u8, r2: u8)
+            requires
+                call_ensures(<S<Yes> as T>::m, (), r1),
+                call_ensures(<S<No> as T>::m, (), r2),
+        {
+            assert(r1 == 1);
+            assert(r2 == 2);
+            assert(r2 == 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }

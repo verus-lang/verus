@@ -6,7 +6,7 @@ use crate::ast::{
 use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{FUEL_ID, NameCtxt};
-use crate::messages::{Span, error};
+use crate::messages::{Span, WarningAllow, error};
 use crate::poly::MonoTyp;
 use crate::recursion::Node;
 use crate::scc::Graph;
@@ -16,7 +16,6 @@ use air::ast::{Command, CommandX, Commands, DeclX, MultiOp};
 use air::ast_util::{mk_unnamed_axiom, str_typ};
 use air::context::SmtSolver;
 use num_bigint::BigUint;
-use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -35,6 +34,23 @@ pub struct ChosenTriggers {
     pub manual: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct WarningConfig(pub Vec<WarningAllow>);
+
+impl crate::messages::CheckAllowForWarning for WarningConfig {
+    fn allowed(&self, allow: &WarningAllow) -> bool {
+        self.0.iter().any(|a| a == allow)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WarningCtx {
+    // Map names of FunctionX in this crate (not imported from other crates)
+    // to Some CheckAllowForWarning to be used to check that fun,
+    // map names from other crates to None
+    pub fun_warn_configs: HashMap<Fun, Option<WarningConfig>>,
+}
+
 /// Context for across all modules
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
@@ -46,10 +62,11 @@ pub struct GlobalCtx {
     pub func_call_graph: Arc<Graph<Node>>,
     pub func_call_sccs: Arc<Vec<Node>>,
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
-    pub(crate) datatype_graph_span_infos: Vec<Span>,
-    pub trait_impl_to_extensions: HashMap<Path, Vec<Path>>,
+    pub(crate) datatype_graph_span_infos: Arc<Vec<Span>>,
+    pub trait_impl_to_extensions: Arc<HashMap<Path, Vec<Path>>>,
     /// Map TSpec to T
-    pub(crate) extension_to_trait: HashMap<Path, Path>,
+    pub(crate) extension_to_trait: Arc<HashMap<Path, Path>>,
+    pub(crate) warning_ctx: Arc<WarningCtx>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
@@ -102,7 +119,7 @@ pub struct Ctx {
     pub(crate) reveal_groups: Vec<crate::ast::RevealGroup>,
     pub(crate) reveal_group_set: HashSet<Fun>,
     // Ensure a unique identifier for each quantifier in a given function
-    pub quantifier_count: Cell<u64>,
+    pub quantifier_count: RefCell<HashMap<Arc<String>, u64>>,
     pub(crate) funcs_with_ensure_predicate: HashMap<Fun, bool>,
     pub(crate) datatype_map: HashMap<Dt, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
@@ -115,12 +132,39 @@ pub struct Ctx {
     // Of course it can be argued that accounting for sha512 collisions
     // is overkill, perhaps this should be revisited.
     pub(crate) string_hashes: RefCell<HashMap<BigUint, Arc<String>>>,
-    // proof debug purposes
-    pub debug: bool,
+    pub(crate) byte_string_hashes: RefCell<HashMap<BigUint, Arc<Vec<u8>>>>,
+    /// Observer for the verification pipeline.
+    pub observer: Option<std::rc::Rc<std::cell::RefCell<dyn crate::vir_observer::VirObserver>>>,
+    /// AIR-level handles to the same shared observer object, included here so the
+    /// verifier can attach them to each `air::Context` it builds (see verifier.rs).
+    pub air_observer: Option<std::rc::Rc<std::cell::RefCell<dyn air::air_observer::AirObserver>>>,
+    pub query_result_observer: Option<
+        std::rc::Rc<std::cell::RefCell<dyn air::query_result_observer::QueryResultObserver>>,
+    >,
     pub arch_word_bits: ArchWordBits,
 }
 
 impl Ctx {
+    /// Call a callback on the observer if one is registered.
+    pub(crate) fn notify<F: FnOnce(&mut dyn crate::vir_observer::VirObserver)>(&self, f: F) {
+        if let Some(obs) = &self.observer {
+            f(&mut *obs.borrow_mut());
+        }
+    }
+
+    /// Ask the observer for an assert ID, or use the default (clone parent).
+    pub(crate) fn make_assert_id(
+        &self,
+        kind: crate::vir_observer::AssertIdKind,
+        index: usize,
+        parent: &Option<air::ast::AssertId>,
+    ) -> Option<air::ast::AssertId> {
+        self.observer.as_ref().map_or_else(
+            || parent.clone(),
+            |obs| obs.borrow_mut().make_assert_id(kind, index, parent),
+        )
+    }
+
     pub(crate) fn checking_spec_preconditions(&self) -> bool {
         match self.fun {
             Some(FunctionCtx { checking_spec_preconditions: true, .. }) => true,
@@ -147,6 +191,23 @@ impl Ctx {
             Some(FunctionCtx { checking_spec_preconditions: true, .. }) => true,
             Some(FunctionCtx { checking_spec_decreases: true, .. }) => true,
             _ => false,
+        }
+    }
+
+    pub(crate) fn warning_maybe_if_in_local_crate<S: Into<String>>(
+        &self,
+        span: &Span,
+        allow: &WarningAllow,
+        note: impl FnOnce() -> S,
+        emit: impl FnOnce(crate::messages::Message) -> (),
+    ) {
+        if let Some(function_ctx) = &self.fun {
+            let check_allow = &self.global.warning_ctx.fun_warn_configs[&function_ctx.current_fun];
+            crate::messages::warning_maybe_if_in_local_crate(check_allow, span, allow, note, emit);
+        } else {
+            // TODO: if we ever support verifier::allow on expressions,
+            // we can make this warning configurable:
+            emit(crate::messages::warning(span, note()));
         }
     }
 }
@@ -281,6 +342,7 @@ impl GlobalCtx {
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
+        warning_ctx: Arc<WarningCtx>,
         solver: SmtSolver,
         after_simplify: bool,
         check_api_safety: bool,
@@ -345,18 +407,8 @@ impl GlobalCtx {
             // If TSpec extends T with spec functions,
             // merge 'impl TSpec for typ' into 'impl T for typ'.
             if let Some(t) = extension_to_trait.get(&trait_impl.x.trait_path) {
-                let mut candidates: Vec<TraitImpl> = Vec::new();
-                for imp in trait_impl.x.trait_typ_arg_impls.x.iter() {
-                    if let ImplPath::TraitImplPath(imp) = imp {
-                        if let Some(candidate) = trait_impl_map.get(imp) {
-                            if &candidate.x.trait_path == t && !candidate.x.external_trait_blanket {
-                                candidates.push(candidate.clone());
-                            }
-                        }
-                    }
-                }
                 let origin_impl =
-                    crate::traits::find_trait_impl_from_extension(trait_impl, candidates, t)?;
+                    crate::traits::find_trait_impl_from_extension(trait_impl, &trait_impl_map, t)?;
                 let extension_node =
                     Node::TraitImpl(ImplPath::TraitImplPath(trait_impl.x.impl_path.clone()));
                 let origin_node =
@@ -388,7 +440,7 @@ impl GlobalCtx {
 
         for t in &krate.trait_impls {
             if let Some(last) = &t.x.impl_path.segments.last() {
-                if last.starts_with(crate::def::PREFIX_IMPL_TUPLE) {
+                if crate::def::is_impl_tuple(last) {
                     // Our internally auto-generated tuple impls don't depend on any other impls,
                     // so they can always appear first.
                     // Furthermore, we currently lack the impl_path dependency edges that
@@ -407,7 +459,10 @@ impl GlobalCtx {
             // This is currently needed because external_body broadcast_forall functions
             // are currently implicitly imported.
             // In the future, this might become less important; we could remove this heuristic.
-            if f.x.body.is_none() && f.x.extra_dependencies.len() == 0 {
+            use crate::ast::FunctionKind::TraitMethodImpl;
+            let inherit_default =
+                matches!(&f.x.kind, TraitMethodImpl { inherit_body_from: Some(_), .. });
+            if f.x.body.is_none() && f.x.extra_dependencies.len() == 0 && !inherit_default {
                 func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             }
         }
@@ -435,6 +490,13 @@ impl GlobalCtx {
                 &mut span_infos,
                 &mut func_call_graph,
                 t,
+            );
+        }
+        for a in &krate.assoc_type_impls {
+            crate::recursive_types::add_assoc_type_impl_to_graph(
+                &mut span_infos,
+                &mut func_call_graph,
+                a,
             );
         }
 
@@ -473,6 +535,7 @@ impl GlobalCtx {
                 f,
             )?;
         }
+
         for group in &krate.reveal_groups {
             let group_node = Node::Fun(group.x.name.clone());
             func_call_graph.add_node(group_node.clone());
@@ -657,7 +720,7 @@ impl GlobalCtx {
                             krate.functions.iter().find(|g| Node::Fun(g.x.name.clone()) == g_node);
                         let mut error = crate::messages::error(
                             &f.span,
-                            "found cyclic dependency in decreases_by function",
+                            "found cyclic dependency in `decreases_by` function",
                         );
                         if let Some(g) = g_opt {
                             error = error.secondary_span(&g.span);
@@ -669,7 +732,7 @@ impl GlobalCtx {
             if f.x.attrs.atomic {
                 let fun_node = Node::Fun(f.x.name.clone());
                 if func_call_graph.node_is_in_cycle(&fun_node) {
-                    return Err(error(&f.span, "'atomic' cannot be used on a recursive function"));
+                    return Err(error(&f.span, "`atomic` cannot be used on a recursive function"));
                 }
             }
         }
@@ -686,9 +749,10 @@ impl GlobalCtx {
             func_call_graph: Arc::new(func_call_graph),
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
-            datatype_graph_span_infos: span_infos,
-            extension_to_trait,
-            trait_impl_to_extensions,
+            datatype_graph_span_infos: Arc::new(span_infos),
+            extension_to_trait: Arc::new(extension_to_trait),
+            trait_impl_to_extensions: Arc::new(trait_impl_to_extensions),
+            warning_ctx,
             qid_map,
             rlimit,
             interpreter_log,
@@ -720,6 +784,7 @@ impl GlobalCtx {
             func_call_sccs: self.func_call_sccs.clone(),
             extension_to_trait: self.extension_to_trait.clone(),
             trait_impl_to_extensions: self.trait_impl_to_extensions.clone(),
+            warning_ctx: self.warning_ctx.clone(),
             qid_map,
             rlimit: self.rlimit,
             interpreter_log,
@@ -763,7 +828,7 @@ impl Ctx {
         used_builtins: crate::prune::UsedBuiltins,
         fndef_types: Vec<Fun>,
         resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
-        debug: bool,
+        observers: crate::vir_observer::Observers,
     ) -> Result<Self, VirErr> {
         let name_ctxt = NameCtxt::new();
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
@@ -799,8 +864,9 @@ impl Ctx {
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
         fun_ident_map
             .extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&name_ctxt, &g), g.clone())));
-        let quantifier_count = Cell::new(0);
+        let quantifier_count = RefCell::new(HashMap::new());
         let string_hashes = RefCell::new(HashMap::new());
+        let byte_string_hashes = RefCell::new(HashMap::new());
 
         let mut fndef_type_set = HashSet::new();
         for fndef_type in fndef_types.iter() {
@@ -809,6 +875,23 @@ impl Ctx {
         let mut opaque_type_map: HashMap<Path, OpaqueType> = HashMap::new();
         for opaque_type in krate.opaque_types.iter() {
             opaque_type_map.insert(opaque_type.x.name.clone(), opaque_type.clone());
+        }
+
+        // Register the observer; deliver the span resolver, then the krate. The observer
+        // receives the NameCtxt so it can compute AIR names consistently with lowering — both
+        // share the same NameCtxt instance, so crate-name interning decisions made here are
+        // reused during lowering.
+        let crate::vir_observer::Observers {
+            vir: observer,
+            air: air_observer,
+            query_result: query_result_observer,
+            span_resolver,
+        } = observers;
+        if let Some(obs) = &observer {
+            if let Some(resolver) = &span_resolver {
+                obs.borrow_mut().on_span_resolver(resolver);
+            }
+            obs.borrow_mut().on_krate(&krate, &name_ctxt, &module.x.path.krate);
         }
 
         Ok(Ctx {
@@ -837,7 +920,10 @@ impl Ctx {
             fun: None,
             global,
             string_hashes,
-            debug,
+            byte_string_hashes,
+            observer,
+            air_observer,
+            query_result_observer,
             arch_word_bits: krate.arch.word_bits,
             opaque_type_map,
         })

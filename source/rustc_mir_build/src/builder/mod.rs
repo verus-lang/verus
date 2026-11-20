@@ -28,7 +28,7 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::sorted_map::SortedIndexMultiMap;
 use rustc_errors::ErrorGuaranteed;
 use rustc_hir::def::DefKind;
-use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_hir::def_id::LocalDefId;
 use rustc_hir::{self as hir, BindingMode, ByRef, HirId, ItemLocalId, Node, find_attr};
 use rustc_index::bit_set::GrowableBitSet;
 use rustc_index::{Idx, IndexSlice, IndexVec};
@@ -38,13 +38,10 @@ use rustc_middle::middle::region;
 use rustc_middle::mir::*;
 use rustc_middle::thir::{self, ExprId, LocalVarId, Param, ParamId, PatKind, Thir};
 use rustc_middle::ty::{self, ScalarInt, Ty, TyCtxt, TypeVisitableExt, TypingMode};
-use rustc_middle::{bug, span_bug};
-use rustc_session::lint;
-use rustc_span::{Span, Symbol};
+use rustc_span::{Span, Symbol, bug, span_bug};
 
 use crate::builder::expr::as_place::PlaceBuilder;
-use crate::builder::scope::{DropKind, LintLevel};
-use crate::errors;
+use crate::builder::scope::LintLevel;
 
 #[path = "../../../rustc_mir_build_additional_files/verus_builder.rs"]
 pub mod verus_builder;
@@ -71,11 +68,11 @@ pub(crate) fn closure_saved_names_of_captured_variables<'tcx>(
 /// be called by the query `mir_built`.
 pub fn build_mir_inner_impl<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Body<'tcx> {
     tcx.ensure_done().thir_abstract_const(def);
-    if let Err(e) = tcx.ensure_ok().check_match(def) {
+    if let Err(e) = tcx.ensure_result().check_match(def) {
         return construct_error(tcx, def, e);
     }
 
-    if let Err(err) = tcx.ensure_ok().check_tail_calls(def) {
+    if let Err(err) = tcx.ensure_result().check_tail_calls(def) {
         return construct_error(tcx, def, err);
     }
 
@@ -83,9 +80,9 @@ pub fn build_mir_inner_impl<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Body<'t
         Err(error_reported) => construct_error(tcx, def, error_reported),
         Ok((thir, expr)) => {
             let build_mir = |thir: &Thir<'tcx>| match thir.body_type {
-                thir::BodyTy::Fn(fn_sig) => construct_fn(tcx, def, thir, expr, fn_sig),
+                thir::BodyTy::Fn(fn_sig) => construct_fn(tcx, def, thir, expr, fn_sig, false),
                 thir::BodyTy::Const(ty) | thir::BodyTy::GlobalAsm(ty) => {
-                    construct_const(tcx, def, thir, expr, ty)
+                    construct_const(tcx, def, thir, expr, ty, false)
                 }
             };
 
@@ -175,7 +172,6 @@ struct Builder<'a, 'tcx> {
 
     def_id: LocalDefId,
     hir_id: HirId,
-    parent_module: DefId,
     check_overflow: bool,
     fn_span: Span,
     arg_count: usize,
@@ -481,6 +477,7 @@ fn construct_fn<'tcx>(
     thir: &Thir<'tcx>,
     expr: ExprId,
     fn_sig: ty::FnSig<'tcx>,
+    verus_full_erasure: bool,
 ) -> Body<'tcx> {
     let span = tcx.def_span(fn_def);
     let fn_id = tcx.local_def_id_to_hir_id(fn_def);
@@ -494,7 +491,7 @@ fn construct_fn<'tcx>(
         .output
         .span();
 
-    let mut abi = fn_sig.abi;
+    let mut abi = fn_sig.abi();
     if let DefKind::Closure = tcx.def_kind(fn_def) {
         // HACK(eddyb) Avoid having RustCall on closures,
         // as it adds unnecessary (and wrong) auto-tupling.
@@ -504,18 +501,9 @@ fn construct_fn<'tcx>(
     let arguments = &thir.params;
 
     let return_ty = fn_sig.output();
-    let coroutine = match tcx.type_of(fn_def).instantiate_identity().kind() {
-        ty::Coroutine(_, args) => Some(Box::new(CoroutineInfo::initial(
-            tcx.coroutine_kind(fn_def).unwrap(),
-            args.as_coroutine().yield_ty(),
-            args.as_coroutine().resume_ty(),
-        ))),
-        ty::Closure(..) | ty::CoroutineClosure(..) | ty::FnDef(..) => None,
-        ty => span_bug!(span_with_body, "unexpected type of body: {ty:?}"),
-    };
 
     if let Some((dialect, phase)) =
-        find_attr!(tcx.hir_attrs(fn_id), CustomMir(dialect, phase, _) => (dialect, phase))
+        find_attr!(tcx, fn_id, CustomMir(dialect, phase) => (dialect, phase))
     {
         return custom::build_custom_mir(
             tcx,
@@ -532,9 +520,36 @@ fn construct_fn<'tcx>(
         );
     }
 
-    // FIXME(#132279): This should be able to reveal opaque
-    // types defined during HIR typeck.
-    let infcx = tcx.infer_ctxt().build(TypingMode::non_body_analysis());
+    let typing_mode = if tcx.use_typing_mode_post_typeck_until_borrowck() {
+        TypingMode::borrowck(tcx, fn_def)
+    } else {
+        // FIXME(#132279): This should be able to reveal opaque
+        // types defined during HIR typeck.
+        TypingMode::non_body_analysis()
+    };
+
+    let infcx = tcx.infer_ctxt().build(typing_mode);
+
+    let defining_ty = tcx.type_of(fn_def).instantiate_identity().skip_normalization();
+    let defining_ty = if infcx.next_trait_solver() {
+        // Closure types come from HIR typeck results, where they were already
+        // normalized during writeback. Wrapping them in an `EarlyBinder`
+        // conservatively makes aliases non-rigid, so restore their rigidness
+        // instead of normalizing them again during MIR build.
+        ty::set_aliases_to_rigid(tcx, defining_ty)
+    } else {
+        defining_ty
+    };
+    let coroutine = match defining_ty.kind() {
+        ty::Coroutine(_, args) => Some(Box::new(CoroutineInfo::initial(
+            tcx.coroutine_kind(fn_def).unwrap(),
+            args.as_coroutine().yield_ty(),
+            args.as_coroutine().resume_ty(),
+        ))),
+        ty::Closure(..) | ty::CoroutineClosure(..) | ty::FnDef(..) => None,
+        ty => span_bug!(span_with_body, "unexpected type of body: {ty:?}"),
+    };
+
     let mut builder = Builder::new(
         thir,
         infcx,
@@ -545,6 +560,7 @@ fn construct_fn<'tcx>(
         return_ty,
         return_ty_span,
         coroutine,
+        verus_full_erasure,
     );
 
     let call_site_scope =
@@ -565,6 +581,7 @@ fn construct_fn<'tcx>(
             })
             .into_block();
         let source_info = builder.source_info(fn_end);
+        builder.push_coverage_point_for_fn_end(return_block, source_info, fn_id);
         builder.cfg.terminate(return_block, source_info, TerminatorKind::Return);
         builder.build_drop_trees();
         return_block.unit()
@@ -575,6 +592,7 @@ fn construct_fn<'tcx>(
 
     body.spread_arg = if abi == ExternAbi::RustCall {
         // RustCall pseudo-ABI untuples the last argument.
+        // FIXME(splat): splat can untuple any argument, set spread_arg here
         Some(Local::new(arguments.len()))
     } else {
         None
@@ -589,6 +607,7 @@ fn construct_const<'a, 'tcx>(
     thir: &'a Thir<'tcx>,
     expr: ExprId,
     const_ty: Ty<'tcx>,
+    verus_full_erasure: bool,
 ) -> Body<'tcx> {
     let hir_id = tcx.local_def_id_to_hir_id(def);
 
@@ -601,7 +620,7 @@ fn construct_const<'a, 'tcx>(
         })
         | Node::ImplItem(hir::ImplItem { kind: hir::ImplItemKind::Const(ty, _), span, .. })
         | Node::TraitItem(hir::TraitItem {
-            kind: hir::TraitItemKind::Const(ty, Some(_), _),
+            kind: hir::TraitItemKind::Const(ty, Some(_)),
             span,
             ..
         }) => (*span, ty.span),
@@ -614,11 +633,27 @@ fn construct_const<'a, 'tcx>(
         _ => span_bug!(tcx.def_span(def), "can't build MIR for {:?}", def),
     };
 
-    // FIXME(#132279): We likely want to be able to use the hidden types of
-    // opaques used by this function here.
-    let infcx = tcx.infer_ctxt().build(TypingMode::non_body_analysis());
-    let mut builder =
-        Builder::new(thir, infcx, def, hir_id, span, 0, const_ty, const_ty_span, None);
+    let typing_mode = if tcx.use_typing_mode_post_typeck_until_borrowck() {
+        TypingMode::borrowck(tcx, def)
+    } else {
+        // FIXME(#132279): This should be able to reveal opaque
+        // types defined during HIR typeck.
+        TypingMode::non_body_analysis()
+    };
+
+    let infcx = tcx.infer_ctxt().build(typing_mode);
+    let mut builder = Builder::new(
+        thir,
+        infcx,
+        def,
+        hir_id,
+        span,
+        0,
+        const_ty,
+        const_ty_span,
+        None,
+        verus_full_erasure,
+    );
 
     let mut block = START_BLOCK;
     block = builder.expr_into_dest(Place::return_place(), block, expr).into_block();
@@ -627,7 +662,6 @@ fn construct_const<'a, 'tcx>(
     builder.cfg.terminate(block, source_info, TerminatorKind::Return);
 
     builder.build_drop_trees();
-
     builder.lint_and_remove_uninhabited();
     builder.finish()
 }
@@ -644,18 +678,19 @@ fn construct_error(tcx: TyCtxt<'_>, def_id: LocalDefId, guar: ErrorGuaranteed) -
         DefKind::Const
         | DefKind::AssocConst
         | DefKind::AnonConst
-        | DefKind::InlineConst
         | DefKind::Static { .. }
-        | DefKind::GlobalAsm => (vec![], tcx.type_of(def_id).instantiate_identity(), None),
+        | DefKind::GlobalAsm => {
+            (vec![], tcx.type_of(def_id).instantiate_identity().skip_norm_wip(), None)
+        }
         DefKind::Ctor(..) | DefKind::Fn | DefKind::AssocFn => {
             let sig = tcx.liberate_late_bound_regions(
                 def_id.to_def_id(),
-                tcx.fn_sig(def_id).instantiate_identity(),
+                tcx.fn_sig(def_id).instantiate_identity().skip_norm_wip(),
             );
             (sig.inputs().to_vec(), sig.output(), None)
         }
         DefKind::Closure => {
-            let closure_ty = tcx.type_of(def_id).instantiate_identity();
+            let closure_ty = tcx.type_of(def_id).instantiate_identity().skip_norm_wip();
             match closure_ty.kind() {
                 ty::Closure(_, args) => {
                     let args = args.as_closure();
@@ -772,6 +807,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         return_ty: Ty<'tcx>,
         return_span: Span,
         coroutine: Option<Box<CoroutineInfo<'tcx>>>,
+        verus_full_erasure: bool,
     ) -> Builder<'a, 'tcx> {
         let tcx = infcx.tcx;
         // Some functions always have overflow checks enabled,
@@ -796,7 +832,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             param_env,
             def_id: def,
             hir_id,
-            parent_module: tcx.parent_module(hir_id).to_def_id(),
             check_overflow,
             cfg: CFG { basic_blocks: IndexVec::new() },
             fn_span: span,
@@ -817,7 +852,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             var_debug_info: vec![],
             lint_level_roots_cache: GrowableBitSet::new_empty(),
             coverage_info: coverageinfo::CoverageInfoBuilder::new_if_enabled(tcx, def),
-            verus_extra_thir: crate::verus::get_extra_thir(def),
+            verus_extra_thir: if verus_full_erasure {
+                None
+            } else {
+                crate::verus::get_extra_thir(def)
+            },
             verus_mir_builder_ctxt: crate::builder::verus_builder::VerusMirBuilderCtxt::new(),
         };
 
@@ -842,15 +881,28 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             self.coroutine.clone(),
             None,
         );
-        body.coverage_info_hi = self.coverage_info.as_ref().map(|b| b.as_done());
+        body.coverage_early_info = self.coverage_info.as_ref().map(|b| b.as_done());
 
         let writer = pretty::MirWriter::new(self.tcx);
         writer.write_mir_fn(&body, &mut std::io::stdout()).unwrap();
     }
 
     fn lint_and_remove_uninhabited(&mut self) {
-        let mut lints = vec![];
+        let parent_module = self.tcx.parent_module_from_def_id(self.def_id);
+        let typing_env = self.infcx.typing_env(self.param_env);
 
+        // check if the function's return type is inhabited
+        // this was added here because of this regression
+        // https://github.com/rust-lang/rust/issues/149571
+        let return_ty_is_inhabited =
+            matches!(self.tcx.def_kind(self.def_id), DefKind::Fn | DefKind::AssocFn)
+                && self.local_decls[RETURN_PLACE].ty.is_inhabited_from(
+                    self.tcx,
+                    parent_module,
+                    typing_env,
+                );
+
+        let mut lints = vec![];
         let mut basic_blocks_edited = vec![];
 
         for (bbindex, bbdata) in self.cfg.basic_blocks.iter_mut().enumerate() {
@@ -863,6 +915,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
             if crate::builder::verus_builder::skip_edge_deletion_for_uninhabited_ty(
                 &self.verus_mir_builder_ctxt,
+                self.tcx,
+                self.def_id,
                 BasicBlock::from_usize(bbindex),
                 func.ty(&self.local_decls, self.tcx),
             ) {
@@ -870,12 +924,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             }
 
             let ty = destination.ty(&self.local_decls, self.tcx).ty;
-            let ty_is_inhabited = ty.is_inhabited_from(
-                self.tcx,
-                self.parent_module,
-                self.infcx.typing_env(self.param_env),
-            );
-            if !ty_is_inhabited {
+            if !ty.is_inhabited_from(self.tcx, parent_module, typing_env) {
                 // Unreachable code warnings are already emitted during type checking.
                 // However, during type checking, full type information is being
                 // calculated but not yet available, so the check for diverging
@@ -885,23 +934,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 // uninhabited types (e.g. empty enums). The check above is used so
                 // that we do not emit the same warning twice if the uninhabited type
                 // is indeed `!`.
-                if !ty.is_never()
-                    && matches!(self.tcx.def_kind(self.def_id), DefKind::Fn | DefKind::AssocFn)
-                // check if the function's return type is inhabited
-                // this was added here because of this regression
-                // https://github.com/rust-lang/rust/issues/149571
-                    && self
-                        .tcx
-                        .fn_sig(self.def_id)
-                        .instantiate_identity()
-                        .skip_binder()
-                        .output()
-                        .is_inhabited_from(
-                            self.tcx,
-                            self.parent_module,
-                            self.infcx.typing_env(self.param_env),
-                        )
-                {
+                if !ty.is_never() && return_ty_is_inhabited {
                     lints.push((target_bb, ty, term.source_info.span));
                 }
 
@@ -923,12 +956,21 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             for stmt in &bb.statements {
                 match &stmt.kind {
                     // Ignore the implicit `()` return place assignment for unit functions/blocks
-                    StatementKind::Assign(box (_, Rvalue::Use(Operand::Constant(const_))))
+                    StatementKind::Assign((_, Rvalue::Use(Operand::Constant(const_), _)))
                         if const_.ty().is_unit() =>
                     {
                         continue;
                     }
-                    StatementKind::StorageLive(_) | StatementKind::StorageDead(_) => {
+                    // Ignore return value plumbing. After a call returning a non-`!`
+                    // uninhabited type, a tail expression can be unreachable while
+                    // still being needed to satisfy the surrounding return type.
+                    StatementKind::Assign((place, _)) if place.as_local() == Some(RETURN_PLACE) => {
+                        continue;
+                    }
+                    // Ignore statements inserted by MIR building that do not correspond to user code.
+                    StatementKind::StorageLive(_)
+                    | StatementKind::StorageDead(_)
+                    | StatementKind::BackwardIncompatibleDropHint { .. } => {
                         continue;
                     }
                     StatementKind::FakeRead(..) => return Some((stmt.source_info, "definition")),
@@ -960,10 +1002,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 .unwrap_crate_local()
                 .lint_root;
             self.tcx.emit_node_span_lint(
-                lint::builtin::UNREACHABLE_CODE,
+                rustc_lint_defs::builtin::UNREACHABLE_CODE,
                 lint_root,
                 target_loc.span,
-                errors::UnreachableDueToUninhabited {
+                crate::diagnostics::UnreachableDueToUninhabited {
                     expr: target_loc.span,
                     orig: orig_span,
                     descr,
@@ -988,7 +1030,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             self.coroutine,
             None,
         );
-        body.coverage_info_hi = self.coverage_info.map(|b| b.into_done());
+        body.coverage_early_info = self.coverage_info.map(|b| b.into_done());
 
         let writer = pretty::MirWriter::new(self.tcx);
         for (index, block) in body.basic_blocks.iter().enumerate() {
@@ -1108,15 +1150,14 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         // Bind the argument patterns
         for (index, param) in arguments.iter().enumerate() {
             // Function arguments always get the first Local indices after the return place
-            let local = Local::new(index + 1);
+            let local = Local::arg(index);
             let place = Place::from(local);
 
             // Make sure we drop (parts of) the argument even when not matched on.
-            self.schedule_drop(
+            self.schedule_drop_value(
                 param.pat.as_ref().map_or(expr_span, |pat| pat.span),
                 argument_scope,
                 local,
-                DropKind::Value,
             );
 
             let Some(ref pat) = param.pat else {
@@ -1316,5 +1357,3 @@ mod expr;
 mod matches;
 mod misc;
 mod scope;
-
-pub(crate) use expr::category::Category as ExprCategory;

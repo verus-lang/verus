@@ -18,7 +18,7 @@ pub open spec fn combine_values<P: PCM>(values: Seq<P>) -> P
     if values.len() == 0 {
         P::unit()
     } else {
-        P::op(values[0], combine_values(values.skip(1)))
+        P::op(values[0], combine_values(values[1..]))
     }
 }
 
@@ -220,25 +220,25 @@ proof fn aggregate_resources_from_map_starting_at_offset<P: PCM>(
             #![trigger final(m).dom().contains(i)]
             0 <= i < values.len() ==> !final(m).dom().contains(i),
         all.loc() == loc,
-        all.value() == combine_values::<P>(values.skip(offset)),
+        all.value() == combine_values::<P>(values[offset..]),
     decreases values.len() - offset,
 {
     assert(m.dom().contains(offset));
     assert(m[offset].loc() == loc && m[offset].value() == values[offset]);
     let tracked p = m.tracked_remove(offset);
     if offset == values.len() - 1 {
-        assert(combine_values::<P>(values.skip(offset)) == values[offset]) by {
+        assert(combine_values::<P>(values[offset..]) == values[offset]) by {
             lemma_pcm_properties::<P>();  // needed to show that combining with unit is locentity
             reveal_with_fuel(combine_values, 2);
         };
         p
     } else {
-        assert(combine_values::<P>(values.skip(offset)) == P::op(
+        assert(combine_values::<P>(values[offset..]) == P::op(
             values[offset],
-            combine_values::<P>(values.skip(offset + 1)),
+            combine_values::<P>(values[offset + 1..]),
         )) by {
-            assert(values[offset] == values.skip(offset)[0]);
-            assert(values.skip(offset + 1) == values.skip(offset).skip(1));
+            assert(values[offset] == values[offset..][0]);
+            assert(values[offset + 1..] == values[offset..][1..]);
         }
         assert forall|i|
             #![trigger m.dom().contains(i)]
@@ -254,7 +254,7 @@ proof fn aggregate_resources_from_map_starting_at_offset<P: PCM>(
             offset + 1,
         );
         assert(most.loc() == loc);
-        assert(most.value() == combine_values::<P>(values.skip(offset + 1)));
+        assert(most.value() == combine_values::<P>(values[offset + 1..]));
         p.join(most)
     }
 }
@@ -282,7 +282,7 @@ proof fn store_resources_into_map_starting_at_offset<P: PCM>(
         forall|i|
             #![trigger old(m).dom().contains(i)]
             offset <= i < values.len() ==> !old(m).dom().contains(i),
-        p.value() == combine_values::<P>(values.skip(offset)),
+        p.value() == combine_values::<P>(values[offset..]),
     ensures
         forall|i|
             #![trigger final(m).dom().contains(i)]
@@ -293,16 +293,16 @@ proof fn store_resources_into_map_starting_at_offset<P: PCM>(
                 == values[i],
     decreases values.len() - offset,
 {
-    assert(combine_values::<P>(values.skip(offset)) == P::op(
+    assert(combine_values::<P>(values[offset..]) == P::op(
         values[offset],
-        combine_values::<P>(values.skip(offset + 1)),
+        combine_values::<P>(values[offset + 1..]),
     )) by {
-        assert(values[offset] == values.skip(offset)[0]);
-        assert(values.skip(offset + 1) == values.skip(offset).skip(1));
+        assert(values[offset] == values[offset..][0]);
+        assert(values[offset + 1..] == values[offset..][1..]);
     }
     let tracked (p_first, p_rest) = p.split(
         values[offset],
-        combine_values::<P>(values.skip(offset + 1)),
+        combine_values::<P>(values[offset + 1..]),
     );
     m.tracked_insert(offset, p_first);
     if offset < values.len() - 1 {
@@ -358,7 +358,7 @@ pub proof fn validate_multiple<P: PCM>(
         0,
     );
     assert(agg.value() == combine_values::<P>(values)) by {
-        assert(values == values.skip(0));
+        assert(values == values[0..]);
     }
     agg.validate_2(shared);
     store_resources_into_map_starting_at_offset(m, values, 0, agg);

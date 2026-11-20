@@ -1,12 +1,13 @@
 use crate::ast::{
-    BinaryOp, BitwiseOp, Constant, Dt, FieldOpr, Fun, Ident, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VarIdent, VirErr,
+    BitwiseOp, Constant, Dt, FieldOpr, Fun, Ident, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarIdent,
+    VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::messages::{Span, error};
-use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
+use crate::sst::{BinaryOp, CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
+use indexmap::{IndexMap, IndexSet};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -191,17 +192,17 @@ impl Score {
 
 struct Ctxt {
     // variables the triggers must cover
-    trigger_vars: HashSet<VarIdent>,
+    trigger_vars: IndexSet<VarIdent>,
     // terms with App
     all_terms: HashMap<Term, Span>,
     // terms with App and without Other
     // (note: tuple terms are excluded from pure_terms, but a pure_term may have tuples inside)
     // The usize is used to sort the terms in the triggers for better stability
-    pure_terms: HashMap<Term, (Exp, usize)>,
+    pure_terms: IndexMap<Term, (Exp, usize)>,
     // all_terms, indexed by head App
-    all_terms_by_app: HashMap<App, HashMap<Term, Span>>,
+    all_terms_by_app: IndexMap<App, IndexMap<Term, Span>>,
     // pure_terms, indexed by trigger_vars
-    pure_terms_by_var: HashMap<VarIdent, HashMap<Term, Span>>,
+    pure_terms_by_var: HashMap<VarIdent, IndexMap<Term, Span>>,
     // best score for this term
     pure_best_scores: HashMap<Term, Score>,
     // used for Other
@@ -228,7 +229,7 @@ fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
     if timer.timeout_countdown == 0 {
         Err(error(
             &timer.span,
-            "could not infer triggers, because quantifier is too large (use manual #[trigger] instead)",
+            "could not infer triggers, because quantifier is too large (use manual `#[trigger]` instead)",
         ))
     } else {
         timer.timeout_countdown -= 1;
@@ -236,7 +237,7 @@ fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
     }
 }
 
-fn trigger_vars_in_term(ctxt: &Ctxt, vars: &mut HashSet<VarIdent>, term: &Term) {
+fn trigger_vars_in_term(ctxt: &Ctxt, vars: &mut IndexSet<VarIdent>, term: &Term) {
     match &**term {
         TermX::Var(x) if ctxt.trigger_vars.contains(x) => {
             vars.insert(x.clone());
@@ -303,12 +304,6 @@ fn make_score(term: &Term, depth: u64) -> Score {
 }
 
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
-    let fail_on_strop = || {
-        unreachable!(
-            "internal error: doesn't make sense to reach `gather_terms` for string operations defined for verus_builtin, these are only used to tie verus_builtin and vstd together and do not make sense in user programs"
-        )
-    };
-
     fn append_typ_params_as_terms(typ: &Typ, all_terms: &mut Vec<Term>) {
         let ft = |all_terms: &mut Vec<Term>, t: &Typ| match &**t {
             TypX::TypParam(x) => {
@@ -354,7 +349,10 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 },
                 CallFun::Recursive(_) => panic!("internal error: CheckTermination"),
                 CallFun::InternalFun(
-                    InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns,
+                    InternalFun::ClosureReq
+                    | InternalFun::ClosureEns
+                    | InternalFun::ClosureOpensInvariants
+                    | InternalFun::DefaultEns,
                 ) => (is_pure, Arc::new(TermX::App(App::ClosureSpec, Arc::new(all_terms)))),
                 CallFun::InternalFun(
                     InternalFun::CheckDecreaseHeight | InternalFun::OpenInvariantMask(..),
@@ -390,9 +388,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Unary(UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated, e1) => {
             gather_terms(ctxt, ctx, e1, depth)
         }
-        ExpX::Unary(UnaryOp::CastToInteger, _) => {
-            panic!("internal error: CastToInteger should have been removed before here")
-        }
         ExpX::Unary(
             op @ (UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefPtr),
             e1,
@@ -412,7 +407,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated
-                | UnaryOp::CastToInteger
                 | UnaryOp::Length(_) => 0,
                 UnaryOp::ShadowAddrOf => panic!("unexpected ShadowAddrOf"),
                 UnaryOp::HeightTrigger => 1,
@@ -421,8 +415,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::RealToInt => 1,
                 UnaryOp::FloatToBits => 1,
                 UnaryOp::IeeeFloat(_) => 1,
-                UnaryOp::InferSpecForLoopIter { .. } => 1,
-                UnaryOp::StrLen => fail_on_strop(),
+                UnaryOp::NewStrLit => 1,
+                UnaryOp::StrLen => 1,
+                UnaryOp::CastToInteger => 1,
                 UnaryOp::MutRefFinal(_) => 1,
                 UnaryOp::ShadowData => 1,
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefPtr => {
@@ -450,7 +445,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
         }
-        ExpX::UnaryOpr(UnaryOpr::IntegerTypeBound(_, _), e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::UnaryOpr(UnaryOpr::IntegerTypeBound(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => {
             // We currently don't auto-trigger on IsVariant
             // Even if we did, it might be best not to trigger on IsVariants generated from Match
@@ -461,7 +456,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (is_pure, term1) = gather_terms(ctxt, ctx, e1, depth + 1);
             (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
-        ExpX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
+        ExpX::UnaryOpr(UnaryOpr::ToDyn(..), e1) => {
             let (_is_pure, term1) = gather_terms(ctxt, ctx, e1, 1);
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
@@ -478,24 +473,27 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 )),
             )
         }
+        ExpX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(_), _e1) => {
+            panic!("unexpected LoopIsolationBoundary");
+        }
         ExpX::Binary(op, e1, e2) => {
             use BinaryOp::*;
             let depth = match op {
-                And | Or | Xor | Implies | Eq(_) => 0,
+                And | Or | Xor | Implies | Eq => 0,
                 HeightCompare { .. } => 1,
                 Ne | Inequality(_) | Arith(..) | RealArith(..) | IeeeFloat(..) => 1,
                 Bitwise(..) => 1,
-                StrGetChar => fail_on_strop(),
+                StrGetChar => 1,
                 Index(..) => 1,
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (is_pure2, term2) = gather_terms(ctxt, ctx, e2, depth);
             match op {
-                Bitwise(bp, _) => {
+                Bitwise(bp) => {
                     let bop = match bp {
                         BitwiseOp::BitXor => BitOpName::BitXor,
                         BitwiseOp::BitAnd => BitOpName::BitAnd,
-                        BitwiseOp::Shr(..) => BitOpName::Shr,
+                        BitwiseOp::Shr => BitOpName::Shr,
                         BitwiseOp::Shl(..) => BitOpName::Shl,
                         BitwiseOp::BitOr => BitOpName::BitOr,
                     };
@@ -558,7 +556,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ctxt.all_terms.insert(term.clone(), exp.span.clone());
         if let TermX::App(app, _) = &*term {
             if !ctxt.all_terms_by_app.contains_key(app) {
-                ctxt.all_terms_by_app.insert(app.clone(), HashMap::new());
+                ctxt.all_terms_by_app.insert(app.clone(), IndexMap::new());
             }
             ctxt.all_terms_by_app.get_mut(app).unwrap().insert(term.clone(), exp.span.clone());
         }
@@ -627,7 +625,7 @@ fn remove_obvious_potential_loops(ctxt: &mut Ctxt, timer: &mut Timer) -> Result<
         }
     }
     for pure in remove {
-        ctxt.pure_terms.remove(&pure);
+        ctxt.pure_terms.shift_remove(&pure);
     }
     Ok(())
 }
@@ -635,8 +633,8 @@ fn remove_obvious_potential_loops(ctxt: &mut Ctxt, timer: &mut Timer) -> Result<
 type Trigger = Vec<(Term, Span)>;
 
 struct State {
-    remaining_vars: HashSet<VarIdent>,
-    accumulated_terms: HashMap<Term, Span>,
+    remaining_vars: IndexSet<VarIdent>,
+    accumulated_terms: IndexMap<Term, Span>,
     // if AutoType::All, chosen_triggers will contain all minimal covers of the variable set
     // if AutoType::Auto, chosen_triggers will contain a single minimal cover chosen by Score heuristic
     chosen_triggers: Vec<Trigger>,
@@ -736,13 +734,13 @@ fn compute_triggers(
     for (term, span) in &ctxt.pure_terms_by_var[&x] {
         if !state.accumulated_terms.contains_key(term) {
             state.accumulated_terms.insert(term.clone(), span.clone());
-            let mut vars: HashSet<VarIdent> = HashSet::new();
+            let mut vars: IndexSet<VarIdent> = IndexSet::new();
             let mut removed: Vec<VarIdent> = Vec::new();
             trigger_vars_in_term(ctxt, &mut vars, &term);
             // remove term's vars
             for y in vars {
                 if state.remaining_vars.contains(&y) {
-                    state.remaining_vars.remove(&y);
+                    state.remaining_vars.shift_remove(&y);
                     removed.push(y.clone());
                 }
             }
@@ -751,7 +749,7 @@ fn compute_triggers(
             for y in removed {
                 state.remaining_vars.insert(y);
             }
-            state.accumulated_terms.remove(term);
+            state.accumulated_terms.shift_remove(term);
         }
     }
     Ok(())
@@ -767,15 +765,15 @@ pub(crate) fn build_triggers(
     let mut ctxt = Ctxt {
         trigger_vars: vars.iter().cloned().collect(),
         all_terms: HashMap::new(),
-        pure_terms: HashMap::new(),
-        all_terms_by_app: HashMap::new(),
+        pure_terms: IndexMap::new(),
+        all_terms_by_app: IndexMap::new(),
         pure_terms_by_var: HashMap::new(),
         pure_best_scores: HashMap::new(),
         next_id: 0,
         gather_for_all_triggers: auto_trigger == AutoType::All,
     };
     for x in vars {
-        ctxt.pure_terms_by_var.insert(x.clone(), HashMap::new());
+        ctxt.pure_terms_by_var.insert(x.clone(), IndexMap::new());
     }
     let mut timer = Timer { span: span.clone(), timeout_countdown: 10000 };
     gather_terms(&mut ctxt, ctx, exp, 0);
@@ -793,7 +791,7 @@ pub(crate) fn build_triggers(
     remove_obvious_potential_loops(&mut ctxt, &mut timer)?;
     // println!("pure after loop removal:");
     for (term, (e, _)) in ctxt.pure_terms.iter() {
-        let mut vars: HashSet<VarIdent> = HashSet::new();
+        let mut vars: IndexSet<VarIdent> = IndexSet::new();
         trigger_vars_in_term(&ctxt, &mut vars, &term);
         for x in &vars {
             ctxt.pure_terms_by_var.get_mut(x).unwrap().insert(term.clone(), e.span.clone());
@@ -808,7 +806,7 @@ pub(crate) fn build_triggers(
     */
     let mut state = State {
         remaining_vars: ctxt.trigger_vars.iter().cloned().collect(),
-        accumulated_terms: HashMap::new(),
+        accumulated_terms: IndexMap::new(),
         chosen_triggers: Vec::new(),
         low_confidence: false,
     };
@@ -851,7 +849,7 @@ pub(crate) fn build_triggers(
     } else {
         Err(error(
             span,
-            "Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.",
+            "could not automatically infer triggers for this quantifier; use `#[trigger]` annotations to manually mark trigger terms instead",
         ))
     }
 }

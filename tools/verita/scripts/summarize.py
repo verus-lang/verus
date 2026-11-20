@@ -30,6 +30,16 @@ def load_results(directory):
                     "success": fn.get("success"),
                 })
 
+        # Total SMT resources (rlimit) consumed: solver init plus verification run.
+        # Verus reports these two counts separately; their sum mirrors how it
+        # computes "total smt-time" (init + run).
+        rlimit_init = smt.get("rlimit-init")
+        rlimit_run = smt.get("rlimit-run")
+        if rlimit_init is None and rlimit_run is None:
+            rlimit_total = None
+        else:
+            rlimit_total = (rlimit_init or 0) + (rlimit_run or 0)
+
         # Determine which specific crate root this JSON represents.
         # When a project has multiple crate roots, main.rs names each output file
         # "<project-name>-<suffix>.json" where suffix is the parent directory
@@ -66,6 +76,7 @@ def load_results(directory):
             "stderr": runner.get("stderr", ""),
             "verified": vr.get("verified") if vr else None,
             "errors": vr.get("errors") if vr else None,
+            "rlimit": rlimit_total,
             "total_ms": times.get("total"),
             "functions": functions,
         }
@@ -76,6 +87,21 @@ def fmt_time(ms):
     if ms is None:
         return "N/A"
     return f"{ms / 1000:.2f} s"
+
+
+def _humanize_count(n):
+    """Compact human-readable count, e.g. 61136674 -> '61.1M', 98696 -> '98.7K'."""
+    a = abs(n)
+    for divisor, suffix in ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K")):
+        if a >= divisor:
+            return f"{n / divisor:.1f}{suffix}"
+    return str(n)
+
+
+def fmt_rlimit(val):
+    if val is None:
+        return "N/A"
+    return _humanize_count(val)
 
 
 def fmt_status(success):
@@ -103,14 +129,18 @@ def print_single_summary(results):
     show_crate = any(r["crate_root"] is not None for _, r in entries)
 
     proj_col = max(len("Project"), max(len(r["name"]) for _, r in entries)) + 2
+    res_col = max(len("Resources"), max(len(fmt_rlimit(r["rlimit"])) for _, r in entries))
     if show_crate:
         cr_col = max(len("Crate Root"), max(len(r["crate_root"] or "") for _, r in entries)) + 2
         header = (
             f"{'Project':<{proj_col}} {'Crate Root':<{cr_col}}"
-            f" {'Status':<8}  {'Verified':>10}   {'Errors':>6}   {'Total Time':>10}"
+            f" {'Status':<8}  {'Verified':>10}   {'Errors':>6}   {'Resources':>{res_col}}   {'Total Time':>10}"
         )
     else:
-        header = f"{'Project':<{proj_col}} {'Status':<8}  {'Verified':>10}   {'Errors':>6}   {'Total Time':>10}"
+        header = (
+            f"{'Project':<{proj_col}} {'Status':<8}  {'Verified':>10}   {'Errors':>6}"
+            f"   {'Resources':>{res_col}}   {'Total Time':>10}"
+        )
     sep = "-" * len(header)
 
     print("=== Project Summary ===")
@@ -122,12 +152,19 @@ def print_single_summary(results):
         status = fmt_status(r["success"])
         verified = fmt_int_or_dash(r["verified"])
         errors = fmt_int_or_dash(r["errors"])
+        res = fmt_rlimit(r["rlimit"])
         total = fmt_time(r["total_ms"])
         if show_crate:
             cr = r["crate_root"] or ""
-            print(f"{r['name']:<{proj_col}} {cr:<{cr_col}} {status:<8}  {verified:>10}   {errors:>6}   {total:>10}")
+            print(
+                f"{r['name']:<{proj_col}} {cr:<{cr_col}} {status:<8}  {verified:>10}   {errors:>6}"
+                f"   {res:>{res_col}}   {total:>10}"
+            )
         else:
-            print(f"{r['name']:<{proj_col}} {status:<8}  {verified:>10}   {errors:>6}   {total:>10}")
+            print(
+                f"{r['name']:<{proj_col}} {status:<8}  {verified:>10}   {errors:>6}"
+                f"   {res:>{res_col}}   {total:>10}"
+            )
 
     print()
 
@@ -162,22 +199,23 @@ def print_single_summary_md(results):
     show_crate = any(r["crate_root"] is not None for _, r in entries)
 
     if show_crate:
-        print("| Project | Crate Root | Status | Verified | Errors | Total Time |")
-        print("|---------|------------|--------|----------|--------|------------|")
+        print("| Project | Crate Root | Status | Verified | Errors | Resources | Total Time |")
+        print("|---------|------------|--------|----------|--------|-----------|------------|")
     else:
-        print("| Project | Status | Verified | Errors | Total Time |")
-        print("|---------|--------|----------|--------|------------|")
+        print("| Project | Status | Verified | Errors | Resources | Total Time |")
+        print("|---------|--------|----------|--------|-----------|------------|")
 
     for _, r in entries:
         status = fmt_status(r["success"])
         verified = fmt_int_or_dash(r["verified"])
         errors = fmt_int_or_dash(r["errors"])
+        res = fmt_rlimit(r["rlimit"])
         total = fmt_time(r["total_ms"])
         if show_crate:
             cr = r["crate_root"] or ""
-            print(f"| {r['name']} | {cr} | {status} | {verified} | {errors} | {total} |")
+            print(f"| {r['name']} | {cr} | {status} | {verified} | {errors} | {res} | {total} |")
         else:
-            print(f"| {r['name']} | {status} | {verified} | {errors} | {total} |")
+            print(f"| {r['name']} | {status} | {verified} | {errors} | {res} | {total} |")
 
     print()
 
@@ -260,6 +298,11 @@ def _signed(n):
     return f"+{n}" if n >= 0 else str(n)
 
 
+def _signed_human(n):
+    """Signed compact count, e.g. +3.1M / -512.0K."""
+    return f"+{_humanize_count(n)}" if n >= 0 else f"-{_humanize_count(abs(n))}"
+
+
 def _signed_f(f, decimals=2):
     return f"+{f:.{decimals}f}" if f >= 0 else f"{f:.{decimals}f}"
 
@@ -285,6 +328,15 @@ def _cmp_time(old_ms, new_ms):
     return f"{fmt_time(old_ms)} → {fmt_time(new_ms)}"
 
 
+def _cmp_rlimit(old, new):
+    """Return comparison string for an rlimit (resource) metric."""
+    if old is not None and new is not None:
+        delta = new - old
+        pct = (delta / old) * 100 if old != 0 else 0
+        return f"{fmt_rlimit(old)} → {fmt_rlimit(new)} ({_signed_human(delta)}, {_signed_f(pct, 1)}%)"
+    return f"{fmt_rlimit(old)} → {fmt_rlimit(new)}"
+
+
 def print_comparison_summary(old_results, new_results):
     all_stems = sorted(
         set(old_results.keys()) | set(new_results.keys()),
@@ -306,11 +358,13 @@ def print_comparison_summary(old_results, new_results):
             status_str = "(new)"
             ver_str = fmt_int_or_dash(new["verified"])
             err_str = fmt_int_or_dash(new["errors"])
+            res_str = fmt_rlimit(new["rlimit"])
             time_str = fmt_time(new["total_ms"])
         elif new is None:
             status_str = "(removed)"
             ver_str = fmt_int_or_dash(old["verified"])
             err_str = fmt_int_or_dash(old["errors"])
+            res_str = fmt_rlimit(old["rlimit"])
             time_str = fmt_time(old["total_ms"])
         else:
             old_st = fmt_status(old["success"])
@@ -318,9 +372,10 @@ def print_comparison_summary(old_results, new_results):
             status_str = old_st if old_st == new_st else f"{old_st} → {new_st}"
             ver_str = _cmp_int(old["verified"], new["verified"])
             err_str = _cmp_int(old["errors"], new["errors"])
+            res_str = _cmp_rlimit(old["rlimit"], new["rlimit"])
             time_str = _cmp_time(old["total_ms"], new["total_ms"])
 
-        rows.append((name, crate_root, status_str, ver_str, err_str, time_str))
+        rows.append((name, crate_root, status_str, ver_str, err_str, res_str, time_str))
 
     show_crate = any(r[1] is not None for r in rows)
 
@@ -331,17 +386,18 @@ def print_comparison_summary(old_results, new_results):
     stat_col  = max(len("Status"),   max(len(r[2]) for r in rows)) + 2
     ver_col   = max(len("Verified"), max(len(r[3]) for r in rows))
     err_col   = max(len("Errors"),   max(len(r[4]) for r in rows))
-    time_col  = max(len("Total Time"), max(len(r[5]) for r in rows))
+    res_col   = max(len("Resources"), max(len(r[5]) for r in rows))
+    time_col  = max(len("Total Time"), max(len(r[6]) for r in rows))
 
     if show_crate:
         header = (
             f"{'Project':<{proj_col}} {'Crate Root':<{cr_col}} {'Status':<{stat_col}}"
-            f" {'Verified':>{ver_col}}  {'Errors':>{err_col}}  {'Total Time':>{time_col}}"
+            f" {'Verified':>{ver_col}}  {'Errors':>{err_col}}  {'Resources':>{res_col}}  {'Total Time':>{time_col}}"
         )
     else:
         header = (
             f"{'Project':<{proj_col}} {'Status':<{stat_col}}"
-            f" {'Verified':>{ver_col}}  {'Errors':>{err_col}}  {'Total Time':>{time_col}}"
+            f" {'Verified':>{ver_col}}  {'Errors':>{err_col}}  {'Resources':>{res_col}}  {'Total Time':>{time_col}}"
         )
     sep = "-" * len(header)
 
@@ -350,17 +406,17 @@ def print_comparison_summary(old_results, new_results):
     print(header)
     print(sep)
 
-    for name, crate_root, status_str, ver_str, err_str, time_str in rows:
+    for name, crate_root, status_str, ver_str, err_str, res_str, time_str in rows:
         if show_crate:
             cr = crate_root or ""
             print(
                 f"{name:<{proj_col}} {cr:<{cr_col}} {status_str:<{stat_col}}"
-                f" {ver_str:>{ver_col}}  {err_str:>{err_col}}  {time_str:>{time_col}}"
+                f" {ver_str:>{ver_col}}  {err_str:>{err_col}}  {res_str:>{res_col}}  {time_str:>{time_col}}"
             )
         else:
             print(
                 f"{name:<{proj_col}} {status_str:<{stat_col}}"
-                f" {ver_str:>{ver_col}}  {err_str:>{err_col}}  {time_str:>{time_col}}"
+                f" {ver_str:>{ver_col}}  {err_str:>{err_col}}  {res_str:>{res_col}}  {time_str:>{time_col}}"
             )
 
     print()
@@ -455,11 +511,11 @@ def print_comparison_summary_md(old_results, new_results):
     )
 
     if show_crate:
-        print("| Project | Crate Root | Status | Verified | Errors | Total Time |")
-        print("|---------|------------|--------|----------|--------|------------|")
+        print("| Project | Crate Root | Status | Verified | Errors | Resources | Total Time |")
+        print("|---------|------------|--------|----------|--------|-----------|------------|")
     else:
-        print("| Project | Status | Verified | Errors | Total Time |")
-        print("|---------|--------|----------|--------|------------|")
+        print("| Project | Status | Verified | Errors | Resources | Total Time |")
+        print("|---------|--------|----------|--------|-----------|------------|")
 
     for stem in all_stems:
         old = old_results.get(stem)
@@ -471,11 +527,13 @@ def print_comparison_summary_md(old_results, new_results):
             status_str = "(new)"
             ver_str = fmt_int_or_dash(new["verified"])
             err_str = fmt_int_or_dash(new["errors"])
+            res_str = fmt_rlimit(new["rlimit"])
             time_str = fmt_time(new["total_ms"])
         elif new is None:
             status_str = "(removed)"
             ver_str = fmt_int_or_dash(old["verified"])
             err_str = fmt_int_or_dash(old["errors"])
+            res_str = fmt_rlimit(old["rlimit"])
             time_str = fmt_time(old["total_ms"])
         else:
             old_st = fmt_status(old["success"])
@@ -483,13 +541,14 @@ def print_comparison_summary_md(old_results, new_results):
             status_str = old_st if old_st == new_st else f"{old_st} → {new_st}"
             ver_str = _cmp_int(old["verified"], new["verified"])
             err_str = _cmp_int(old["errors"], new["errors"])
+            res_str = _cmp_rlimit(old["rlimit"], new["rlimit"])
             time_str = _cmp_time(old["total_ms"], new["total_ms"])
 
         if show_crate:
             cr = crate_root or ""
-            print(f"| {name} | {cr} | {status_str} | {ver_str} | {err_str} | {time_str} |")
+            print(f"| {name} | {cr} | {status_str} | {ver_str} | {err_str} | {res_str} | {time_str} |")
         else:
-            print(f"| {name} | {status_str} | {ver_str} | {err_str} | {time_str} |")
+            print(f"| {name} | {status_str} | {ver_str} | {err_str} | {res_str} | {time_str} |")
 
     print()
 

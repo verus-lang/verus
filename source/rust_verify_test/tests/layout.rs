@@ -3,6 +3,59 @@
 mod common;
 use common::*;
 
+test_verify_one_file_with_options! {
+    #[test] int_intrinsic_path_requires_full_match ["--crate-name=u8"] => verus_code! {
+        // These paths start with integer intrinsic names but refer to user constants.
+        struct MINIMUM;
+        impl MINIMUM {
+            const C: u8 = 5;
+        }
+
+        struct MAX;
+        impl MAX {
+            const C: u8 = 5;
+        }
+
+        struct BITS;
+        impl BITS {
+            const C: u8 = 5;
+        }
+
+        fn user_constants() {
+            assert(MINIMUM::C == 5);
+            assert(MAX::C == 5);
+            assert(BITS::C == 5);
+        }
+
+        fn primitive_constants() {
+            assert(u8::MIN == 0);
+            assert(u8::MAX == 255);
+            assert(u8::BITS == 8);
+        }
+
+        fn min_not_intrinsic() -> (r: u8)
+            ensures MINIMUM::C == 0 // FAILS
+        {
+            MINIMUM::C
+        }
+
+        fn max_not_intrinsic() -> (r: u8)
+            ensures MAX::C == 255 // FAILS
+        {
+            MAX::C
+        }
+
+        fn bits_not_intrinsic() -> (r: u8)
+            ensures BITS::C == 8 // FAILS
+        {
+            BITS::C
+        }
+    } => Err(err) => {
+        assert_fails(err.clone(), 3);
+        assert!(err.errors.iter().all(|e| e.message == "postcondition not satisfied"));
+    }
+}
+
 test_verify_one_file! {
     #[test] test_with_no_flag verus_code! {
         fn test() {
@@ -118,6 +171,22 @@ test_verify_one_file! {
             assert(isize::MIN == -0x8000000000000000); // FAILS
         }
     } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] signed_min_is_not_nat_issue3116 verus_code! {
+        proof fn nat_is_nonnegative(n: nat)
+            ensures n >= 0,
+        {
+        }
+
+        proof fn contradiction()
+            ensures false,
+        {
+            nat_is_nonnegative(signed_min(8));
+            assert(signed_min(8) == -128);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file_with_options! {
@@ -250,7 +319,7 @@ test_verify_one_file! {
         fn test(y: nat) {
             let x = unsigned_max(y);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::unsigned_max` in executable context")
 }
 
 test_verify_one_file! {
@@ -258,7 +327,7 @@ test_verify_one_file! {
         fn test(y: nat) {
             let x = signed_max(y);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::signed_max` in executable context")
 }
 
 test_verify_one_file! {
@@ -266,7 +335,7 @@ test_verify_one_file! {
         fn test(y: nat) {
             let x = signed_min(y);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::signed_min` in executable context")
 }
 
 test_verify_one_file! {
@@ -274,7 +343,7 @@ test_verify_one_file! {
         fn test() {
             let x = arch_word_bits();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::arch_word_bits` in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -497,4 +566,12 @@ test_verify_one_file_with_options! {
             assert(usize::BITS == 64);
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_global_in_fn_body ["vstd"] => verus_code! {
+        proof fn p() {
+            verus!(global size_of usize == 4;);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`global` must be a module-level item")
 }

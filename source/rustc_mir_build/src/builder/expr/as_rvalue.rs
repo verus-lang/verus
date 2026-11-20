@@ -2,17 +2,16 @@
 
 use rustc_abi::FieldIdx;
 use rustc_index::{Idx, IndexVec};
-use rustc_middle::bug;
 use rustc_middle::middle::region::{self, TempLifetime};
 use rustc_middle::mir::interpret::Scalar;
 use rustc_middle::mir::*;
 use rustc_middle::thir::*;
 use rustc_middle::ty::adjustment::PointerCoercion;
 use rustc_middle::ty::cast::{CastTy, mir_cast_kind};
+use rustc_middle::ty::consts::ConstExt;
 use rustc_middle::ty::util::IntTypeExt;
 use rustc_middle::ty::{self, Ty, UpvarArgs};
-use rustc_span::source_map::Spanned;
-use rustc_span::{DUMMY_SP, Span};
+use rustc_span::{DUMMY_SP, Span, Spanned, bug};
 use tracing::debug;
 
 use crate::builder::expr::as_place::PlaceBase;
@@ -59,6 +58,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             ExprKind::Scope { region_scope, hir_id, value } => {
                 let region_scope = (region_scope, source_info);
                 this.in_scope(region_scope, LintLevel::Explicit(hir_id), |this| {
+                    this.push_coverage_point_for_expr(block, source_info, hir_id);
                     this.as_rvalue(block, scope, value)
                 })
             }
@@ -243,7 +243,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
                 block.and(Rvalue::Aggregate(Box::new(AggregateKind::Tuple), fields))
             }
-            ExprKind::Closure(box ClosureExpr {
+            ExprKind::Closure(ClosureExpr {
                 closure_id,
                 args,
                 ref upvars,
@@ -347,11 +347,14 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             }
             ExprKind::Assign { .. } | ExprKind::AssignOp { .. } => {
                 block = this.stmt_expr(block, expr_id, None).into_block();
-                block.and(Rvalue::Use(Operand::Constant(Box::new(ConstOperand {
-                    span: expr_span,
-                    user_ty: None,
-                    const_: Const::zero_sized(this.tcx.types.unit),
-                }))))
+                block.and(Rvalue::Use(
+                    Operand::Constant(Box::new(ConstOperand {
+                        span: expr_span,
+                        user_ty: None,
+                        const_: Const::zero_sized(this.tcx.types.unit),
+                    })),
+                    WithRetag::Yes,
+                ))
             }
 
             ExprKind::Literal { .. }
@@ -362,7 +365,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | ExprKind::ConstBlock { .. }
             | ExprKind::StaticRef { .. } => {
                 let constant = this.as_constant(expr);
-                block.and(Rvalue::Use(Operand::Constant(Box::new(constant))))
+                block.and(Rvalue::Use(Operand::Constant(Box::new(constant)), WithRetag::Yes))
             }
 
             ExprKind::WrapUnsafeBinder { source } => {
@@ -383,7 +386,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | ExprKind::Match { .. }
             | ExprKind::If { .. }
             | ExprKind::NeverToAny { .. }
-            | ExprKind::Use { .. }
+            | ExprKind::ValueExpr { .. }
             | ExprKind::Borrow { .. }
             | ExprKind::RawBorrow { .. }
             | ExprKind::Adt { .. }
@@ -422,7 +425,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         NeedsTemporary::No,
                     )
                 );
-                block.and(Rvalue::Use(operand))
+                block.and(Rvalue::Use(operand, WithRetag::Yes))
             }
 
             ExprKind::ByUse { expr, span: _ } => {
@@ -430,7 +433,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     block =
                         this.as_operand(block, scope, expr, LocalInfo::Boring, NeedsTemporary::No)
                 );
-                block.and(Rvalue::Use(operand))
+                block.and(Rvalue::Use(operand, WithRetag::Yes))
+            }
+            ExprKind::Reborrow { source, mutability, target } => {
+                let temp = unpack!(block = this.as_temp(block, scope, source, mutability));
+                block.and(Rvalue::Reborrow(target, mutability, temp.into()))
             }
         }
     }
@@ -469,7 +476,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 let err = AssertKind::Overflow(op, lhs, rhs);
                 block = self.assert(block, Operand::Move(of), false, err, span);
 
-                Rvalue::Use(Operand::Move(val))
+                Rvalue::Use(Operand::Move(val), WithRetag::Yes)
             }
             BinOp::Shl | BinOp::Shr if self.check_overflow && ty.is_integral() => {
                 // For an unsigned RHS, the shift is in-range for `rhs < bits`.
@@ -594,7 +601,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             debug!(?kind, "check_constness");
             match kind {
                 &ExprKind::ValueTypeAscription { source: eid, user_ty: _, user_ty_span: _ }
-                | &ExprKind::Use { source: eid }
+                | &ExprKind::ValueExpr { source: eid }
                 | &ExprKind::PointerCoercion {
                     cast: PointerCoercion::Unsize,
                     source: eid,
@@ -636,7 +643,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         unwind: UnwindAction::Continue,
                         replace: false,
                         drop: None,
-                        async_fut: None,
                     },
                 );
                 this.diverge_from(block);
@@ -721,7 +727,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         // This can be `None` if the expression's temporary scope was extended so that it can be
         // borrowed by a `const` or `static`. In that case, it's never dropped.
         if let Some(temp_lifetime) = temp_lifetime {
-            this.schedule_drop_storage_and_value(upvar_span, temp_lifetime, temp);
+            this.schedule_drop_storage(upvar_span, temp_lifetime, temp);
+            this.schedule_drop_value(upvar_span, temp_lifetime, temp);
         }
 
         block.and(Operand::Move(Place::from(temp)))

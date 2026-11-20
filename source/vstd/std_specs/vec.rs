@@ -5,7 +5,7 @@ use verus_builtin::*;
 #[cfg(not(verus_verify_core))]
 use super::core::IndexSpec;
 #[cfg(not(verus_verify_core))]
-use super::slice::SliceIndexSpec;
+use super::super::slice::SliceIndexSpec;
 use alloc::collections::TryReserveError;
 use alloc::vec::{IntoIter, Vec};
 use core::alloc::Allocator;
@@ -14,10 +14,10 @@ use core::marker::PhantomData;
 use core::ops::Index;
 use core::option::Option;
 use core::option::Option::None;
-use core::slice::{IterMut, SliceIndex};
+use core::slice::SliceIndex;
 
-use verus as verus_;
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -140,6 +140,14 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve ](
         final(vec)@ == old(vec)@,
 ;
 
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve_exact ](
+    vec: &mut Vec<T, A>,
+    additional: usize,
+) -> (result: Result<(), TryReserveError>)
+    ensures
+        final(vec)@ == old(vec)@,
+;
+
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::push ](vec: &mut Vec<T, A>, value: T)
     ensures
         final(vec)@ == old(vec)@.push(value),
@@ -149,7 +157,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::pop ](vec: &mut Vec<T, A
     Option<T>)
     ensures
         old(vec)@.len() > 0 ==> value == Some(old(vec)@[old(vec)@.len() - 1])
-            && final(vec)@ == old(vec)@.subrange(0, old(vec)@.len() - 1),
+            && final(vec)@ == old(vec)@[..old(vec)@.len() - 1],
         old(vec)@.len() == 0 ==> value == None::<T> && final(vec)@ == old(vec)@,
 ;
 
@@ -180,7 +188,7 @@ pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::exte
 #[cfg(not(verus_verify_core))]
 impl<T: Sized, I: SliceIndex<[T]>, A: Allocator> super::core::IndexSpecImpl<I> for Vec<T, A> {
     open spec fn index_req(&self, index: &I) -> bool {
-        forall|s: &[T]| #[trigger] s@ == self@ ==> crate::std_specs::slice::valid_indices_slice(index.spec_start(s), index.spec_end(s), s)
+        forall|s: &[T]| #[trigger] s@ == self@ ==> index.in_bounds(s)
     }
 }
 
@@ -219,6 +227,8 @@ pub assume_specification<T, A: Allocator> [ <Vec<T, A>>::is_empty ](
     v: &Vec<T, A>,
 ) -> (res: bool)
     ensures res <==> v@.len() == 0,
+    opens_invariants none
+    no_unwind
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::remove ](
@@ -240,6 +250,17 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::clear ](vec: &mut Vec<T,
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, A>) -> (slice: &[T])
     ensures
         slice@ == vec@,
+    opens_invariants none
+    no_unwind
+;
+
+pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::convert::AsRef<[T]>>::as_ref ](
+    vec: &Vec<T, A>,
+) -> (slice: &[T])
+    ensures
+        slice@ == vec@,
+    opens_invariants none
+    no_unwind
 ;
 
 #[doc(hidden)]
@@ -247,6 +268,8 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut
     ensures
         slice@ == old(vec)@,
         final(slice)@ == final(vec)@,
+    opens_invariants none
+    no_unwind
 ;
 
 pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::deref ](
@@ -271,8 +294,8 @@ pub assume_specification<T, A: Allocator + core::clone::Clone>[ Vec::<T, A>::spl
     requires
         at <= old(vec)@.len(),
     ensures
-        final(vec)@ == old(vec)@.subrange(0, at as int),
-        return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),
+        final(vec)@ == old(vec)@[..at],
+        return_value@ == old(vec)@[at..],
 ;
 
 pub open spec fn vec_clone_trigger<T, A: Allocator>(v1: Vec<T, A>, v2: Vec<T, A>) -> bool {
@@ -303,7 +326,7 @@ pub broadcast proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::truncate ](vec: &mut Vec<T, A>, len: usize)
     ensures
-        len <= old(vec).len() ==> final(vec)@ == old(vec)@.subrange(0, len as int),
+        len <= old(vec).len() ==> final(vec)@ == old(vec)@[..len],
         len > old(vec).len() ==> final(vec)@ == old(vec)@,
 ;
 
@@ -313,10 +336,10 @@ pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
     value: T,
 )
     ensures
-        len <= old(vec).len() ==> final(vec)@ == old(vec)@.subrange(0, len as int),
+        len <= old(vec).len() ==> final(vec)@ == old(vec)@[..len],
         len > old(vec).len() ==> {
             &&& final(vec)@.len() == len
-            &&& final(vec)@.subrange(0, old(vec).len() as int) == old(vec)@
+            &&& final(vec)@[..old(vec).len()] == old(vec)@
             &&& forall|i| #![all_triggers] old(vec).len() <= i < len ==> cloned::<T>(value, final(vec)@[i])
         },
 ;
@@ -328,21 +351,6 @@ pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
         #[trigger] (decreases_to!(v => v[i])),
 {
     admit();
-}
-
-impl<T, A: Allocator> super::core::TrustedSpecSealed for Vec<T, A> {
-
-}
-
-#[cfg(not(verus_verify_core))]
-impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
-    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
-        0 <= index < self.len()
-    }
-
-    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ == self@.update(index as int, val)
-    }
 }
 
 pub assume_specification<T: PartialEq<U>, U, A1: Allocator, A2: Allocator>[ <Vec<T, A1> as PartialEq<Vec<U, A2>>>::eq ](
@@ -380,14 +388,10 @@ impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-    uninterp spec fn will_return_none(&self) -> bool;
-
     #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
     }
-
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -416,174 +420,35 @@ pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -
         v.len() == n,
         forall |i| 0 <= i < n ==> cloned(elem, #[trigger] v@[i]);
 
-// To allow reasoning about the returned iterator when the executable
-// function `into_iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: v.into_iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_into_iter)` to the specification for
-// the executable `into_iter` method and define that spec function here.
-pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Vec<
-    T,
-    A,
-> as core::iter::IntoIterator>::IntoIter);
-
-pub uninterp spec fn spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>) -> (iter: <&Vec<
-    T,
-    A,
-> as core::iter::IntoIterator>::IntoIter);
-
-
-pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
-    ensures
-        #[trigger] spec_into_iter(v).remaining() == v@,
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>)
-    ensures
-        #[trigger] spec_into_iter_borrowed(v).remaining() == v@.as_ref(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_into_iter)]
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, A>) -> (iter: <Vec<
     T,
     A,
 > as core::iter::IntoIterator>::IntoIter)
     ensures
-        iter == spec_into_iter(vec),
+        IteratorSpec::remaining(&iter) == vec@,
+        // Stated via `len()` so callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() == vec.len(),
+        into_iter_elts(iter) == IteratorSpec::remaining(&iter),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
-#[verifier::when_used_as_spec(spec_into_iter_borrowed)]
 pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::IntoIterator>::into_iter] (vec: &'a Vec<T, A>) ->
     (iter: <&'a Vec<T, A> as core::iter::IntoIterator>::IntoIter)
     ensures
-        iter == spec_into_iter_borrowed(vec),
+        IteratorSpec::remaining(&iter) == vec@.as_ref(),
+        IteratorSpec::remaining(&iter).len() == vec.len(),
+        super::slice::into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 impl<T>  FromIteratorSpecImpl<T> for Vec<T> {
-    open spec fn from_iter_ensures(remaining: Seq<T>, s: Self) -> bool {
-        remaining == s@
+    open spec fn from_iter_ensures(remaining: Seq<T>, produces: Seq<bool>, s: Self) -> bool {
+        &&& produces.len() == remaining.len()
+        &&& produces.all(|p: bool| p)
+        &&& remaining == s@
     }
 }
-
-
-/***********************************************************************************************
- * Definitions for `slice::IterMut` (the iterator behind `<[T]>::iter_mut` and `Vec::iter_mut`)
- ***********************************************************************************************/
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[verifier::accept_recursive_types(T)]
-pub struct ExIterMut<'a, T: 'a>(IterMut<'a, T>);
-
-// See rust_verify_test/tests/iterators.rs for a verified implementation of this interface.
-// Any changes here should first be verified over there.
-impl<'a, T: 'a> super::iter::IteratorSpecImpl for IterMut<'a, T> {
-    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        true
-    }
-
-    #[verifier::prophetic]
-    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-
-    open spec fn will_return_none(&self) -> bool { true }
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-    }
-
-    uninterp spec fn decrease(&self) -> Option<nat>;
-
-    open spec fn peek(&self, index: int) -> Option<Self::Item> { None }
-}
-
-// Common postcondition shared by `<[T]>::iter_mut` and `Vec::iter_mut`, relating
-// the freshly-created iterator `iter` to the borrowed-from sequence.  `cur` is the
-// borrowed-from contents at the start (`old(..)@`) and `fut` is its prophesied
-// final contents (`final(..)@`).
-#[verifier::prophetic]
-pub open spec fn iter_mut_ensures<'a, T>(
-    iter: &IterMut<'a, T>,
-    cur: Seq<T>,
-    fut: Seq<T>,
-) -> bool {
-    &&& IteratorSpec::remaining(iter).len() == cur.len() == fut.len()
-    // Each yielded reference initially points at the corresponding element...
-    &&& forall|i: int| #![trigger IteratorSpec::remaining(iter)[i]]
-        0 <= i < cur.len() ==> *(IteratorSpec::remaining(iter)[i]) == cur[i]
-    // ...and its eventual value flows back to the corresponding element.
-    &&& forall|i: int| #![trigger IteratorSpec::remaining(iter)[i]]
-        0 <= i < cur.len() ==> *final(IteratorSpec::remaining(iter)[i]) == fut[i]
-    &&& IteratorSpec::obeys_prophetic_iter_laws(iter)
-    &&& IteratorSpec::will_return_none(iter)
-    &&& IteratorSpec::decrease(iter) is Some
-    &&& IteratorSpec::initial_value_relation(iter, iter)
-}
-
-// Also covers `vec.iter_mut(), which reaches this slice fn through `Vec`'s `DerefMut`
-pub assume_specification<'a, T>[ <[T]>::iter_mut ](slice: &'a mut [T]) -> (iter: IterMut<'a, T>)
-    ensures
-        iter_mut_ensures(&iter, old(slice)@, final(slice)@),
-;
-
-pub uninterp spec fn iter_mut_next_post<'a, T>(
-    old_iter: &IterMut<'a, T>,
-    new_iter: &IterMut<'a, T>,
-    ret: Option<&'a mut T>,
-) -> bool;
-
-// Duplicates Iterator::next's postcondition, so we use it as a postcondition on the concrete
-// IterMut type.  See `Chars::next` for why all of this indirection is needed.
-pub broadcast axiom fn iter_mut_next_postcondition<'a, T>(
-    old_iter: &IterMut<'a, T>,
-    new_iter: &IterMut<'a, T>,
-    ret: Option<&'a mut T>,
-)
-    requires
-        #[trigger] iter_mut_next_post(old_iter, new_iter, ret),
-    ensures
-        // The iterator consistently obeys, completes, and decreases throughout its lifetime.
-        IteratorSpec::obeys_prophetic_iter_laws(new_iter)
-            == IteratorSpec::obeys_prophetic_iter_laws(old_iter),
-        IteratorSpec::obeys_prophetic_iter_laws(new_iter) ==> IteratorSpec::will_return_none(new_iter)
-            == IteratorSpec::will_return_none(old_iter),
-        IteratorSpec::obeys_prophetic_iter_laws(new_iter) ==> (IteratorSpec::decrease(old_iter) is Some
-            <==> IteratorSpec::decrease(new_iter) is Some),
-        // `next` pops the head of the prophesized remaining(), or returns None.
-        IteratorSpec::obeys_prophetic_iter_laws(new_iter) ==> ({
-            if IteratorSpec::remaining(old_iter).len() > 0 {
-                &&& IteratorSpec::remaining(new_iter) == IteratorSpec::remaining(old_iter).drop_first()
-                &&& ret == Some(IteratorSpec::remaining(old_iter)[0])
-            } else {
-                IteratorSpec::remaining(new_iter) == IteratorSpec::remaining(old_iter) && ret == None
-                    && IteratorSpec::will_return_none(new_iter)
-            }
-        }),
-        // If the iterator isn't done yet, then it successfully decreases its metric (if any).
-        IteratorSpec::obeys_prophetic_iter_laws(new_iter) && IteratorSpec::remaining(old_iter).len() > 0
-            && IteratorSpec::decrease(new_iter) is Some
-            ==> decreases_to!(IteratorSpec::decrease(old_iter)->0 => IteratorSpec::decrease(new_iter)->0),
-;
-
-pub assume_specification<'a, T>[ <IterMut<'a, T> as Iterator>::next ](
-    iter: &mut IterMut<'a, T>,
-) -> (ret: Option<&'a mut T>)
-    ensures
-        iter_mut_next_post(old(iter), final(iter), ret),
-;
-
-pub assume_specification<'a, T>[ <IterMut<'a, T> as Iterator>::size_hint ](
-    iter: &IterMut<'a, T>,
-) -> (usize, Option<usize>);
-
-
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
     requires
@@ -591,7 +456,7 @@ pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
     ensures
         #[trigger] super::super::laws_eq::obeys_eq::<Vec<T>>(),
 {
-    broadcast use {axiom_spec_len, super::super::seq::group_seq_axioms};
+    broadcast use {axiom_spec_len, super::super::seq::group_seq_lemmas};
     reveal(super::super::laws_eq::obeys_eq_spec_properties);
 }
 
@@ -602,7 +467,7 @@ pub broadcast proof fn lemma_vec_obeys_view_eq<T: PartialEq + View>()
         #[trigger] super::super::laws_eq::obeys_view_eq::<Vec<T>>(),
 {
     use super::cmp::PartialEqSpec;
-    broadcast use {axiom_spec_len, super::super::seq::group_seq_axioms};
+    broadcast use {axiom_spec_len, super::super::seq::group_seq_lemmas};
     reveal(super::super::laws_eq::obeys_eq_spec_properties);
     reveal(super::super::laws_eq::obeys_concrete_eq);
     reveal(super::super::laws_eq::obeys_view_eq);
@@ -616,7 +481,7 @@ pub broadcast proof fn lemma_vec_obeys_deep_eq<T: PartialEq + DeepView>()
         #[trigger] super::super::laws_eq::obeys_deep_eq::<Vec<T>>(),
 {
     use super::cmp::PartialEqSpec;
-    broadcast use {axiom_spec_len, super::super::seq::group_seq_axioms};
+    broadcast use {axiom_spec_len, super::super::seq::group_seq_lemmas};
     reveal(super::super::laws_eq::obeys_eq_spec_properties);
     reveal(super::super::laws_eq::obeys_deep_eq);
     assert(forall|x: Vec<T>, y: Vec<T>| x.eq_spec(&y) ==> x.deep_view() == y.deep_view());
@@ -643,11 +508,17 @@ pub broadcast group group_vec_axioms {
     axiom_spec_len,
     axiom_vec_index_decreases,
     vec_clone_deep_view_proof,
-    axiom_spec_into_iter,
-    axiom_spec_into_iter_borrowed,
     axiom_vec_has_resolved,
     axiom_vec_decreases_to_view,
-    iter_mut_next_postcondition,
 }
+
+pub axiom fn tracked_borrow_slice<T, A: Allocator>(tracked vec: &Vec<T, A>) -> (tracked t: &[T])
+    ensures t@ == vec@;
+
+pub axiom fn tracked_borrow_mut_slice<T, A: Allocator>(tracked vec: &mut Vec<T, A>) -> (tracked t: &mut [T])
+    ensures
+        (*t)@ == old(vec)@,
+        (*t).len() == final(t).len(),
+        final(vec)@ == final(t)@;
 
 } // verus!

@@ -15,7 +15,7 @@ use crate::messages::error;
 pub fn check_closure_well_formed(expr: &Expr, is_proof_fn: bool) -> Result<(), VirErr> {
     expr_visitor_check(expr, &mut |scope_map, expr| {
         match &expr.x {
-            ExprX::AssignToPlace { place, .. } | ExprX::BorrowMut(place, _) => {
+            ExprX::Assign { place, .. } | ExprX::BorrowMut(place, _) => {
                 if let Some(local) = place_get_local(place) {
                     let PlaceX::Local(ident) = &local.x else { unreachable!() };
                     if !scope_map.contains_key(ident) {
@@ -32,7 +32,10 @@ pub fn check_closure_well_formed(expr: &Expr, is_proof_fn: bool) -> Result<(), V
                 // because spec return values are currently erased to (),
                 // causing a type mismatch with the closure's expected return type.
                 // See test_ensures_fail_return_stmt in tests/proof_closures.rs.
-                Err(error(&expr.span, "Verus does not yet support `return` inside `proof_fn`"))
+                Err(error(
+                    &expr.span,
+                    "Verus does not currently support `return` inside `proof_fn`",
+                ))
             }
             _ => Ok(()),
         }

@@ -30,7 +30,7 @@ use super::seq::*;
 
 verus! {
 
-broadcast use super::seq::group_seq_axioms;
+broadcast use super::seq::group_seq_lemmas;
 /* Decoding UTF-8 to chars */
 
 /// True when the given byte conforms to the bit pattern for the first byte of a 1-byte UTF-8 encoding of a single codepoint.
@@ -245,7 +245,7 @@ pub open spec fn pop_first_scalar(bytes: Seq<u8>) -> Seq<u8>
     recommends
         valid_first_scalar(bytes),
 {
-    bytes.subrange(length_of_first_scalar(bytes), bytes.len() as int)
+    bytes[length_of_first_scalar(bytes)..]
 }
 
 proof fn lemma_pop_first_scalar_decreases(bytes: Seq<u8>)
@@ -256,7 +256,7 @@ proof fn lemma_pop_first_scalar_decreases(bytes: Seq<u8>)
 {
     assert(length_of_first_scalar(bytes) <= bytes.len() as int);
     assert(pop_first_scalar(bytes).len() == bytes.len() as int - length_of_first_scalar(bytes)) by {
-        axiom_seq_subrange_len(bytes, length_of_first_scalar(bytes), bytes.len() as int)
+        lemma_seq_subrange_len(bytes, length_of_first_scalar(bytes), bytes.len() as int)
     };
 }
 
@@ -265,7 +265,7 @@ pub open spec fn take_first_scalar(bytes: Seq<u8>) -> Seq<u8>
     recommends
         valid_first_scalar(bytes),
 {
-    bytes.subrange(0, length_of_first_scalar(bytes))
+    bytes[..length_of_first_scalar(bytes)]
 }
 
 /// True when the given bytes form a valid UTF-8 encoding.
@@ -314,7 +314,7 @@ pub open spec fn take_last_scalar(bytes: Seq<u8>) -> Seq<u8>
         bytes.len() > 0,
 {
     let len = length_of_last_scalar(bytes);
-    bytes.subrange(bytes.len() - len, bytes.len() as int)
+    bytes[bytes.len() - len..]
 }
 
 /// The last scalar encoded in UTF-8 in the given byte sequence, assuming that the bytes form a valid UTF-8 encoding.
@@ -458,6 +458,49 @@ pub open spec fn encode_utf8(chars: Seq<char>) -> Seq<u8>
     } else {
         encode_scalar(chars[0] as u32) + encode_utf8(chars.drop_first())
     }
+}
+
+// See `vstd::std_specs::char` for the `char::len_utf8`/`char::is_whitespace`
+// `assume_specification`s that relate this module's model to those real
+// std-library methods.
+/// [`encode_utf8`] distributes over sequence concatenation.
+pub broadcast proof fn encode_utf8_concat(a: Seq<char>, b: Seq<char>)
+    ensures
+        #[trigger] encode_utf8(a + b) == encode_utf8(a) + encode_utf8(b),
+    decreases a.len(),
+{
+    if a.len() == 0 {
+        assert(a + b =~= b);
+    } else {
+        assert((a + b).drop_first() =~= a.drop_first() + b);
+        encode_utf8_concat(a.drop_first(), b);
+        assert(encode_scalar(a[0] as u32) + (encode_utf8(a.drop_first()) + encode_utf8(b)) =~= (
+        encode_scalar(a[0] as u32) + encode_utf8(a.drop_first())) + encode_utf8(b));
+    }
+}
+
+/// Specialization of [`encode_utf8_concat`] for appending one `char`.
+pub broadcast proof fn encode_utf8_push(chars: Seq<char>, c: char)
+    ensures
+        #[trigger] encode_utf8(chars.push(c)) == encode_utf8(chars) + encode_scalar(c as u32),
+{
+    assert(chars.push(c) =~= chars + seq![c]);
+    encode_utf8_concat(chars, seq![c]);
+    assert(seq![c].drop_first() =~= Seq::<char>::empty());
+    assert(encode_utf8(seq![c]) =~= encode_scalar(c as u32) + encode_utf8(Seq::<char>::empty()));
+}
+
+/// Growing a prefix by at least one `char` strictly increases its encoded
+/// byte length.
+pub proof fn lemma_encode_utf8_len_strictly_monotonic(s: Seq<char>, i: int, j: int)
+    requires
+        0 <= i < j <= s.len(),
+    ensures
+        encode_utf8(s[..i]).len() < encode_utf8(s[..j]).len(),
+{
+    assert(s[0..i] + s[i..j] =~= s[..j]);
+    encode_utf8_concat(s[..i], s[i..j]);
+    assert(s[i..j].len() == j - i);
 }
 
 /* Correspondence between encode_utf8 and decode_utf8 definitions */
@@ -724,48 +767,45 @@ pub broadcast proof fn decode_utf8_encode_utf8(bytes: Seq<u8>)
 
 /// True when the first `i` bytes in the given sequence represent a valid UTF-8 encoding.
 pub open spec fn partial_valid_utf8(bytes: Seq<u8>, i: int) -> bool {
-    0 <= i <= bytes.len() && valid_utf8(bytes.subrange(0, i))
+    0 <= i <= bytes.len() && valid_utf8(bytes[..i])
 }
 
 /// Ensures that a byte sequence is not a valid UTF-8 byte sequence when it has a suffix that is not a valid UTF-8 byte sequence.
 pub proof fn partial_valid_partial_invalid_utf8(bytes: Seq<u8>, i: int)
     requires
         0 <= i <= bytes.len(),
-        valid_utf8(bytes.subrange(0, i)),
-        !valid_utf8(bytes.subrange(i, bytes.len() as int)),
+        valid_utf8(bytes[..i]),
+        !valid_utf8(bytes[i..]),
     ensures
         !valid_utf8(bytes),
 {
     partial_valid_utf8_invalid_subrange_helper(bytes, i, 0);
-    assert(bytes.subrange(0, bytes.len() as int) =~= bytes);
+    assert(bytes[..bytes.len()] =~= bytes);
 }
 
 proof fn partial_valid_utf8_invalid_subrange_helper(bytes: Seq<u8>, i: int, j: int)
     requires
         0 <= j <= i <= bytes.len(),
-        valid_utf8(bytes.subrange(0, i)),
-        !valid_utf8(bytes.subrange(i, bytes.len() as int)),
-        valid_utf8(bytes.subrange(0, j)),
-        valid_utf8(bytes.subrange(j, i)),
+        valid_utf8(bytes[..i]),
+        !valid_utf8(bytes[i..]),
+        valid_utf8(bytes[..j]),
+        valid_utf8(bytes[j..i]),
     ensures
-        !valid_utf8(bytes.subrange(j, bytes.len() as int)),
+        !valid_utf8(bytes[j..]),
     decreases (bytes.len() - j),
 {
     if j == i {
     } else {
-        let bytes_j = bytes.subrange(j, bytes.len() as int);
+        let bytes_j = bytes[j..];
         if valid_first_scalar(bytes_j) {
             partial_valid_utf8_extend(bytes, j);
             let k = length_of_first_scalar(bytes_j);
 
-            assert(pop_first_scalar(bytes.subrange(j, i)) == bytes.subrange(j + k, i));
+            assert(pop_first_scalar(bytes[j..i]) == bytes[j + k..i]);
 
             partial_valid_utf8_invalid_subrange_helper(bytes, i, j + k);
 
-            assert(bytes_j.subrange(k, bytes_j.len() as int) == bytes.subrange(
-                j + k,
-                bytes.len() as int,
-            ));
+            assert(bytes_j[k..] == bytes[j + k..]);
         }
     }
 }
@@ -796,23 +836,14 @@ pub broadcast proof fn valid_utf8_concat(b1: Seq<u8>, b2: Seq<u8>)
 pub broadcast proof fn partial_valid_utf8_extend(bytes: Seq<u8>, i: int)
     requires
         #[trigger] partial_valid_utf8(bytes, i),
-        #[trigger] valid_first_scalar(bytes.subrange(i, bytes.len() as int)),
+        #[trigger] valid_first_scalar(bytes[i..]),
     ensures
-        #[trigger] partial_valid_utf8(
-            bytes,
-            i + length_of_first_scalar(bytes.subrange(i, bytes.len() as int)),
-        ),
+        #[trigger] partial_valid_utf8(bytes, i + length_of_first_scalar(bytes[i..])),
 {
     reveal_with_fuel(valid_utf8, 2);
-    let scalar = bytes.subrange(
-        i,
-        i + length_of_first_scalar(bytes.subrange(i, bytes.len() as int)),
-    );
-    valid_utf8_concat(bytes.subrange(0, i), scalar);
-    assert(bytes.subrange(0, i) + scalar =~= bytes.subrange(
-        0,
-        i + length_of_first_scalar(bytes.subrange(i, bytes.len() as int)),
-    ));
+    let scalar = bytes[i..i + length_of_first_scalar(bytes[i..])];
+    valid_utf8_concat(bytes[..i], scalar);
+    assert(bytes[..i] + scalar =~= bytes[..i + length_of_first_scalar(bytes[i..])]);
 }
 
 /// Ensures that if the prefix of a byte sequence is valid UTF-8, and remainder of the sequence begins with a subsequence of valid UTF-8 encodings for 1-byte scalars (i.e. ASCII characters),
@@ -871,26 +902,26 @@ pub broadcast proof fn valid_utf8_split(bytes: Seq<u8>, index: int)
         valid_utf8(bytes),
         is_char_boundary(bytes, index),
     ensures
-        #![trigger valid_utf8(bytes.subrange(0, index)), is_char_boundary(bytes, index)]
-        #![trigger valid_utf8(bytes.subrange(index, bytes.len() as int)), is_char_boundary(bytes, index)]
-        valid_utf8(bytes.subrange(0, index)),
-        valid_utf8(bytes.subrange(index, bytes.len() as int)),
+        #![trigger valid_utf8(bytes[..index]), is_char_boundary(bytes, index)]
+        #![trigger valid_utf8(bytes[index..]), is_char_boundary(bytes, index)]
+        valid_utf8(bytes[..index]),
+        valid_utf8(bytes[index..]),
     decreases bytes.len(),
 {
     if index == 0 {
-        assert(bytes =~= bytes.subrange(index, bytes.len() as int));
+        assert(bytes =~= bytes[index..]);
     } else {
-        broadcast use axiom_seq_subrange_len;
+        broadcast use lemma_seq_subrange_len;
 
-        let s1 = bytes.subrange(0, index);
-        let s2 = bytes.subrange(index, bytes.len() as int);
+        let s1 = bytes[..index];
+        let s2 = bytes[index..];
         let head = take_first_scalar(bytes);
         let tail = pop_first_scalar(bytes);
         let new_offset = index - length_of_first_scalar(bytes);
         // recursive call: show valid on split for tail
         valid_utf8_split(tail, new_offset);
-        let n1 = tail.subrange(0, new_offset);
-        let n2 = tail.subrange(new_offset, tail.len() as int);
+        let n1 = tail[..new_offset];
+        let n2 = tail[new_offset..];
         // now we need to concatenate the head back on
         assert(s1 =~= head + n1) by {
             assert(s1.len() == head.len() + n1.len()) by {
@@ -975,18 +1006,16 @@ pub broadcast proof fn decode_utf8_split(bytes: Seq<u8>, index: int)
         valid_utf8(bytes),
         is_char_boundary(bytes, index),
     ensures
-        #![trigger decode_utf8(bytes.subrange(0, index)), is_char_boundary(bytes, index)]
-        #![trigger decode_utf8(bytes.subrange(index, bytes.len() as int)), is_char_boundary(bytes, index)]
-        decode_utf8(bytes) =~= decode_utf8(bytes.subrange(0, index)) + decode_utf8(
-            bytes.subrange(index, bytes.len() as int),
-        ),
+        #![trigger decode_utf8(bytes[..index]), is_char_boundary(bytes, index)]
+        #![trigger decode_utf8(bytes[index..]), is_char_boundary(bytes, index)]
+        decode_utf8(bytes) =~= decode_utf8(bytes[..index]) + decode_utf8(bytes[index..]),
     decreases index,
 {
     if index == 0 {
-        assert(bytes.subrange(index, bytes.len() as int) =~= bytes);
+        assert(bytes[index..] =~= bytes);
     } else {
-        let first = bytes.subrange(0, index);
-        let second = bytes.subrange(index, bytes.len() as int);
+        let first = bytes[..index];
+        let second = bytes[index..];
         is_char_boundary_len_first_scalar(bytes, index);
         valid_utf8_split(bytes, index);
         let bytes_tail = pop_first_scalar(bytes);
@@ -995,8 +1024,8 @@ pub broadcast proof fn decode_utf8_split(bytes: Seq<u8>, index: int)
         let first_head = decode_first_scalar(first) as char;
         let new_index = (index - length_of_first_scalar(bytes)) as int;
         decode_utf8_split(bytes_tail, new_index);
-        assert(second =~= bytes_tail.subrange(new_index, bytes_tail.len() as int));
-        assert(first_tail =~= bytes_tail.subrange(0, new_index));
+        assert(second =~= bytes_tail[new_index..]);
+        assert(first_tail =~= bytes_tail[..new_index]);
     }
 }
 
@@ -1163,8 +1192,8 @@ pub broadcast proof fn is_ascii_chars_concat(c1: Seq<char>, c2: Seq<char>, c3: S
         is_ascii_chars(c1) <==> is_ascii_chars(c2) && is_ascii_chars(c3),
 {
     if (is_ascii_chars(c1)) {
-        assert(c2 =~= c1.subrange(0, c2.len() as int));
-        assert(c3 =~= c1.subrange(c2.len() as int, c1.len() as int));
+        assert(c2 =~= c1[..c2.len()]);
+        assert(c3 =~= c1[c2.len()..c1.len()]);
     }
 }
 
@@ -1189,6 +1218,8 @@ pub broadcast group group_utf8_lib {
     is_ascii_chars_encode_utf8,
     is_ascii_chars_nat_bound,
     is_ascii_chars_concat,
+    encode_utf8_concat,
+    encode_utf8_push,
 }
 
 } // verus!

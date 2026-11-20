@@ -97,3 +97,37 @@ test_verify_one_file! {
         assert_one_fails(e);
     }
 }
+
+// https://github.com/verus-lang/verus/issues/408
+// A `get_variant` accessor (here via `->`) is a total function, so it's not unsound to
+// call it on a value that might not be the given variant, but it's a recommends-worthy
+// mistake, so it should be flagged just like an explicit `recommends` clause would be.
+test_verify_one_file! {
+    #[test] get_variant_field_recommends_issue408 verus_code! {
+        pub enum Foo {
+            A(u32),
+            B(bool),
+        }
+
+        proof fn test_ens(f: Foo)
+            ensures f->A_0 == 10  // FAILS: nothing establishes f is the A variant
+        {
+        }
+    } => Err(e) => assert_has_recommends_failure(e)
+}
+
+// Same as above, but via the named `get_A_0()` accessor rather than `->`.
+test_verify_one_file! {
+    #[test] get_variant_field_method_call_recommends_issue408 verus_code! {
+        #[is_variant]
+        pub enum Foo {
+            A(u32),
+            B(bool),
+        }
+
+        proof fn test_ens(f: Foo)
+            ensures f.get_A_0() == 10  // FAILS: nothing establishes f is the A variant
+        {
+        }
+    } => Err(e) => assert_has_recommends_failure(e)
+}

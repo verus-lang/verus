@@ -1,6 +1,6 @@
-use crate::ast::{BinaryOp, BinaryOpr, Mode, Typ, TypX, UnaryOp, UnaryOpr};
+use crate::ast::{BinaryOpr, Typ, TypX, UnaryOp, UnaryOpr};
 use crate::context::Ctx;
-use crate::sst::{BndX, Exp, ExpX};
+use crate::sst::{BinaryOp, BndX, Exp, ExpX};
 use std::sync::Arc;
 
 fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
@@ -58,10 +58,9 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOp::RealToInt => exp.clone(),
             UnaryOp::FloatToBits => exp.clone(),
             UnaryOp::IeeeFloat(_) => exp.clone(),
-            UnaryOp::StrLen | UnaryOp::Length(_) => exp.clone(),
+            UnaryOp::NewStrLit | UnaryOp::StrLen | UnaryOp::Length(_) => exp.clone(),
             UnaryOp::ShadowData => exp.clone(),
             UnaryOp::ShadowAddrOf => panic!("unexpected ShadowAddrOf"),
-            UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
             UnaryOp::Trigger(_)
             | UnaryOp::CoerceMode { .. }
             | UnaryOp::MustBeFinalized
@@ -82,13 +81,14 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             | UnaryOpr::ProofNote(_)
             | UnaryOpr::AutoDecreases
             | UnaryOpr::AutoLoopEnsures
-            | UnaryOpr::ToDyn(_) => {
+            | UnaryOpr::ToDyn(..) => {
                 exp.new_x(ExpX::UnaryOpr(op.clone(), insert_auto_ext_equal(ctx, e)))
             }
             UnaryOpr::HasResolved(..) => exp.clone(),
+            UnaryOpr::LoopIsolationBoundary(..) => exp.clone(),
         },
         ExpX::Binary(op, e1, e2) => match op {
-            BinaryOp::Eq(Mode::Spec)
+            BinaryOp::Eq
                 if auto_ext_equal_typ(ctx, &e1.typ)
                     && crate::ast_util::types_equal(&e1.typ, &e2.typ) =>
             {
@@ -104,7 +104,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
                 let e2 = insert_auto_ext_equal(ctx, e2);
                 exp.new_x(ExpX::Binary(*op, e1.clone(), e2))
             }
-            BinaryOp::Eq(_)
+            BinaryOp::Eq
             | BinaryOp::HeightCompare { .. }
             | BinaryOp::Ne
             | BinaryOp::Inequality(_)

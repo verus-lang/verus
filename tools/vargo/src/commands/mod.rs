@@ -49,6 +49,7 @@ pub(crate) fn cargo_command(options: &VargoOptions, context: &VargoContext) -> C
             "VARGO_TARGET_DIR",
             &context.target_verus_artifact_dir_absolute,
         )
+        .env("CARGO_TARGET_DIR", &context.target_dir)
         .env("RUSTFLAGS", rust_flags());
 
     if options.cargo_options.offline {

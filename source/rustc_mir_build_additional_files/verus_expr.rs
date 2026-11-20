@@ -1,7 +1,7 @@
 use crate::thir::cx::ThirBuildCx;
 use crate::verus::CallErasure;
 use crate::verus::{
-    erase_node, erase_node_unadjusted, erase_tree_kind, erased_ghost_value, handle_call,
+    erase_node, erase_node_unadjusted, erase_tree_kind, handle_call,
     is_node_with_single_arg_erased_or_shadow,
 };
 use crate::verus_time_travel_prevention::try_move_head_into_shadow;
@@ -9,28 +9,8 @@ use rustc_hir::HirId;
 use rustc_hir::{Expr, ExprKind, UnOp};
 use rustc_middle::thir;
 use rustc_middle::thir::{ExprId, LocalVarId, Pat, PatKind};
-use rustc_middle::ty::TyKind;
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, DerefAdjustKind};
-
-pub(crate) fn mirror_expr_adjusted_pre<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    expr: &'tcx Expr<'tcx>,
-) -> Option<rustc_middle::thir::ExprId> {
-    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
-        return None;
-    };
-    if erasure_ctxt.adjusted_node_erasure.contains(&expr.hir_id) {
-        Some(erased_ghost_value(
-            cx,
-            &erasure_ctxt,
-            expr.hir_id,
-            expr.span,
-            cx.typeck_results.expr_ty_adjusted(expr),
-        ))
-    } else {
-        None
-    }
-}
+use rustc_middle::ty::{Ty, TyKind};
 
 // To avoid edits and conflicts in thir/cx/expr.rs, postprocess some of the work for expr.rs here
 pub(crate) fn apply_adjustment_post<'tcx>(
@@ -46,7 +26,7 @@ pub(crate) fn apply_adjustment_post<'tcx>(
     // This has to go first because:
     //  try_move_head_into_shadow handles fields/dereferences for shadow values
     //  erase_node handles a variety of ops for ghost values AND shadow values
-    // If try_move_head_ito_shadow applies, it needs to take priority.
+    // If try_move_head_into_shadow applies, it needs to take priority.
     if let Some(kind) = try_move_head_into_shadow(cx, expr, adjustment.target, &kind) {
         return kind;
     }
@@ -72,11 +52,26 @@ pub(crate) fn apply_adjustment_post<'tcx>(
     crate::verus_time_travel_prevention::expr_post(cx, expr, adjustment.target, kind)
 }
 
+/// When an implicit deref is expanded, the entire adjustment is expanded to something like
+/// `*deref_mut(&mut e)`
+/// This function runs on the intermediate `&mut e` expression.
+pub(crate) fn apply_implicit_deref_borrow_post<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    expr: &'tcx Expr<'tcx>,
+    ty: Ty<'tcx>,
+    kind: rustc_middle::thir::ExprKind<'tcx>,
+) -> rustc_middle::thir::ExprKind<'tcx> {
+    crate::verus_time_travel_prevention::expr_post(cx, expr, ty, kind)
+}
+
 // To avoid edits and conflicts in thir/cx/expr.rs, preprocess some of the work for expr.rs here
 pub(crate) fn mirror_expr_pre<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx Expr<'tcx>,
 ) -> Option<rustc_middle::thir::ExprKind<'tcx>> {
+    if cx.verus_ctxt.full_erasure.is_some() {
+        return crate::verus::full_erasure_mirror_expr_pre(cx, expr);
+    }
     match expr.kind {
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
             let (call_erasure, _) = handle_call(&cx.verus_ctxt, expr);
@@ -112,6 +107,9 @@ pub(crate) fn mirror_expr_post<'tcx>(
                 if let thir::ExprKind::Call { fun, .. } = kind {
                     cx.verus_ctxt.extra_thir.force_treat_inhabited.insert(fun);
                 }
+            }
+            if let CallErasure::ShrRefStructWrap = call_erasure {
+                return crate::verus::shr_ref_struct_wrap(cx, &erasure_ctxt, expr, kind);
             }
             if call_erasure.should_erase() { erase_node_unadjusted(cx, expr, kind) } else { kind }
         }
@@ -237,6 +235,9 @@ fn pat_get_ids<'tcx>(pat: &Pat<'tcx>, out: &mut Vec<LocalVarId>) {
                 pat_get_ids(&pats[0], out);
             }
         }
+        PatKind::Guard { subpattern, condition: _ } => {
+            pat_get_ids(subpattern, out);
+        }
         PatKind::Never => {}
         PatKind::Error(_error_guaranteed) => {}
     }
@@ -246,6 +247,16 @@ pub(crate) fn scope_post<'tcx>(cx: &mut ThirBuildCx<'tcx>, expr_id: ExprId) -> E
     let thir::ExprKind::Scope { region_scope, value, hir_id } = cx.thir[expr_id].kind else {
         panic!("scope_post expected ExprKind::Scope");
     };
+
+    // Replace `Scope(two_phase_mutable_reference_tie(&mut a, &mut b))` with:
+    // two_phase_mutable_reference_tie(Scope(&mut a), &mut b)
+    //
+    // The reason to do this is that the mir_build code specifically looks for the following
+    // pattern: `func_call(..., two_phase_mutable_reference_tie(...), ...)`
+    // and having a Scope in between interferes with that.
+    //
+    // REVIEW: given the complexity of this transformation, it may be better to just handle
+    // Scopes in the mir building code so we can delete this step.
 
     match cx.thir.exprs[value].kind {
         thir::ExprKind::Call { ty, fun, ref args, from_hir_call, fn_span } => {

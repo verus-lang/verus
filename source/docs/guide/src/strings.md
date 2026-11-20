@@ -41,7 +41,7 @@ A string literal is a `&str` and its view is a `Seq<char>`,
 {{#include ../../../../examples/guide/strings.rs:literal_view}}
 ```
 
-whose value is unkown until the literal is revealed.
+whose value is unknown until the literal is revealed.
 
 One can of course specify information about the view in, e.g., a function precondition (or some other predicate);
 
@@ -60,7 +60,7 @@ however, we need to reveal both literals to obtain information about their views
 {{#include ../../../../examples/guide/strings.rs:pre_substring}}
 ```
 
-Operating on strings currently requires the operations defined in `vstd::strings` [documented here](https://verus-lang.github.io/verus/verusdoc/vstd/string/index.html).
+Operating on strings currently requires the operations defined in `vstd::string` [documented here](https://verus-lang.github.io/verus/verusdoc/vstd/string/index.html).
 
 An important predicate for `&str` and `String` is `is_ascii`,
 which enables efficient slicing, for example:

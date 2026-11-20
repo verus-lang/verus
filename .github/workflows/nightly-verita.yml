@@ -3,7 +3,7 @@ name: nightly-verita
 on:
   schedule:
     # 1 AM EST = 5 AM UTC
-    - cron: '0 8 * * *'
+    - cron: "0 8 * * *"
   workflow_dispatch:
 
 permissions:
@@ -13,7 +13,7 @@ permissions:
 jobs:
   verita:
     if: github.repository == 'verus-lang/verus'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
 
     steps:
@@ -23,12 +23,12 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.100.0
 
       - name: setup python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.x'
+          python-version: "3.x"
 
       - name: get z3
         working-directory: ./source
@@ -45,9 +45,9 @@ jobs:
       - name: build verus with singular support
         working-directory: ./source
         run: |
-          . ../tools/activate
-          vargo clean
-          VERUS_SINGULAR_PATH="$(which Singular)" VERUS_Z3_PATH="$(pwd)/z3" vargo build --release --features singular
+          cargo clean
+          VERUS_SINGULAR_PATH="$(which Singular)" VERUS_Z3_PATH="$(pwd)/z3" cargo build --release --features singular
+          cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
 
       - name: build verita
         working-directory: ./tools/verita
@@ -63,7 +63,7 @@ jobs:
           path: ${{ github.workspace }}/tools/verita/previous-results
           search_artifacts: true
           if_no_artifact_found: warn
-          workflow_conclusion: ''
+          workflow_conclusion: ""
 
       - name: run verita
         working-directory: ./tools/verita
@@ -112,3 +112,50 @@ jobs:
           name: verita-results
           path: ${{ github.workspace }}/tools/verita/${{ steps.output.outputs.dir }}
           retention-days: 90
+
+      - name: build failure message
+        if: failure()
+        id: failure-message
+        working-directory: ./tools/verita
+        env:
+          OUTPUT_DIR: ${{ steps.output.outputs.dir }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          FAILED=""
+          if [ -n "$OUTPUT_DIR" ] && ls "$OUTPUT_DIR"/*.json >/dev/null 2>&1; then
+            FAILED=$(python3 - "$OUTPUT_DIR" <<'PY'
+          import glob, json, sys
+          names = set()
+          for f in glob.glob(sys.argv[1] + "/*.json"):
+              runner = json.load(open(f)).get("runner", {})
+              if runner.get("success") is False:
+                  names.add(runner.get("run_configuration", {}).get("name", f))
+          print("\n".join(sorted(names)))
+          PY
+            )
+          fi
+          {
+            echo 'content<<EOF_MSG'
+            echo "The nightly Verita run failed: $RUN_URL"
+            if [ -n "$FAILED" ]; then
+              echo ''
+              echo "**Failed projects ($(echo "$FAILED" | wc -l | tr -d ' ')):**"
+              echo "$FAILED" | sed 's/^/- /'
+            else
+              echo ''
+              echo 'No per-project failures were recorded; the run likely failed before or outside verification (e.g., during build).'
+            fi
+            echo 'EOF_MSG'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: notify zulip
+        if: failure()
+        uses: zulip/github-actions-zulip/send-message@v1
+        with:
+          api-key: ${{ secrets.ZULIP_API_KEY }}
+          email: "github-notifier-bot@verus-lang.zulipchat.com"
+          organization-url: "https://verus-lang.zulipchat.com"
+          to: "dev"
+          type: "stream"
+          topic: "Verita failure!"
+          content: ${{ steps.failure-message.outputs.content }}

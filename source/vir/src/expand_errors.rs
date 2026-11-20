@@ -1,7 +1,7 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, BinaryOpr, Dt, FieldOpr, Fun, FunctionKind, Ident, IntRange, Quant,
-    SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate,
-    Variant, VariantCheck,
+    ArchWordBits, BinaryOpr, Dt, FieldOpr, Fun, FunctionKind, Ident, IntRange, Quant, SpannedTyped,
+    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant,
+    VariantCheck,
 };
 use crate::ast_to_sst::get_function_sst;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
@@ -10,7 +10,8 @@ use crate::def::Spanned;
 use crate::messages::Span;
 use crate::sst::PostConditionSst;
 use crate::sst::{
-    AssertId, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclKind, LocalDeclX, Stm, StmX,
+    AssertId, BinaryOp, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclKind, LocalDeclX, Stm,
+    StmX,
 };
 use crate::sst::{FuncCheckSst, FunctionSst};
 use crate::sst_util::{
@@ -99,14 +100,19 @@ pub fn get_expansion_ctx(stm: &Stm, assert_id: &AssertId) -> ExpansionContext {
 
 fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> bool {
     match &stm.x {
-        StmX::Call { assert_id, .. }
-        | StmX::Assert(assert_id, ..)
-        | StmX::Return { assert_id, .. } => *assert_id == Some(a_id.clone()),
-        StmX::AssertBitVector { requires: _, ensures: _ }
+        StmX::Assert(assert_id, ..) | StmX::Return { assert_id, .. } => {
+            assert_id.as_ref() == Some(a_id)
+        }
+        StmX::Call { assert_id, body, .. } => {
+            assert_id.as_ref() == Some(a_id)
+                || body.as_ref().is_some_and(|stm| get_fuel_at_id(stm, a_id, fuels))
+        }
+        StmX::AssertBitVector { .. }
         | StmX::AssertCompute(..)
         | StmX::Assume(..)
         | StmX::Assign { .. }
         | StmX::RevealString { .. }
+        | StmX::RevealByteString { .. }
         | StmX::Air { .. }
         | StmX::BreakOrContinue { .. } => false,
         StmX::Fuel(fun, fuel) => {
@@ -128,7 +134,13 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
-        StmX::Loop { body, cond, .. } => {
+        StmX::Loop { pre_stms, body, cond, .. } => {
+            for stm in pre_stms.iter() {
+                if get_fuel_at_id(stm, a_id, fuels) {
+                    return true;
+                }
+            }
+
             if let Some((cond_stm, _cond_exp)) = cond {
                 if get_fuel_at_id(cond_stm, a_id, fuels) {
                     return true;
@@ -477,14 +489,14 @@ fn expand_exp_rec(
                 )
             }
         }
-        ExpX::Binary(BinaryOp::Eq(_) | BinaryOp::Ne | BinaryOp::Xor, e1, e2)
+        ExpX::Binary(BinaryOp::Eq | BinaryOp::Ne | BinaryOp::Xor, e1, e2)
         | ExpX::BinaryOpr(BinaryOpr::ExtEq(..), e1, e2) => {
             if did_split_yet {
                 return leaf(state, CanExpandFurther::Yes);
             }
 
             let (is_neq, ext) = match &exp.x {
-                ExpX::Binary(BinaryOp::Eq(_), ..) => (false, None),
+                ExpX::Binary(BinaryOp::Eq, ..) => (false, None),
                 ExpX::Binary(BinaryOp::Ne | BinaryOp::Xor, ..) => (true, None),
                 ExpX::BinaryOpr(BinaryOpr::ExtEq(deep, _), ..) => (false, Some(*deep)),
                 _ => unreachable!(),
@@ -928,10 +940,10 @@ fn can_inline_function(
     match &fun_to_inline.x.kind {
         FunctionKind::Static | FunctionKind::TraitMethodImpl { .. } => {}
         FunctionKind::TraitMethodDecl { .. } => {
-            return Err(Some("trait function (note: expand-errors is currently limited in its support for resolving generic trait functions)".to_string()));
+            return Err(Some("trait method (note: expand-errors is currently limited in its support for resolving generic trait methods)".to_string()));
         }
         FunctionKind::ForeignTraitMethodImpl { .. } => {
-            return Err(Some("Internal error: ForeignTraitMethodImpl".to_string()));
+            return Err(Some("Verus internal error: ForeignTraitMethodImpl".to_string()));
         }
     }
 
@@ -957,7 +969,8 @@ fn can_inline_function(
         Some(f) => get_function_sst(ctx, span, &f.current_fun).unwrap(),
         None => {
             return Err(Some(
-                "Internal error: cannot find the owning function of this function call".to_string(),
+                "Verus internal error: cannot find the owning function of this function call"
+                    .to_string(),
             ));
         }
     };
@@ -970,7 +983,7 @@ fn can_inline_function(
         fun_to_inline.x.opaqueness.get_fuel_for_module(&fun_to_inline.x.name, &ctx.module);
     let mut hidden = false;
 
-    let fs_to_hide = &fun_owner.x.attrs.hidden;
+    let fs_to_hide = &fun_owner.x.hidden;
     for f_to_hide in &**fs_to_hide {
         if **f_to_hide == *fun_to_inline.x.name {
             fuel = 0;
@@ -1007,7 +1020,7 @@ fn can_inline_function(
         let fun = &fun_to_inline.x.name;
 
         if !ctx.func_sst_map.contains_key(fun) {
-            return Err(Some(format!("Internal error: not in SstMap")));
+            return Err(Some(format!("Verus internal error: not in SstMap")));
         }
 
         if fun_to_inline.x.has.has_decrease {

@@ -1,4 +1,4 @@
-use crate::ast::{CallTarget, Expr, ExprX, VirErr};
+use crate::ast::{CallTarget, Expr, ExprX, Label, VirErr};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap, expr_visitor_dfs};
 use crate::messages::Span;
 use crate::messages::error;
@@ -7,7 +7,7 @@ use air::scope_map::ScopeMap;
 #[derive(Clone, Debug)]
 enum StatementType {
     Return,
-    BreakOrContinue { _label: Option<String> },
+    BreakOrContinue { _label: Label },
 }
 
 #[derive(Clone, Debug)]
@@ -52,19 +52,24 @@ fn expr_get_early_exits_rec(
             | ExprX::VarAt(..)
             | ExprX::ConstVar(..)
             | ExprX::StaticVar(..)
-            | ExprX::Call(CallTarget::Fun(..), _, _)
-            | ExprX::Call(CallTarget::FnSpec(..), _, _)
-            | ExprX::Call(CallTarget::BuiltinSpecFun(..), _, _)
-            | ExprX::Call(CallTarget::AssumeExternal, _, _)
+            | ExprX::Call { target: CallTarget::Fun(..), .. }
+            | ExprX::Call { target: CallTarget::FnSpec(..), .. }
+            | ExprX::Call { target: CallTarget::BuiltinSpecFun(..), .. }
+            | ExprX::Call { target: CallTarget::AssumeExternal, .. }
             | ExprX::ArrayLiteral(..)
             | ExprX::Ctor(..)
             | ExprX::NullaryOpr(..)
             | ExprX::Unary(..)
             | ExprX::UnaryOpr(..)
+            | ExprX::Logical(..)
             | ExprX::Binary(..)
             | ExprX::BinaryOpr(..)
+            | ExprX::AtomicUpdateInitDummy
+            | ExprX::Atomically(..)
+            | ExprX::Update(..)
+            | ExprX::InvMask(..)
             | ExprX::Multi(..)
-            | ExprX::AssignToPlace { .. }
+            | ExprX::Assign { .. }
             | ExprX::If(..)
             | ExprX::Match(..)
             | ExprX::Ghost { .. }
@@ -78,9 +83,12 @@ fn expr_get_early_exits_rec(
             | ExprX::ReadPlace(..)
             | ExprX::EvalAndResolve(..)
             | ExprX::Old(..)
+            | ExprX::ProphecyDisallowed(..)
             | ExprX::Block(..)
             | ExprX::MatchGuardFreeze(..)
             | ExprX::ShrRefStructWrap(..)
+            | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
+            | ExprX::TryOpenAtomicUpdate(..)
             | ExprX::Await(_) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
@@ -92,9 +100,9 @@ fn expr_get_early_exits_rec(
             | ExprX::Fuel(..)
             | ExprX::Header(..)
             | ExprX::AssertAssume { .. }
-            | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::AssertBy { .. }
             | ExprX::RevealString(_)
+            | ExprX::RevealByteString(_)
             | ExprX::AirStmt(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,
             ExprX::Loop { cond, body, .. } => {
@@ -118,8 +126,8 @@ fn expr_get_early_exits_rec(
                 });
                 VisitorControlFlow::Recurse
             }
-            ExprX::OpenInvariant(inv, _binder, _body, _atomicity) => {
-                expr_get_early_exits_rec(inv, in_loop, scope_map, results);
+            ExprX::OpenInvariant(expr, ..) => {
+                expr_get_early_exits_rec(expr, in_loop, scope_map, results);
                 // Skip checking nested loops to avoid quadratic behavior:
                 VisitorControlFlow::Return
             }

@@ -43,6 +43,36 @@ pub struct ParseResult {
     pub items: Vec<Item>,
     pub fields: Option<FieldsNamed>,
     pub generics: Option<Generics>,
+    pub prophetic: bool,
+}
+
+/// Parse the inner attributes at the top of the state machine body, e.g.,
+/// `X { #![verifier::prophetic] ... }`. Currently `verifier::prophetic` is the only
+/// supported inner attribute.
+fn parse_inner_attrs(input: ParseStream) -> parse::Result<bool> {
+    let inner_attrs = input.call(Attribute::parse_inner)?;
+    let mut prophetic = false;
+    for attr in inner_attrs.iter() {
+        let is_prophetic = match &attr.meta {
+            Meta::Path(path) => {
+                let segments =
+                    path.segments.iter().map(|e| e.ident.to_string()).collect::<Vec<_>>();
+                segments[..] == ["verifier", "prophetic"]
+            }
+            _ => false,
+        };
+        if !is_prophetic {
+            return Err(Error::new(
+                attr.span(),
+                "the only inner attribute allowed here is verifier::prophetic",
+            ));
+        }
+        if prophetic {
+            return Err(Error::new(attr.span(), "duplicate verifier::prophetic attribute"));
+        }
+        prophetic = true;
+    }
+    Ok(prophetic)
 }
 
 impl Parse for ParseResult {
@@ -88,6 +118,8 @@ impl Parse for ParseResult {
         let items_stream;
         let _ = braced!(items_stream in input);
 
+        let prophetic = parse_inner_attrs(&items_stream)?;
+
         let mut items = Vec::new();
         let mut fields_opt: Option<FieldsNamed> = None;
 
@@ -115,7 +147,7 @@ impl Parse for ParseResult {
             }
         }
 
-        return Ok(ParseResult { attrs, name, items, generics, fields: fields_opt });
+        return Ok(ParseResult { attrs, name, items, generics, fields: fields_opt, prophetic });
     }
 }
 
@@ -371,19 +403,24 @@ enum ShardingType {
 
     Option,
     Map,
+    IMap,
     Set,
+    ISet,
     Multiset,
     Count,
     Bool,
 
     PersistentOption,
     PersistentMap,
+    PersistentIMap,
     PersistentSet,
+    PersistentISet,
     PersistentCount,
     PersistentBool,
 
     StorageOption,
     StorageMap,
+    StorageIMap,
 }
 
 /// Get the sharding type from the attributes of the field.
@@ -426,15 +463,20 @@ fn get_sharding_type(
                                 "constant" => ShardingType::Constant,
                                 "multiset" => ShardingType::Multiset,
                                 "set" => ShardingType::Set,
+                                "iset" => ShardingType::ISet,
                                 "bool" => ShardingType::Bool,
                                 "count" => ShardingType::Count,
                                 "option" => ShardingType::Option,
                                 "map" => ShardingType::Map,
+                                "imap" => ShardingType::IMap,
                                 "storage_option" => ShardingType::StorageOption,
                                 "storage_map" => ShardingType::StorageMap,
+                                "storage_imap" => ShardingType::StorageIMap,
                                 "persistent_option" => ShardingType::PersistentOption,
                                 "persistent_map" => ShardingType::PersistentMap,
+                                "persistent_imap" => ShardingType::PersistentIMap,
                                 "persistent_set" => ShardingType::PersistentSet,
+                                "persistent_iset" => ShardingType::PersistentISet,
                                 "persistent_count" => ShardingType::PersistentCount,
                                 "persistent_bool" => ShardingType::PersistentBool,
                                 "not_tokenized" => ShardingType::NotTokenized,
@@ -621,9 +663,17 @@ fn to_fields(
                 let v = extract_template_params(&field.ty, "map", "Map", 2)?;
                 ShardableType::Map(v[0].clone(), v[1].clone())
             }
+            ShardingType::IMap => {
+                let v = extract_template_params(&field.ty, "imap", "IMap", 2)?;
+                ShardableType::IMap(v[0].clone(), v[1].clone())
+            }
             ShardingType::Set => {
                 let v = extract_template_params(&field.ty, "set", "Set", 1)?;
                 ShardableType::Set(v[0].clone())
+            }
+            ShardingType::ISet => {
+                let v = extract_template_params(&field.ty, "iset", "ISet", 1)?;
+                ShardableType::ISet(v[0].clone())
             }
             ShardingType::StorageOption => {
                 let v = extract_template_params(&field.ty, "storage_option", "Option", 1)?;
@@ -633,6 +683,10 @@ fn to_fields(
                 let v = extract_template_params(&field.ty, "storage_map", "Map", 2)?;
                 ShardableType::StorageMap(v[0].clone(), v[1].clone())
             }
+            ShardingType::StorageIMap => {
+                let v = extract_template_params(&field.ty, "storage_imap", "IMap", 2)?;
+                ShardableType::StorageIMap(v[0].clone(), v[1].clone())
+            }
             ShardingType::PersistentOption => {
                 let v = extract_template_params(&field.ty, "persistent_option", "Option", 1)?;
                 ShardableType::PersistentOption(v[0].clone())
@@ -641,9 +695,17 @@ fn to_fields(
                 let v = extract_template_params(&field.ty, "persistent_map", "Map", 2)?;
                 ShardableType::PersistentMap(v[0].clone(), v[1].clone())
             }
+            ShardingType::PersistentIMap => {
+                let v = extract_template_params(&field.ty, "persistent_imap", "IMap", 2)?;
+                ShardableType::PersistentIMap(v[0].clone(), v[1].clone())
+            }
             ShardingType::PersistentSet => {
                 let v = extract_template_params(&field.ty, "persistent_set", "Set", 1)?;
                 ShardableType::PersistentSet(v[0].clone())
+            }
+            ShardingType::PersistentISet => {
+                let v = extract_template_params(&field.ty, "persistent_iset", "ISet", 1)?;
+                ShardableType::PersistentISet(v[0].clone())
             }
         };
 
@@ -741,7 +803,7 @@ fn item_type_check_vis(span: Span, vis: &Visibility) -> parse::Result<()> {
 }
 
 pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<SMBundle> {
-    let ParseResult { attrs, name, generics, items, fields } = pr;
+    let ParseResult { attrs, name, generics, items, fields, prophetic } = pr;
 
     for attr in attrs.iter() {
         if !attr_is_polarity(attr) {
@@ -849,6 +911,7 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<
         concurrent,
         init_label,
         transition_label,
+        prophetic,
     };
 
     replace_self_sm(&mut sm);

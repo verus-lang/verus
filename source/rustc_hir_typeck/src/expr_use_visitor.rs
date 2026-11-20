@@ -2,7 +2,7 @@
 //! normal visitor, which just walks the entire body in one shot, the
 //! `ExprUseVisitor` determines how expressions are being used.
 //!
-//! In the compiler, this is only used for upvar inference, but there
+//! In the compiler, this is only used for upvar inference and diagnostics, but there
 //! are many uses within clippy.
 
 #![allow(unused_imports)]
@@ -28,8 +28,7 @@ use rustc_middle::ty::adjustment::DerefAdjustKind;
 use rustc_middle::ty::{
     self, BorrowKind, Ty, TyCtxt, TypeFoldable, TypeVisitableExt as _, adjustment,
 };
-use rustc_middle::{bug, span_bug};
-use rustc_span::{ErrorGuaranteed, Span};
+use rustc_span::{ErrorGuaranteed, Span, bug, span_bug};
 use rustc_trait_selection::infer::InferCtxtExt;
 use tracing::{debug, instrument, trace};
 
@@ -165,7 +164,7 @@ pub trait TypeInformationCtxt<'tcx> {
 
     fn recursive_analyze_closure(&self, expr: &Expr, closure: &rustc_hir::Closure);
 
-    fn resolve_vars_if_possible<T: TypeFoldable<TyCtxt<'tcx>>>(&self, t: T) -> T;
+    fn deeply_resolve_ignoring_regions<T: TypeFoldable<TyCtxt<'tcx>>>(&self, t: T) -> T;
 
     fn structurally_resolve_type(&self, span: Span, ty: Ty<'tcx>) -> Ty<'tcx>;
 
@@ -215,7 +214,7 @@ impl<'tcx> TypeInformationCtxt<'tcx> for &crate::upvar::FnCtxt<'_, 'tcx> {
         ty
     }
 
-    fn resolve_vars_if_possible<T: TypeFoldable<TyCtxt<'tcx>>>(&self, t: T) -> T {
+    fn deeply_resolve_ignoring_regions<T: TypeFoldable<TyCtxt<'tcx>>>(&self, t: T) -> T {
         t
     }
 
@@ -232,18 +231,18 @@ impl<'tcx> TypeInformationCtxt<'tcx> for &crate::upvar::FnCtxt<'_, 'tcx> {
     }
 
     fn type_is_copy_modulo_regions(&self, ty: Ty<'tcx>) -> bool {
-        let typing_env = rustc_middle::ty::TypingEnv {
-            typing_mode: rustc_middle::ty::TypingMode::PostAnalysis,
-            param_env: self.param_env,
-        };
+        let typing_env = rustc_middle::ty::TypingEnv::new(
+            self.param_env,
+            rustc_middle::ty::TypingMode::PostAnalysis,
+        );
         self.tcx.type_is_copy_modulo_regions(typing_env, ty)
     }
 
     fn type_is_use_cloned_modulo_regions(&self, ty: Ty<'tcx>) -> bool {
-        let typing_env = rustc_middle::ty::TypingEnv {
-            typing_mode: rustc_middle::ty::TypingMode::PostAnalysis,
-            param_env: self.param_env,
-        };
+        let typing_env = rustc_middle::ty::TypingEnv::new(
+            self.param_env,
+            rustc_middle::ty::TypingMode::PostAnalysis,
+        );
         self.tcx.type_is_use_cloned_modulo_regions(typing_env, ty)
     }
 
@@ -426,7 +425,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
             }
 
             hir::ExprKind::Let(hir::LetExpr { pat, init, .. }) => {
-                self.walk_local(init, pat, None, || self.borrow_expr(init, BorrowKind::Immutable))?;
+                self.walk_local(init, pat, None)?;
             }
 
             hir::ExprKind::Match(discr, arms, _) => {
@@ -538,7 +537,10 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
             }
 
             hir::ExprKind::Closure(closure) => {
-                if !crate::verus::erase_closure_body_for_closure_captures(closure.def_id) {
+                if !crate::verus::erase_closure_body_for_closure_captures(
+                    self.cx.tcx(),
+                    closure.def_id,
+                ) {
                     self.cx.recursive_analyze_closure(expr, closure);
                     self.walk_captures(closure)?;
                 }
@@ -555,7 +557,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
     fn walk_stmt(&self, stmt: &hir::Stmt<'_>) -> Result<(), Cx::Error> {
         match stmt.kind {
             hir::StmtKind::Let(hir::LetStmt { pat, init: Some(expr), els, .. }) => {
-                self.walk_local(expr, pat, *els, || Ok(()))?;
+                self.walk_local(expr, pat, *els)?;
             }
 
             hir::StmtKind::Let(_) => {}
@@ -595,19 +597,14 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
         Ok(())
     }
 
-    fn walk_local<F>(
+    fn walk_local(
         &self,
         expr: &hir::Expr<'_>,
         pat: &hir::Pat<'_>,
         els: Option<&hir::Block<'_>>,
-        mut f: F,
-    ) -> Result<(), Cx::Error>
-    where
-        F: FnMut() -> Result<(), Cx::Error>,
-    {
+    ) -> Result<(), Cx::Error> {
         self.walk_expr(expr)?;
         let expr_place = self.cat_expr(expr)?;
-        f()?;
         self.fake_read_scrutinee(&expr_place, els.is_some())?;
         self.walk_pat(&expr_place, pat, false)?;
         if let Some(els) = els {
@@ -651,7 +648,9 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
 
         let with_expr = match *opt_with {
             hir::StructTailExpr::Base(w) => &*w,
-            hir::StructTailExpr::DefaultFields(_) | hir::StructTailExpr::None => {
+            hir::StructTailExpr::DefaultFields(_)
+            | hir::StructTailExpr::None
+            | hir::StructTailExpr::NoneWithError(_) => {
                 return Ok(());
             }
         };
@@ -671,7 +670,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                         let field_place = self.cat_projection(
                             with_expr.hir_id,
                             with_place.clone(),
-                            with_field.ty(self.cx.tcx(), args),
+                            with_field.ty(self.cx.tcx(), args).skip_norm_wip(),
                             ProjectionKind::Field(f_index, FIRST_VARIANT),
                         );
                         self.consume_or_copy(&field_place, field_place.hir_id);
@@ -703,7 +702,8 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
         let typeck_results = self.cx.typeck_results();
         let adjustments = typeck_results.expr_adjustments(expr);
         let mut place_with_id = self.cat_expr_unadjusted(expr)?;
-        for adjustment in adjustments {
+        for (adjustment_index, adjustment) in adjustments.iter().enumerate() {
+            let is_last_adjustment = adjustment_index + 1 == adjustments.len();
             debug!("walk_adjustment expr={:?} adj={:?}", expr, adjustment);
             match adjustment.kind {
                 adjustment::Adjust::NeverToAny | adjustment::Adjust::Pointer(_) => {
@@ -712,7 +712,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                     self.consume_or_copy(&place_with_id, place_with_id.hir_id);
                 }
 
-                adjustment::Adjust::Deref(DerefAdjustKind::Builtin) => {}
+                adjustment::Adjust::Deref(DerefAdjustKind::Builtin | DerefAdjustKind::Pin) => {}
 
                 // Autoderefs for overloaded Deref calls in fact reference
                 // their receiver. That is, if we have `(*x)` where `x`
@@ -728,14 +728,13 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                     self.walk_autoref(expr, &place_with_id, autoref);
                 }
 
-                adjustment::Adjust::ReborrowPin(mutbl) => {
-                    // Reborrowing a Pin is like a combinations of a deref and a borrow, so we do
-                    // both.
-                    let bk = match mutbl {
-                        ty::Mutability::Not => ty::BorrowKind::Immutable,
-                        ty::Mutability::Mut => ty::BorrowKind::Mutable,
-                    };
+                adjustment::Adjust::GenericReborrow(mutability) if is_last_adjustment => {
+                    let bk = ty::BorrowKind::from_mutbl(mutability);
                     self.delegate.borrow_mut().borrow(&place_with_id, place_with_id.hir_id, bk);
+                }
+
+                adjustment::Adjust::GenericReborrow(_) => {
+                    span_bug!(expr.span, "generic reborrow adjustment must be terminal");
                 }
             }
             place_with_id = self.cat_expr_adjusted(expr, place_with_id, adjustment)?;
@@ -767,7 +766,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                 );
             }
 
-            adjustment::AutoBorrow::RawPtr(m) => {
+            adjustment::AutoBorrow::RawPtr(m) | adjustment::AutoBorrow::Pin(m) => {
                 debug!("walk_autoref: expr.hir_id={} base_place={:?}", expr.hir_id, base_place);
 
                 self.delegate.borrow_mut().borrow(
@@ -933,7 +932,6 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                     }
                 }
                 PatKind::Or(_)
-                | PatKind::Box(_)
                 | PatKind::Ref(..)
                 | PatKind::Guard(..)
                 | PatKind::Tuple(..)
@@ -1110,7 +1108,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
     ) -> Result<Ty<'tcx>, Cx::Error> {
         match ty {
             Some(ty) => {
-                let ty = self.cx.resolve_vars_if_possible(ty);
+                let ty = self.cx.deeply_resolve_ignoring_regions(ty);
                 self.cx.error_reported_in_ty(ty)?;
                 Ok(ty)
             }
@@ -1249,7 +1247,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
     where
         F: FnOnce() -> Result<PlaceWithHirId<'tcx>, Cx::Error>,
     {
-        let target = self.cx.resolve_vars_if_possible(adjustment.target);
+        let target = self.cx.deeply_resolve_ignoring_regions(adjustment.target);
         match adjustment.kind {
             adjustment::Adjust::Deref(deref_kind) => {
                 // Equivalent to *expr or something similar.
@@ -1270,7 +1268,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
             adjustment::Adjust::NeverToAny
             | adjustment::Adjust::Pointer(_)
             | adjustment::Adjust::Borrow(_)
-            | adjustment::Adjust::ReborrowPin(..) => {
+            | adjustment::Adjust::GenericReborrow(..) => {
                 // Result is an rvalue.
                 Ok(self.cat_rvalue(expr.hir_id, target))
             }
@@ -1400,7 +1398,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
 
             Res::Local(var_id) => {
                 if self.upvars.is_some_and(|upvars| upvars.contains_key(&var_id)) {
-                    if crate::verus::erase_var_for_closure_captures(hir_id) {
+                    if crate::verus::erase_var_for_closure_captures(self.cx.tcx(), hir_id) {
                         return Ok(PlaceWithHirId::new(
                             hir_id,
                             expr_ty,
@@ -1458,7 +1456,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                 && self
                     .cx
                     .structurally_resolve_type(self.cx.tcx().hir_span(base_place.hir_id), place_ty)
-                    .is_impl_trait()
+                    .is_opaque()
             {
                 projections.push(Projection { kind: ProjectionKind::OpaqueCast, ty: node_ty });
             }
@@ -1753,8 +1751,8 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                 self.cat_pattern(place_with_id, subpat, op)?;
             }
 
-            PatKind::Box(subpat) | PatKind::Ref(subpat, _, _) => {
-                // box p1, &p1, &mut p1. we can ignore the mutability of
+            PatKind::Ref(subpat, _, _) => {
+                // &p1, &mut p1. we can ignore the mutability of
                 // PatKind::Ref since that information is already contained
                 // in the type.
                 let subplace = self.cat_deref(pat.hir_id, place_with_id)?;

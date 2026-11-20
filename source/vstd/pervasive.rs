@@ -2,20 +2,14 @@
 
 #[allow(unused_imports)]
 use super::prelude::*;
+#[cfg(all(verus_keep_ghost, feature = "alloc"))]
+use super::std_specs::fmt::DebugSpec;
 
 #[cfg(not(feature = "std"))]
 macro_rules! println {
     ($($arg:tt)*) => {};
 }
 verus! {
-
-// TODO: remove this
-pub proof fn assume(b: bool)
-    ensures
-        b,
-{
-    admit();
-}
 
 // TODO: remove this
 pub proof fn assert(b: bool)
@@ -94,6 +88,8 @@ pub trait FnWithRequiresEnsures<Args, Output>: Sized {
     spec fn requires(self, args: Args) -> bool;
 
     spec fn ensures(self, args: Args, output: Output) -> bool;
+
+    spec fn opens_invariants(self, args: Args) -> ISet<int>;
 }
 
 #[cfg(verus_keep_ghost)]
@@ -109,6 +105,11 @@ impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output = Output>> FnWith
     #[verifier::inline]
     open spec fn ensures(self, args: Args, output: Output) -> bool {
         call_ensures(self, args, output)
+    }
+
+    #[verifier::inline]
+    open spec fn opens_invariants(self, args: Args) -> ISet<int> {
+        call_opens_invariants(self, args)
     }
 }
 
@@ -145,6 +146,7 @@ proof fn proof_nonstatic_call<Args: core::marker::Tuple, Output, F>(
         call_requires(f, args),
     ensures
         call_ensures(f, args, output),
+    opens_invariants call_opens_invariants(f, args)
 {
     unimplemented!();
 }
@@ -413,6 +415,7 @@ impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
 ///
 /// It is usually recommended to use [`cloned`] instead,
 /// which takes the reflexive closure.
+#[rustc_diagnostic_item = "verus::vstd::pervasive::strictly_cloned"]
 pub open spec fn strictly_cloned<T: Clone>(a: T, b: T) -> bool {
     call_ensures(T::clone, (&a,), b)
 }
@@ -425,6 +428,15 @@ pub open spec fn strictly_cloned<T: Clone>(a: T, b: T) -> bool {
 /// optimized to copies. This is particularly common in the Rust stdlib.
 pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
     strictly_cloned(a, b) || a == b
+}
+
+/// Whether `T::clone` returns a value equal to the original.
+///
+/// Integers, `bool`, `char` and the `Clone` impls Verus derives satisfy this. A collection
+/// relies on it when it clones its keys: a key that clones to an unequal value can leave the
+/// copy holding keys in the wrong order or bucket.
+pub open spec fn obeys_clone_eq<T: Clone>() -> bool {
+    forall|a: T, b: T| #[trigger] cloned(a, b) ==> a == b
 }
 
 } // verus!
@@ -451,7 +463,10 @@ pub fn __call_panic(out: &[&str]) -> !
 #[cfg(feature = "alloc")]
 #[doc(hidden)]
 #[verifier(external_body)]
-pub fn __new_argument<T: core::fmt::Debug>(v: &T) -> alloc::string::String {
+pub fn __new_argument<T: core::fmt::Debug>(v: &T) -> alloc::string::String
+    requires
+        forall|f: &core::fmt::Formatter<'_>| v.fmt_req(f),
+{
     alloc::format!("{:?}", v)
 }
 

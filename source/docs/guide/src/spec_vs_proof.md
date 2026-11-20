@@ -86,7 +86,7 @@ For example, in the following:
 {{#include ../../../../examples/guide/modes.rs:recommends2}}
 ```
 
-Verus print the failed assertion as an error and then prints the failed recommendation as a note:
+Verus prints the failed assertion as an error and then prints the failed recommendation as a note:
 
 ```
 error: assertion failed

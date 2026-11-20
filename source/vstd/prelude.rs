@@ -24,7 +24,9 @@ pub use verus_builtin_macros::verus_exec_expr_erase_ghost;
 pub use verus_builtin_macros::verus_exec_expr_keep_ghost;
 pub use verus_builtin_macros::verus_exec_inv_macro_exprs;
 pub use verus_builtin_macros::verus_exec_macro_exprs;
+pub use verus_builtin_macros::verus_exec_open_au_macro_exprs;
 pub use verus_builtin_macros::verus_ghost_inv_macro_exprs;
+pub use verus_builtin_macros::verus_ghost_open_au_macro_exprs;
 pub use verus_builtin_macros::verus_impl;
 pub use verus_builtin_macros::verus_keep_ghost;
 pub use verus_builtin_macros::verus_proof_expr;
@@ -34,12 +36,11 @@ pub use verus_builtin_macros::verus_spec;
 pub use verus_builtin_macros::verus_trait_impl;
 pub use verus_builtin_macros::verus_verify;
 
-pub use super::map::Map;
-pub use super::map::map;
-pub use super::seq::Seq;
-pub use super::seq::seq;
-pub use super::set::Set;
-pub use super::set::set;
+pub use super::imap::{IMap, imap};
+pub use super::iset::{ISet, iset};
+pub use super::map::{Map, map};
+pub use super::seq::{Seq, seq};
+pub use super::set::{Set, set};
 pub use super::view::*;
 
 #[cfg(verus_keep_ghost)]

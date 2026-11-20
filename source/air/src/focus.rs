@@ -79,7 +79,7 @@ pub fn focus_stmt_on_assert_id(stmt: &Stmt, assert_id: &AssertId) -> (Stmt, bool
     }
 }
 
-fn is_trivial(stmt: &Stmt) -> bool {
+pub(crate) fn is_trivial(stmt: &Stmt) -> bool {
     match &**stmt {
         StmtX::Block(stmts) => stmts.len() == 0,
         _ => false,

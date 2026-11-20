@@ -1,5 +1,8 @@
 [build]
-rustflags = "--cfg proc_macro_span --cfg span_locations"
+rustflags = [
+    "--cfg", "proc_macro_span",
+    "--cfg", "span_locations",
+]
 
 [env]
 RUSTC_BOOTSTRAP = "1"

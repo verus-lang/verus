@@ -1,12 +1,9 @@
 //! Construction of MIR from HIR.
 
 // tidy-alphabetical-start
-#![cfg_attr(bootstrap, feature(if_let_guard))]
-#![feature(assert_matches)]
-#![feature(box_patterns)]
+#![feature(deref_patterns)]
 #![feature(try_blocks)]
 #![feature(rustc_private)]
-#![feature(never_type)]
 // tidy-alphabetical-end
 
 extern crate rustc_abi;
@@ -20,10 +17,10 @@ extern crate rustc_hir_typeck;
 extern crate rustc_index;
 extern crate rustc_infer;
 extern crate rustc_lint;
+extern crate rustc_lint_defs;
 extern crate rustc_macros;
 extern crate rustc_middle;
 extern crate rustc_pattern_analysis;
-extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_trait_selection;
 
@@ -33,7 +30,7 @@ extern crate rustc_trait_selection;
 pub mod builder;
 mod check_tail_calls;
 mod check_unsafety;
-mod errors;
+mod diagnostics;
 pub mod thir;
 
 #[path = "../../rustc_mir_build_additional_files/verus.rs"]

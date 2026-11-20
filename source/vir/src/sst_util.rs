@@ -1,20 +1,19 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CrateId, CtorPrintStyle, Dt, Fun,
-    GenericBound, GenericBoundX, GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth,
-    IntegerTypeBoundKind, Mode, ProofNoteLabel, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders,
+    BinaryOpr, BitwiseOp, Constant, CrateId, CtorPrintStyle, Dt, Fun, GenericBound, GenericBoundX,
+    GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind,
+    ProofNoteLabel, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder,
+    VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
 };
 use crate::ast_util::{get_variant, undecorate_typ, unit_typ};
 use crate::context::GlobalCtx;
-use crate::def::{Spanned, unique_bound, user_local_name};
+use crate::def::{Spanned, user_local_name};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{
-    BndX, CallFun, Exp, ExpX, Exps, FuncCheckSst, FunctionSst, InternalFun, LocalDeclKind, Stm,
-    StmX, Trig, Trigs, UniqueIdent,
+    ArithOp, BinaryOp, BndX, CallFun, Exp, ExpX, Exps, FuncCheckSst, FunctionSst, InternalFun,
+    LocalDeclKind, Stm, StmX, UniqueIdent,
 };
-use crate::sst_visitor::{NoScoper, Visitor, Walk};
-use air::scope_map::ScopeMap;
+use crate::sst_visitor::{NoScoper, Visitor, VisitorScopeMap, Walk};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -140,180 +139,259 @@ pub fn subst_typ_for_datatype(
     subst_typ(&typ_substs, typ)
 }
 
-struct SubstCtxt<'a> {
-    typ_substs: &'a HashMap<Ident, Typ>,
-    // free variables in the Exps in SubstState.substs:
-    allow_unfinalized: bool,
+/// Generates variable names that are guaranteed not to collide with any name
+/// (free or bound) in the expressions passed to `avoid_names_in_exp`.
+pub(crate) struct FreshNameGenerator {
+    used: HashSet<VarIdent>,
+    next: u64,
 }
 
-struct SubstState {
-    substs: ScopeMap<UniqueIdent, Exp>,
-    free_vars: ScopeMap<UniqueIdent, ()>,
-    // variables already in scope, which we therefore cannot use when picking a fresh variable name:
-    fresh_var_blacklist: ScopeMap<UniqueIdent, ()>,
-}
-
-fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
-    span: &Span,
-    _ctxt: &SubstCtxt,
-    state: &mut SubstState,
-    bs: &VarBinders<A>,
-    fa: FA,
-    f_typ: FT,
-) -> VarBinders<A> {
-    state.substs.push_scope(false);
-    state.free_vars.push_scope(true);
-    state.fresh_var_blacklist.push_scope(true);
-    let mut binders: Vec<VarBinder<A>> = Vec::new();
-    for b in bs.iter() {
-        let unique = unique_bound(&b.name);
-        let name = if state.free_vars.contains_key(&unique) {
-            // capture-avoiding substitution:
-            // rename bound variable to avoid capturing free variable
-            let mut n: u64 = 0;
-            loop {
-                let name = crate::def::subst_rename_ident(&b.name, n);
-                let rename = unique_bound(&name);
-                if !state.fresh_var_blacklist.contains_key(&rename) {
-                    state
-                        .free_vars
-                        .insert(rename.clone(), ())
-                        .expect("subst_rename_binders free_vars");
-                    state
-                        .fresh_var_blacklist
-                        .insert(rename.clone(), ())
-                        .expect("subst_rename_binders fresh_var_blacklist");
-                    let typ = f_typ(&b.a);
-                    let var = SpannedTyped::new(span, &typ, ExpX::Var(rename.clone()));
-                    state.substs.insert(unique, var).expect("subst_rename_binders substs");
-                    break name;
-                }
-                n += 1;
-            }
-        } else {
-            state
-                .fresh_var_blacklist
-                .insert(unique.clone(), ())
-                .expect("subst_rename_binders fresh_var_blacklist");
-            b.name.clone()
-        };
-        binders.push(Arc::new(VarBinderX { name, a: fa(&b.a) }));
+impl FreshNameGenerator {
+    pub(crate) fn new() -> Self {
+        FreshNameGenerator { used: HashSet::new(), next: 0 }
     }
-    Arc::new(binders)
-}
 
-fn subst_exp_rec(ctxt: &SubstCtxt, state: &mut SubstState, exp: &Exp) -> Exp {
-    // If we're not finalized, substitutions are only allowed for type variables:
-    assert!(!ctxt.allow_unfinalized || state.substs.map().len() == 0);
-
-    let typ = subst_typ(&ctxt.typ_substs, &exp.typ);
-    let mk_exp = |e: ExpX| SpannedTyped::new(&exp.span, &typ, e);
-    let ft = |t: &Typ| subst_typ(&ctxt.typ_substs, t);
-    match &exp.x {
-        ExpX::Unary(UnaryOp::MustBeFinalized, _) if !ctxt.allow_unfinalized => {
-            // Var won't match binders if we're not finalized
-            // (special case allow_unfinalized = true for type-only substitution)
-            panic!("MustBeFinalized")
-        }
-        ExpX::Const(..)
-        | ExpX::Loc(..)
-        | ExpX::StaticVar(..)
-        | ExpX::Old(..)
-        | ExpX::Call(..)
-        | ExpX::CallLambda(..)
-        | ExpX::Ctor(..)
-        | ExpX::NullaryOpr(..)
-        | ExpX::Unary(..)
-        | ExpX::UnaryOpr(..)
-        | ExpX::Binary(..)
-        | ExpX::BinaryOpr(..)
-        | ExpX::If(..)
-        | ExpX::ExecFnByName(..)
-        | ExpX::FuelConst(..)
-        | ExpX::WithTriggers(..) => crate::sst_visitor::map_shallow_exp(
+    /// Record every variable name that is used or bound anywhere in `exp`
+    pub(crate) fn avoid_names_in_exp(&mut self, exp: &Exp) {
+        let used = &mut self.used;
+        crate::sst_visitor::exp_visitor_dfs::<(), _>(
             exp,
-            state,
-            &|_, t| Ok(subst_typ(ctxt.typ_substs, t)),
-            &|state, e| Ok(subst_exp_rec(ctxt, state, e)),
-        )
-        .expect("map_shallow_exp for subst_exp_rec"),
-        ExpX::Var(x) => {
-            assert!(state.fresh_var_blacklist.contains_key(x));
-            match state.substs.get(x) {
-                None => mk_exp(ExpX::Var(x.clone())),
-                Some(e) => e.clone(),
-            }
-        }
-        ExpX::VarLoc(x) => match state.substs.get(x) {
-            None => mk_exp(ExpX::VarLoc(x.clone())),
-            Some(_) => panic!("cannot substitute for VarLoc"),
-        },
-        ExpX::VarAt(x, a) => match state.substs.get(x) {
-            None => mk_exp(ExpX::VarAt(x.clone(), *a)),
-            Some(_) => panic!("cannot substitute for VarAt"),
-        },
-        ExpX::Bind(bnd, e1) => {
-            let ftrigs = |state: &mut SubstState, triggers: &Trigs| -> Trigs {
-                let mut trigs: Vec<Trig> = Vec::new();
-                for trigger in triggers.iter() {
-                    let mut trig: Vec<Exp> = Vec::new();
-                    for t in trigger.iter() {
-                        trig.push(subst_exp_rec(ctxt, state, t));
+            &mut crate::sst_visitor::VisitorScopeMap::new(),
+            &mut |e, _| {
+                match &e.x {
+                    ExpX::Var(x) | ExpX::VarLoc(x) | ExpX::VarAt(x, _) | ExpX::Old(_, x) => {
+                        used.insert(x.clone());
                     }
-                    trigs.push(Arc::new(trig));
+                    ExpX::Bind(bnd, _) => match &bnd.x {
+                        BndX::Let(bs) => used.extend(bs.iter().map(|b| b.name.clone())),
+                        BndX::Quant(_, bs, _, _) | BndX::Lambda(bs, _) | BndX::Choose(bs, _, _) => {
+                            used.extend(bs.iter().map(|b| b.name.clone()))
+                        }
+                    },
+                    ExpX::Const(..)
+                    | ExpX::StaticVar(..)
+                    | ExpX::Loc(..)
+                    | ExpX::Call(..)
+                    | ExpX::CallLambda(..)
+                    | ExpX::Ctor(..)
+                    | ExpX::NullaryOpr(..)
+                    | ExpX::Unary(..)
+                    | ExpX::UnaryOpr(..)
+                    | ExpX::Binary(..)
+                    | ExpX::BinaryOpr(..)
+                    | ExpX::If(..)
+                    | ExpX::WithTriggers(..)
+                    | ExpX::ExecFnByName(..)
+                    | ExpX::ArrayLiteral(..)
+                    | ExpX::Interp(..)
+                    | ExpX::FuelConst(..) => {}
                 }
-                Arc::new(trigs)
-            };
-            let bndx = match &bnd.x {
-                BndX::Let(bs) => {
-                    let mut binders: Vec<VarBinder<Exp>> = Vec::new();
-                    for b in bs.iter() {
-                        binders.push(b.new_a(subst_exp_rec(ctxt, state, &b.a)));
-                    }
-                    let binders = subst_rename_binders(
-                        &bnd.span,
-                        ctxt,
-                        state,
-                        &Arc::new(binders),
-                        |e: &Exp| e.clone(),
-                        |e: &Exp| e.typ.clone(),
-                    );
-                    BndX::Let(binders)
-                }
-                BndX::Quant(quant, binders, ts, ab) => {
-                    let binders = subst_rename_binders(&bnd.span, ctxt, state, binders, ft, ft);
-                    BndX::Quant(*quant, binders, ftrigs(state, ts), ab.clone())
-                }
-                BndX::Lambda(binders, ts) => {
-                    let binders = subst_rename_binders(&bnd.span, ctxt, state, binders, ft, ft);
-                    BndX::Lambda(binders, ftrigs(state, ts))
-                }
-                BndX::Choose(binders, ts, cond) => {
-                    let binders = subst_rename_binders(&bnd.span, ctxt, state, binders, ft, ft);
-                    let cond = subst_exp_rec(ctxt, state, cond);
-                    BndX::Choose(binders, ftrigs(state, ts), cond)
-                }
-            };
-            let bnd = Spanned::new(bnd.span.clone(), bndx);
-            let e1 = subst_exp_rec(ctxt, state, e1);
-            state.substs.pop_scope();
-            state.free_vars.pop_scope();
-            state.fresh_var_blacklist.pop_scope();
-            SpannedTyped::new(&exp.span, &typ, ExpX::Bind(bnd, e1))
-        }
-        ExpX::ArrayLiteral(exprs) => {
-            let mut new_exprs: Vec<Exp> = Vec::new();
-            for e in exprs.iter() {
-                new_exprs.push(subst_exp_rec(ctxt, state, e));
+                crate::sst_visitor::VisitorControlFlow::Recurse
+            },
+        );
+    }
+
+    /// Return a name not recorded by avoid_names_in_exp and not returned by a previous get_fresh.
+    /// The new name keeps the identifier part of x; the VirSubst disambiguator makes it fresh.
+    pub(crate) fn get_fresh(&mut self, x: &VarIdent) -> VarIdent {
+        loop {
+            let n = self.next;
+            self.next += 1;
+            let y = VarIdent(x.0.clone(), VarIdentDisambiguate::VirSubst(n));
+            if self.used.insert(y.clone()) {
+                return y;
             }
-            mk_exp(ExpX::ArrayLiteral(Arc::new(new_exprs)))
-        }
-        ExpX::Interp(_) => {
-            panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
     }
 }
 
+/// Rename every binder in e1 whose name is in avoid_set to a fresh name
+/// (and rename the corresponding bound occurrences).
+/// Every binder named x (for x in avoid_set) is renamed to the same fresh name f(x).
+/// Since f(x) occurs nowhere else, this preserves the binding structure of e1.
+/// Free occurrences of x are left unchanged.
+pub(crate) fn rebind_to_avoid(
+    e1: &Exp,
+    avoid_set: &HashSet<VarIdent>,
+    names: &mut FreshNameGenerator,
+) -> Exp {
+    if avoid_set.is_empty() {
+        return e1.clone();
+    }
+    struct Env<'a> {
+        names: &'a mut FreshNameGenerator,
+        renames: HashMap<VarIdent, VarIdent>,
+    }
+    impl<'a> Env<'a> {
+        fn rename(&mut self, x: &VarIdent) -> VarIdent {
+            let names = &mut self.names;
+            self.renames.entry(x.clone()).or_insert_with(|| names.get_fresh(x)).clone()
+        }
+    }
+    // Is x a bound occurrence of a variable that must be renamed?
+    let must_rename = |x: &VarIdent, scope_map: &VisitorScopeMap| {
+        avoid_set.contains(x) && scope_map.contains_key(x)
+    };
+    fn rename_binders<A: Clone>(
+        bs: &VarBinders<A>,
+        avoid_set: &HashSet<VarIdent>,
+        env: &mut Env,
+    ) -> VarBinders<A> {
+        let rename = |b: &VarBinder<A>| {
+            if avoid_set.contains(&b.name) {
+                Arc::new(VarBinderX { name: env.rename(&b.name), a: b.a.clone() })
+            } else {
+                b.clone()
+            }
+        };
+        Arc::new(bs.iter().map(rename).collect())
+    }
+    let mut fe = |e: &Exp, env: &mut Env, scope_map: &mut VisitorScopeMap| -> Result<Exp, ()> {
+        let mk_exp = |x: ExpX| SpannedTyped::new(&e.span, &e.typ, x);
+        match &e.x {
+            ExpX::Var(x) if must_rename(x, scope_map) => Ok(mk_exp(ExpX::Var(env.rename(x)))),
+            ExpX::VarLoc(x) if must_rename(x, scope_map) => {
+                panic!("rebind_to_avoid: found VarLoc referring to bound variable")
+            }
+            ExpX::VarAt(x, a) if must_rename(x, scope_map) => {
+                panic!("rebind_to_avoid: found VarAt referring to bound variable")
+            }
+            ExpX::Old(_, x) if must_rename(x, scope_map) => {
+                panic!("rebind_to_avoid: found Old referring to bound variable")
+            }
+            ExpX::Bind(bnd, body) => {
+                let bndx = match &bnd.x {
+                    BndX::Let(bs) => BndX::Let(rename_binders(bs, avoid_set, env)),
+                    BndX::Quant(quant, bs, ts, ab) => BndX::Quant(
+                        *quant,
+                        rename_binders(bs, avoid_set, env),
+                        ts.clone(),
+                        ab.clone(),
+                    ),
+                    BndX::Lambda(bs, ts) => {
+                        BndX::Lambda(rename_binders(bs, avoid_set, env), ts.clone())
+                    }
+                    BndX::Choose(bs, ts, cond) => {
+                        BndX::Choose(rename_binders(bs, avoid_set, env), ts.clone(), cond.clone())
+                    }
+                };
+                let bnd = Spanned::new(bnd.span.clone(), bndx);
+                Ok(mk_exp(ExpX::Bind(bnd, body.clone())))
+            }
+            ExpX::Interp(_) => {
+                panic!("Found an interpreter expression {:?} outside the interpreter", e)
+            }
+            ExpX::Var(..)
+            | ExpX::VarLoc(..)
+            | ExpX::VarAt(..)
+            | ExpX::Old(..)
+            | ExpX::Const(..)
+            | ExpX::StaticVar(..)
+            | ExpX::Loc(..)
+            | ExpX::Call(..)
+            | ExpX::CallLambda(..)
+            | ExpX::Ctor(..)
+            | ExpX::NullaryOpr(..)
+            | ExpX::Unary(..)
+            | ExpX::UnaryOpr(..)
+            | ExpX::Binary(..)
+            | ExpX::BinaryOpr(..)
+            | ExpX::If(..)
+            | ExpX::WithTriggers(..)
+            | ExpX::ExecFnByName(..)
+            | ExpX::ArrayLiteral(..)
+            | ExpX::FuelConst(..) => Ok(e.clone()),
+        }
+    };
+    let mut ft =
+        |t: &Typ, _: &mut Env, _: &mut VisitorScopeMap| -> Result<Typ, ()> { Ok(t.clone()) };
+    let mut env = Env { names, renames: HashMap::new() };
+    crate::sst_visitor::exp_typ_visitor_map(
+        e1,
+        &mut VisitorScopeMap::new(),
+        &mut env,
+        &mut fe,
+        &mut ft,
+    )
+    .expect("rebind_to_avoid")
+}
+
+/// Substitution that does NOT avoid capture.
+/// Callers must ensure that no binder in exp captures a free variable of substs.
+/// (Variables shadowed by binders in exp are not substituted.)
+fn subst_exp_no_capture_check(
+    typ_substs: &HashMap<Ident, Typ>,
+    substs: &HashMap<UniqueIdent, Exp>,
+    allow_unfinalized: bool,
+    exp: &Exp,
+) -> Exp {
+    // Returns the substitution for x, unless x is shadowed by an enclosing binder
+    let get_subst = |x: &UniqueIdent, scope_map: &VisitorScopeMap| {
+        if scope_map.contains_key(x) { None } else { substs.get(x) }
+    };
+    let mut fe = |e: &Exp, _: &mut (), scope_map: &mut VisitorScopeMap| -> Result<Exp, ()> {
+        match &e.x {
+            ExpX::Unary(UnaryOp::MustBeFinalized, _) if !allow_unfinalized => {
+                // Var won't match binders if we're not finalized
+                // (special case allow_unfinalized = true for type-only substitution)
+                panic!("MustBeFinalized")
+            }
+            ExpX::Var(x) => match get_subst(x, scope_map) {
+                Some(v) => Ok(v.clone()),
+                None => Ok(e.clone()),
+            },
+            ExpX::VarLoc(x) => match get_subst(x, scope_map) {
+                Some(_) => panic!("cannot substitute for VarLoc"),
+                None => Ok(e.clone()),
+            },
+            ExpX::VarAt(x, _) => match get_subst(x, scope_map) {
+                Some(_) => panic!("cannot substitute for VarAt"),
+                None => Ok(e.clone()),
+            },
+            ExpX::Interp(_) => {
+                panic!("Found an interpreter expression {:?} outside the interpreter", e)
+            }
+            ExpX::Const(..)
+            | ExpX::StaticVar(..)
+            | ExpX::Loc(..)
+            | ExpX::Old(..)
+            | ExpX::Call(..)
+            | ExpX::CallLambda(..)
+            | ExpX::Ctor(..)
+            | ExpX::NullaryOpr(..)
+            | ExpX::Unary(..)
+            | ExpX::UnaryOpr(..)
+            | ExpX::Binary(..)
+            | ExpX::BinaryOpr(..)
+            | ExpX::If(..)
+            | ExpX::WithTriggers(..)
+            | ExpX::Bind(..)
+            | ExpX::ExecFnByName(..)
+            | ExpX::ArrayLiteral(..)
+            | ExpX::FuelConst(..) => Ok(e.clone()),
+        }
+    };
+    // Children have already been mapped bottom-up, so only replace TypParam leaves
+    let mut ft = |t: &Typ, _: &mut (), _: &mut VisitorScopeMap| -> Result<Typ, ()> {
+        match &**t {
+            TypX::TypParam(x) => match typ_substs.get(x) {
+                Some(t2) => Ok(t2.clone()),
+                None => Ok(t.clone()),
+            },
+            _ => Ok(t.clone()),
+        }
+    };
+    crate::sst_visitor::exp_typ_visitor_map(
+        exp,
+        &mut VisitorScopeMap::new(),
+        &mut (),
+        &mut fe,
+        &mut ft,
+    )
+    .expect("subst_exp_no_capture_check")
+}
+
+/// Capture-avoiding substitution of types and variables in exp
 pub(crate) fn subst_exp(
     typ_substs: &HashMap<Ident, Typ>,
     substs: &HashMap<UniqueIdent, Exp>,
@@ -324,39 +402,25 @@ pub(crate) fn subst_exp(
     }
     let allow_unfinalized = substs.len() == 0;
 
-    let mut scope_substs: ScopeMap<UniqueIdent, Exp> = ScopeMap::new();
-    let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
-    let mut fresh_var_blacklist: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
-    scope_substs.push_scope(false);
-    free_vars.push_scope(true);
-    fresh_var_blacklist.push_scope(true);
-    let mut exp_free_vars_map: HashMap<UniqueIdent, Typ> = HashMap::new();
-    free_vars_exp_scope(
-        exp,
-        &mut crate::sst_visitor::VisitorScopeMap::new(),
-        &mut exp_free_vars_map,
-        allow_unfinalized,
-    );
-    for (y, _) in exp_free_vars_map {
-        let _ = fresh_var_blacklist.insert(y.clone(), ());
+    // Collect the free variables of the expressions being substituted
+    let mut free_vars: HashSet<VarIdent> = HashSet::new();
+    for e in substs.values() {
+        free_vars.extend(free_vars_exp(e).into_keys());
     }
-    for (x, v) in substs {
-        scope_substs.insert(x.clone(), v.clone()).expect("subst_exp scope_substs.insert");
-        for (y, _) in free_vars_exp(v) {
-            let _ = free_vars.insert(y.clone(), ());
-            let _ = fresh_var_blacklist.insert(y.clone(), ());
+
+    // Rename any binders in exp that would capture one of these free variables
+    let exp = if free_vars.is_empty() {
+        exp.clone()
+    } else {
+        let mut names = FreshNameGenerator::new();
+        names.avoid_names_in_exp(exp);
+        for e in substs.values() {
+            names.avoid_names_in_exp(e);
         }
-    }
-    let ctxt = SubstCtxt { typ_substs, allow_unfinalized };
-    let mut state = SubstState { substs: scope_substs, free_vars, fresh_var_blacklist };
-    let e = subst_exp_rec(&ctxt, &mut state, exp);
-    state.substs.pop_scope();
-    state.free_vars.pop_scope();
-    state.fresh_var_blacklist.pop_scope();
-    assert_eq!(state.substs.num_scopes(), 0);
-    assert_eq!(state.free_vars.num_scopes(), 0);
-    assert_eq!(state.fresh_var_blacklist.num_scopes(), 0);
-    e
+        rebind_to_avoid(exp, &free_vars, &mut names)
+    };
+
+    subst_exp_no_capture_check(typ_substs, substs, allow_unfinalized, &exp)
 }
 
 pub(crate) fn subst_stm(
@@ -389,25 +453,25 @@ impl BinaryOp {
             Xor => (22, 22, 23), // Rust doesn't have a logical XOR, so this is consistent with BitXor
             Implies => (3, 4, 3),
             HeightCompare { .. } => (90, 5, 5),
-            Eq(_) | Ne => (10, 11, 11),
+            Eq | Ne => (10, 11, 11),
             Inequality(_) => (10, 10, 10),
             Arith(o) => match o {
-                Add(_) | Sub(_) => (30, 30, 31),
-                Mul(_) | EuclideanDiv(_) | EuclideanMod(_) => (40, 40, 41),
+                Add | Sub => (30, 30, 31),
+                Mul | EuclideanDiv | EuclideanMod => (40, 40, 41),
             },
             RealArith(o) => match o {
                 crate::ast::RealArithOp::Add | crate::ast::RealArithOp::Sub => (30, 30, 31),
                 crate::ast::RealArithOp::Mul | crate::ast::RealArithOp::Div => (40, 40, 41),
             },
-            Bitwise(o, _) => match o {
+            Bitwise(o) => match o {
                 BitXor => (22, 22, 23),
                 BitAnd => (24, 24, 25),
                 BitOr => (20, 20, 21),
-                Shr(..) | Shl(..) => (26, 26, 27),
+                Shr | Shl(..) => (26, 26, 27),
             },
             IeeeFloat(_) => (5, 90, 90),
             StrGetChar => (90, 90, 90),
-            Index(_, _) => (90, 90, 90),
+            Index(_) => (90, 90, 90),
         }
     }
 }
@@ -429,6 +493,14 @@ impl ExpX {
                 Constant::Int(i) => (format!("{}", i), 99),
                 Constant::Real(r) => (format!("{}", r), 99),
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
+                Constant::ByteStr(bytes) => {
+                    let escaped = bytes
+                        .iter()
+                        .flat_map(|byte| std::ascii::escape_default(*byte))
+                        .map(char::from)
+                        .collect::<String>();
+                    (format!("b\"{}\"", escaped), 99)
+                }
                 Constant::Char(c) => (format!("'{}'", c), 99),
                 Constant::Float32(c) => (format!("'{}'", c), 99),
                 Constant::Float64(c) => (format!("'{}'", c), 99),
@@ -486,7 +558,6 @@ impl ExpX {
             NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => ("".to_string(), 99),
-            NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => ("no_in".to_string(), 99),
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot(_) => {
                     (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
@@ -514,15 +585,15 @@ impl ExpX {
                 UnaryOp::HeightTrigger => {
                     (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
                 }
+                UnaryOp::NewStrLit => {
+                    (format!("new_strlit({})", exp.x.to_string_prec(global, 99)), 90)
+                }
                 UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(global, 99)), 90),
                 UnaryOp::Trigger(..)
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated => {
                     return exp.x.to_string_prec(global, precedence);
-                }
-                UnaryOp::InferSpecForLoopIter { .. } => {
-                    (format!("InferSpecForLoopIter({})", exp.x.to_string_prec(global, 99)), 0)
                 }
                 UnaryOp::CastToInteger => {
                     (format!("{} as int", exp.x.to_user_string(global)), precedence)
@@ -552,7 +623,7 @@ impl ExpX {
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
                 match op {
-                    Box(_) | Unbox(_) | ToDyn(_) => {
+                    Box(_) | Unbox(_) | ToDyn(..) => {
                         return exp.x.to_string_prec(global, precedence);
                     }
                     HasType(t) => {
@@ -561,11 +632,11 @@ impl ExpX {
                     HasResolved(t) => {
                         (format!("has_resolved::<{:?}>({})", t, exp.x.to_user_string(global)), 99)
                     }
-                    IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits, _mode) => {
+                    IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits) => {
                         (format!("usize::BITS"), 99)
                     }
-                    IntegerTypeBound(kind, mode) => {
-                        (format!("{:?}.{:?}({})", kind, mode, exp.x.to_user_string(global)), 99)
+                    IntegerTypeBound(kind) => {
+                        (format!("{:?}({})", kind, exp.x.to_user_string(global)), 99)
                     }
                     IsVariant { datatype: _, variant } => {
                         let (prec_exp, prec_left, _prec_right) = prec_of_in();
@@ -586,6 +657,10 @@ impl ExpX {
                     ProofNote(_label) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }
+                    LoopIsolationBoundary(..) => (
+                        format!("loop_isolation_boundary({})", exp.x.to_string_prec(global, 99)),
+                        0,
+                    ),
                 }
             }
             Binary(op, e1, e2) => {
@@ -602,7 +677,7 @@ impl ExpX {
                     Xor => "^",
                     Implies => "==>",
                     HeightCompare { .. } => "",
-                    Eq(_) => "==",
+                    Eq => "==",
                     Ne => "!=",
                     Inequality(o) => match o {
                         Le => "<=",
@@ -611,11 +686,11 @@ impl ExpX {
                         Gt => ">",
                     },
                     Arith(o) => match o {
-                        Add(_) => "+",
-                        Sub(_) => "-",
-                        Mul(_) => "*",
-                        EuclideanDiv(_) => "/",
-                        EuclideanMod(_) => "%",
+                        Add => "+",
+                        Sub => "-",
+                        Mul => "*",
+                        EuclideanDiv => "/",
+                        EuclideanMod => "%",
                     },
                     RealArith(o) => match o {
                         crate::ast::RealArithOp::Add => "+",
@@ -623,11 +698,11 @@ impl ExpX {
                         crate::ast::RealArithOp::Mul => "*",
                         crate::ast::RealArithOp::Div => "/",
                     },
-                    Bitwise(o, _) => match o {
+                    Bitwise(o) => match o {
                         BitXor => "^",
                         BitAnd => "&",
                         BitOr => "|",
-                        Shr(..) => ">>",
+                        Shr => ">>",
                         Shl(..) => "<<",
                     },
                     IeeeFloat(_) => "ieee_float",
@@ -645,8 +720,7 @@ impl ExpX {
                 }
             }
             BinaryOpr(crate::ast::BinaryOpr::ExtEq(deep, _), e1, e2) => {
-                let (prec_exp, prec_left, prec_right) =
-                    BinaryOp::Eq(Mode::Spec).prec_of_binary_op();
+                let (prec_exp, prec_left, prec_right) = BinaryOp::Eq.prec_of_binary_op();
                 let left = e1.x.to_string_prec(global, prec_left);
                 let right = e2.x.to_string_prec(global, prec_right);
                 let op_str = if *deep { "=~~=" } else { "=~=" };
@@ -910,10 +984,7 @@ pub fn sst_arch_word_bits(span: &Span) -> Exp {
         span,
         &Arc::new(TypX::Int(IntRange::Int)),
         ExpX::UnaryOpr(
-            UnaryOpr::IntegerTypeBound(
-                IntegerTypeBoundKind::ArchWordBits,
-                Mode::Spec, // mode doesn't matter
-            ),
+            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits),
             sst_int_literal(span, 0),
         ),
     )
@@ -949,6 +1020,10 @@ pub fn sst_conjoin(span: &Span, exps: &Vec<Exp>) -> Exp {
     chain_binary(span, BinaryOp::And, &sst_bool(span, true), exps)
 }
 
+pub fn sst_disjoin(span: &Span, exps: &[Exp]) -> Exp {
+    chain_binary(span, BinaryOp::Or, &sst_bool(span, false), exps)
+}
+
 pub fn sst_and(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     let op = BinaryOp::And;
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
@@ -970,7 +1045,7 @@ pub fn sst_le(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
 }
 
 pub fn sst_equal(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
-    let op = BinaryOp::Eq(Mode::Spec);
+    let op = BinaryOp::Eq;
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
@@ -1007,7 +1082,7 @@ pub fn sst_ptr_addr(span: &Span, e1: &Exp) -> Exp {
         TypX::Primitive(crate::ast::Primitive::Ptr, ts) => ts[0].clone(),
         _ => panic!("sst_ptr_addr expects ptr type"),
     };
-    let fun = crate::fun!(CrateId::Vstd => "raw_ptr", "spec_ptr_addr");
+    let fun = crate::fun!(CrateId::Vstd => "raw_ptr"; "spec_ptr_addr");
     let cf = CallFun::Fun(fun, None);
     let expx = ExpX::Call(cf, Arc::new(vec![t]), Arc::new(vec![e1.clone()]));
     let usize_t = Arc::new(TypX::Int(IntRange::USize));
@@ -1070,6 +1145,7 @@ impl LocalDeclKind {
             | LocalDeclKind::ExecClosureRet
             | LocalDeclKind::Nondeterministic
             | LocalDeclKind::OpenInvariantInnerTemp
+            | LocalDeclKind::LoopBreakValue
             | LocalDeclKind::BorrowMut => false,
         }
     }

@@ -84,12 +84,12 @@ fn to_node_inner(
         let mut stmts = vec![];
         if is_enum {
             let variant_name = &v.ast().ident.to_string();
-            stmts.push(quote!(nodes.push(::sise::Node::Atom(#variant_name.to_string()));));
+            stmts.push(quote!(nodes.push(::sise::TreeNode::Atom(#variant_name.to_string()));));
         }
         for bi in v.bindings() {
             if let Some(field_name) = &bi.ast().ident {
                 let field_name = field_name.to_string();
-                stmts.push(quote!(nodes.push(::sise::Node::Atom(format!(":{}", #field_name.to_string())));));
+                stmts.push(quote!(nodes.push(::sise::TreeNode::Atom(format!(":{}", #field_name.to_string())));));
             }
             stmts.push(quote!(nodes.push(crate::printer::ToDebugSNode::to_node(#bi, opts.clone()));));
         }
@@ -100,13 +100,13 @@ fn to_node_inner(
         s.gen_impl(quote! {
             #[automatically_derived]
             gen impl crate::printer::ToDebugSNode for @Self {
-                fn to_node(&self, opts: &crate::printer::ToDebugSNodeOpts) -> ::sise::Node {
+                fn to_node(&self, opts: &crate::printer::ToDebugSNodeOpts) -> ::sise::TreeNode {
                     let mut nodes = vec![];
-                    nodes.push(::sise::Node::Atom(#name.to_string()));
+                    nodes.push(::sise::TreeNode::Atom(#name.to_string()));
                     match *self {
                         #field_arms
                     }
-                    ::sise::Node::List(nodes)
+                    ::sise::TreeNode::List(nodes)
                 }
             }
         })
@@ -117,13 +117,13 @@ fn to_node_inner(
 
             #[automatically_derived]
             impl #item_name {
-                pub fn to_node_inner(&self, opts: &crate::printer::ToDebugSNodeOpts) -> ::sise::Node {
+                pub fn to_node_inner(&self, opts: &crate::printer::ToDebugSNodeOpts) -> ::sise::TreeNode {
                     let mut nodes = vec![];
-                    nodes.push(::sise::Node::Atom(#name.to_string()));
+                    nodes.push(::sise::TreeNode::Atom(#name.to_string()));
                     match *self {
                         #field_arms
                     }
-                    ::sise::Node::List(nodes)
+                    ::sise::TreeNode::List(nodes)
                 }
             }
         }

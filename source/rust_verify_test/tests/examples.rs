@@ -16,12 +16,14 @@ enum Mode {
 
 examples_in_dir!("../../examples");
 examples_in_dir!("../../examples/guide");
-examples_in_dir!("../../examples/pcm");
+examples_in_dir!("../../examples/resource");
 examples_in_dir!("../../examples/state_machines");
 examples_in_dir!("../../examples/summer_school");
 examples_in_dir!("../../examples/state_machines/tutorial");
 examples_in_dir!("../../examples/state_machines/reference-examples");
 examples_in_dir!("../../examples/std_test");
+examples_in_dir!("../../examples/cuckoo_hash_table");
+examples_in_dir!("../../examples/iterators");
 
 #[cfg(feature = "singular")]
 examples_in_dir!("../../examples/integer_ring");
@@ -92,8 +94,7 @@ fn run_example_for_file(file_path: &str) {
     let relative_path = PathBuf::from(relative_path);
 
     // Create a temp directory under target/ for --out-dir output
-    let target_dir = std::env::current_exe().unwrap();
-    let target_dir = target_dir.parent().unwrap().parent().unwrap();
+    let target_dir = target_profile_dir();
     let example_out_dir = target_dir
         .join("test_inputs")
         .join(format!("example-{}", relative_path.file_stem().unwrap().to_str().unwrap()));
@@ -102,6 +103,17 @@ fn run_example_for_file(file_path: &str) {
     }
     std::fs::create_dir_all(&example_out_dir).unwrap();
 
+    {
+        // same naming scheme as examples_in_dir!
+        let dir = relative_path.parent().unwrap().to_str().unwrap();
+        let test_name = dir.replace("../../", "").replace("/", "_").replace("-", "_")
+            + "_"
+            + &relative_path.file_prefix().unwrap().to_str().unwrap().replace("-", "_");
+        let file_name = relative_path.file_name().unwrap().to_str().unwrap().to_string();
+        let contents = std::fs::read_to_string(&relative_path).expect("cannot read example");
+        let files = [(file_name.clone(), contents)];
+        prepare_test_log_dir("examples", &test_name, &file_name, &files, &options);
+    }
     let output = run_verus(&options, &example_out_dir, &relative_path, true, true);
 
     use regex::Regex;
@@ -156,6 +168,6 @@ fn run_example_for_file(file_path: &str) {
             }
         }
         eprintln!("- stdout -\n{}\n", stdout);
-        assert!(false);
+        panic!();
     }
 }

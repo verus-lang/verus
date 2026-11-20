@@ -9,14 +9,21 @@ for this purpose:
 
 ## Soundness warning
 
-**Be cautious when adding specifications to external traits.** All implementations
-of the trait — including those in unverified code, even code that hasn't been written yet — are
-assumed to uphold the specification. For example, if you verify a crate with
-`pub fn test<A: Formatter>(...)`, Verus assumes that whatever type instantiates `A` will
-satisfy the `Formatter` specification, even if that type comes from an unverified crate.
-This is a contract on both current and future unverified code.
-
-[See below](#the-obeys_-pattern-in-vstd) for a useful pattern (employed by `vstd`) for mitigating this soundness risk.
+> [!CAUTION]
+> Since external trait specifications are unchecked, it can easily be used to subvert
+> Verus's guarantees.
+>
+> Further, specifying traits correctly is often even more difficult than specifying ordinary
+> functions.
+>
+> All implementations
+> of the trait — including those in unverified code, even code that hasn't been written yet — are
+> assumed to uphold the specification. For example, if you verify a crate with
+> `pub fn test<A: Formatter>(...)`, Verus assumes that whatever type instantiates `A` will
+> satisfy the `Formatter` specification, even if that type comes from an unverified crate.
+> This is a contract on both current and future unverified code.
+>
+> [See below](#the-obeys_-pattern-in-vstd) for a useful pattern (employed by `vstd`) for mitigating this soundness risk.
 
 ## Basic external trait specification
 
@@ -100,7 +107,7 @@ pub trait ExPartialEq<Rhs = Self> {
 }
 ```
 
-The ensures clause says: **if** the type obeys the Verus spec for `Eq` (`obeys_eq_spec()` is true), **then**
+The ensures clause says: **if** the type obeys the Verus spec for `PartialEq` (`obeys_eq_spec()` is true), **then**
 the result matches `eq_spec`. For integer types and `bool`, `vstd` defines `obeys_eq_spec()`
 to be true, and proves that these types satisfy the `eq_spec`.  For other types, Verus
 doesn't know whether `obeys_eq_spec()` is true or false, so it won't assume that the postcondition

@@ -1,9 +1,8 @@
 #![allow(unused_imports)]
 use verus_builtin::*;
 use verus_builtin_macros::*;
-use vstd::map::*;
+use vstd::imap::*;
 use vstd::seq::*;
-use vstd::set::*;
 use vstd::{pervasive::*, *};
 
 use verus_state_machines_macros::case_on_init;
@@ -27,12 +26,12 @@ pub fn default() -> Value {
 state_machine!{
     MapSpec {
         fields {
-            pub map: Map<Key, Value>,
+            pub map: IMap<Key, Value>,
         }
 
         init!{
             empty() {
-                init map = Map::total(|k| default());
+                init map = IMap::total(|k| default());
             }
         }
 
@@ -61,7 +60,7 @@ state_machine!{
             // TODO have a way to annotate this as a constant outside of tokenized mode
             pub map_count: int,
 
-            pub maps: Seq<Map<Key, Value>>,
+            pub maps: Seq<IMap<Key, Value>>,
         }
 
         init!{
@@ -70,9 +69,9 @@ state_machine!{
                 init map_count = map_count;
                 init maps = Seq::new(map_count as nat, |i| {
                     if i == 0 {
-                        Map::total(|k| default())
+                        IMap::total(|k| default())
                     } else {
-                        Map::empty()
+                        IMap::empty()
                     }
                 });
             }
@@ -125,8 +124,8 @@ state_machine!{
             }
         }
 
-        pub open spec fn interp_map(&self) -> Map<Key, Value> {
-            Map::total(|key| self.abstraction_one_key(key))
+        pub open spec fn interp_map(&self) -> IMap<Key, Value> {
+            IMap::total(|key| self.abstraction_one_key(key))
         }
 
         #[invariant]
@@ -205,7 +204,7 @@ proof fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: Shard
 {
     case_on_next!{pre, post, ShardedKVProtocol => {
         insert(idx, key, value) => {
-            assert_maps_equal!(pre.interp_map().insert(key, value), post.interp_map(), k => {
+            assert_imaps_equal!(pre.interp_map().insert(key, value), post.interp_map(), k => {
                 if equal(k, key) {
                     assert(pre.host_has_key(idx, key));
                     assert(post.host_has_key(idx, key));
@@ -261,7 +260,7 @@ proof fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: Shard
             MapSpec::show::query_op(interp(pre), interp(post), key, value);
         }
         transfer(send_idx, recv_idx, key, value) => {
-            assert_maps_equal!(pre.interp_map(), post.interp_map(), k: Key => {
+            assert_imaps_equal!(pre.interp_map(), post.interp_map(), k: Key => {
                 if equal(k, key) {
                     assert(pre.host_has_key(send_idx, key));
                     assert(post.host_has_key(recv_idx, key));
@@ -292,7 +291,7 @@ proof fn init_refines_init_with_macro(post: ShardedKVProtocol::State)
 {
     case_on_init!{post, ShardedKVProtocol => {
         initialize(n) => {
-            assert_maps_equal!(interp(post).map, Map::total(|k| default()), k: Key => {
+            assert_imaps_equal!(interp(post).map, IMap::total(|k| default()), k: Key => {
                 assert(interp(post).map.dom().contains(k));
                 assert(equal(interp(post).map.index(k), default()));
             });

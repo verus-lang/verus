@@ -52,6 +52,7 @@ proof fn my_long_function_helper(x: u64, y: int)
 
 fn my_long_function(x: u64, ...)
 {
+    let y: int = ...;
     ... // first part of proof, establishing fact f(x, y)
     my_long_function_helper(x, y);
     ... // second part of proof, using facts s1 and s2

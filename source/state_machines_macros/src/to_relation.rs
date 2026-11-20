@@ -190,7 +190,7 @@ fn annotate_extractions_vec(sops: &mut Vec<SimplStmt>, used_ids: &mut IndexSet<S
             // Remove the variable name from the 'use' set.
             // In doing so, we check if it was already there;
             // if the variable isn't used, then we can skip this step entirely.
-            let is_used = used_ids.remove(&ident.to_string());
+            let is_used = used_ids.swap_remove(&ident.to_string());
             if is_used {
                 add_used_ids_from_expr(used_ids, e);
                 sops.push(sop);

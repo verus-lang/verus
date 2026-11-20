@@ -204,7 +204,7 @@ test_verify_one_file! {
         struct Map<K, V> {
             dummy: std::marker::PhantomData<(K, V)>,
         }
-    } => Err(err) => assert_vir_error_msg(err, "in external_body datatype, each type parameter must be one of: #[verifier::reject_recursive_types], #[verifier::reject_recursive_types_in_ground_variants], #[verifier::accept_recursive_types]")
+    } => Err(err) => assert_vir_error_msg(err, "in `external_body` datatype, each type parameter must be one of: `#[verifier::reject_recursive_types]`, `#[verifier::reject_recursive_types_in_ground_variants]`, `#[verifier::accept_recursive_types]`")
 }
 
 test_verify_one_file! {
@@ -221,7 +221,7 @@ test_verify_one_file! {
             a: Map<A, int>,
             b: Map<int, B>,
         }
-    } => Err(err) => assert_vir_error_msg(err, "Type parameter A of test_crate::D must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "type parameter A of test_crate::D must be declared `#[verifier::reject_recursive_types]` to be used in a non-positive position")
 }
 
 test_verify_one_file! {
@@ -269,7 +269,7 @@ test_verify_one_file! {
         struct X<A>(A);
         struct Y<A>(Set<X<A>>);
         struct Z(Y<Z>);
-    } => Err(err) => assert_vir_error_msg(err, "Type parameter A of test_crate::Y must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "type parameter A of test_crate::Y must be declared `#[verifier::reject_recursive_types]` to be used in a non-positive position")
 }
 
 test_verify_one_file! {
@@ -351,4 +351,94 @@ test_verify_one_file! {
         #[verifier::reject_recursive_types(A)]
         struct X<A, B, C> { a: A, b: B, c: C, d: bool }
     } => Err(err) => assert_vir_error_msg(err, "duplicate parameter attribute A")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_set_map_ok verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::Set;
+        use vstd::prelude::Map;
+
+        struct TreeNode {
+            value: int,
+            children: Set<TreeNode>,
+        }
+
+        enum RecursiveValue {
+            SingleValue { value: int },
+            MultipleValues { values: Set<RecursiveValue> },
+            SingleMapping { mapping: Map<RecursiveValue, RecursiveValue> },
+            MultipleMappings { mappings: Set<Map<RecursiveValue, RecursiveValue>> },
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_iset_bad verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::ISet;
+
+        enum RecursiveValue {
+            SingleValue { value: int },
+            MultipleValues { values: ISet<RecursiveValue> },
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_imap_bad verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::IMap;
+
+        enum RecursiveValue {
+            Value { value: int },
+            Mapping { mapping: IMap<RecursiveValue, int> },
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_set_imap_bad verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::Set;
+        use vstd::prelude::IMap;
+
+        enum RecursiveValue {
+            Value { value: int },
+            Mappings { mapping_set: Set<IMap<RecursiveValue, int>> },
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] test_slice_array verus_code! {
+        use vstd::prelude::*;
+
+        enum E {
+            Single(Box<E>),
+            Slice(Box<[E]>),
+            Array(Box<[E; 3]>),
+            Vector(Vec<E>),
+        }
+
+        proof fn test1(e: E) {
+            match e {
+                E::Single(boxed) => {
+                    assert(decreases_to!(e => boxed));
+                }
+                E::Array(boxed) => {
+                    assert(decreases_to!(e => boxed[0]));
+                }
+                E::Slice(boxed) => {
+                    assume(boxed.len() == 3);
+                    assert(decreases_to!(e => boxed[0]));
+                }
+                E::Vector(v) => {
+                    assume(v.len() == 3);
+                    assert(decreases_to!(e => v[0]));
+                }
+            }
+        }
+    } => Ok(())
 }

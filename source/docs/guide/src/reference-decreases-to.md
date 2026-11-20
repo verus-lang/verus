@@ -13,7 +13,18 @@ is used to check the `decreases` measure for spec functions.
 See [this tutorial chapter](./lex_mutual.md) for an introductory discussion of
 lexicographic-decreases.
 
-## Definition
+### Syntax
+
+```verus-grammar
+V@[decreases_to_expr] ::= decreases_to!( V@[spec_expr] (, V@[spec_expr])* => V@[spec_expr] (, V@[spec_expr])* )
+```
+
+### Typing
+
+The two expression lists on either side of `=>` must have the same number of items.
+There are no other typing requirements.
+
+### Semantics
 
 We say that
 <code>e<sub>1</sub>, e<sub>2</sub>, ..., e<sub>n</sub></code>
@@ -42,7 +53,7 @@ These axioms are triggered when the relevant expression (e.g., `x.f`, `x->f`, `s
 ### Notes
 
  1. Tuples are _not_ compared lexicographically; tuples are datatypes, which are compared
-    as explained above, e.g., `a` _decreases_to_ `a.0`.
+    as explained above, e.g., `a` _decreases-to_ `a.0`.
     Only the "top level" sequences in a `decreases_to!` expression are compared lexicographically.
 
  2. Sequences are not compared on `len()` alone. However, you can always use `s.len()` as a decreases-measure instead of `s`.

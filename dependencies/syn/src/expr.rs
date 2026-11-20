@@ -24,9 +24,9 @@ use crate::token;
 use crate::ty::ReturnType;
 use crate::ty::Type;
 use crate::verus::{
-    Assert, AssertForall, Assume, BigAnd, BigOr, ClosureArg, Decreases, Ensures, ExprFinal,
-    ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions, Invariant,
-    InvariantEnsures, InvariantExceptBreak, Requires, RevealHide, View,
+    Assert, AssertForall, Assume, AtomicallyBlock, BigAnd, BigOr, ClosureArg, Decreases, Ensures,
+    ExprFinal, ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions,
+    Invariant, InvariantEnsures, InvariantExceptBreak, Requires, RevealHide, View,
 };
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -373,6 +373,7 @@ ast_struct! {
         pub func: Box<Expr>,
         pub paren_token: token::Paren,
         pub args: Punctuated<Expr, Token![,]>,
+        pub atomically: Option<AtomicallyBlock>,
     }
 }
 
@@ -405,6 +406,7 @@ ast_struct! {
         pub output: ReturnType,
         pub requires: Option<Requires>,
         pub ensures: Option<Ensures>,
+        pub invariants: Option<Box<crate::verus::SignatureInvariants>>,
         pub inner_attrs: Vec<Attribute>,
         pub body: Box<Expr>,
     }
@@ -580,6 +582,7 @@ ast_struct! {
         pub turbofish: Option<AngleBracketedGenericArguments>,
         pub paren_token: token::Paren,
         pub args: Punctuated<Expr, Token![,]>,
+        pub atomically: Option<AtomicallyBlock>,
     }
 }
 
@@ -1272,7 +1275,7 @@ pub(crate) mod parsing {
     use crate::verbatim;
     use crate::verus::{
         ClosureArg, Context, Decreases, Ensures, ExprGetField, ExprHas, ExprHasNot, ExprIs,
-        ExprIsNot, Requires, View,
+        ExprIsNot, Requires, SignatureInvariants, View,
     };
     use alloc::boxed::Box;
     use alloc::format;
@@ -1486,6 +1489,12 @@ pub(crate) mod parsing {
             } else if Precedence::HasIsMatches >= base && input.peek(Token![is]) {
                 let is_token: Token![is] = input.parse()?;
                 let variant_ident = input.parse()?;
+                if input.peek(Token![::]) || input.peek(token::Paren) {
+                    // A common mistake is to put a full pattern after 'is' rather than
+                    // a single identifier. Emit a more helpful error message for that case.
+                    // (There is no situation where a paren or '::' token would be allowed next.)
+                    return Err(input.error("unexpected token (note that the 'is' operator expects a single, unqualified identifier)"));
+                }
                 lhs = Expr::Is(ExprIs {
                     attrs: Vec::new(),
                     base: Box::new(lhs),
@@ -1495,6 +1504,9 @@ pub(crate) mod parsing {
             } else if Precedence::HasIsMatches >= base && input.peek(Token![isnt]) {
                 let is_not_token: Token![isnt] = input.parse()?;
                 let variant_ident = input.parse()?;
+                if input.peek(Token![::]) || input.peek(token::Paren) {
+                    return Err(input.error("unexpected token (note that the 'isnt' operator expects a single, unqualified identifier)"));
+                }
                 lhs = Expr::IsNot(ExprIsNot {
                     attrs: Vec::new(),
                     base: Box::new(lhs),
@@ -1790,6 +1802,7 @@ pub(crate) mod parsing {
                     func: Box::new(e),
                     paren_token: parenthesized!(content in input),
                     args: content.parse_terminated(Expr::parse, Token![,])?,
+                    atomically: input.parse()?,
                 });
             } else if input.peek(Token![->]) {
                 let arrow_token: Token![->] = input.parse()?;
@@ -1846,7 +1859,9 @@ pub(crate) mod parsing {
                             turbofish,
                             paren_token: parenthesized!(content in input),
                             args: content.parse_terminated(Expr::parse, Token![,])?,
+                            atomically: input.parse()?,
                         });
+
                         continue;
                     }
                 }
@@ -1901,6 +1916,7 @@ pub(crate) mod parsing {
                     func: Box::new(e),
                     paren_token: parenthesized!(content in input),
                     args: content.parse_terminated(Expr::parse, Token![,])?,
+                    atomically: input.parse()?,
                 });
             } else if input.peek(Token![.])
                 && !input.peek(Token![..])
@@ -1936,6 +1952,7 @@ pub(crate) mod parsing {
                             turbofish,
                             paren_token: parenthesized!(content in input),
                             args: content.parse_terminated(Expr::parse, Token![,])?,
+                            atomically: input.parse()?,
                         });
                         continue;
                     }
@@ -2687,10 +2704,19 @@ pub(crate) mod parsing {
         attrs: Vec<Attribute>,
         allow_struct: AllowStruct,
     ) -> Result<ExprUnary> {
+        let op = input.parse()?;
+
+        use crate::op::UnOp;
+        let expr = if matches!(op, UnOp::Forall(_) | UnOp::Exists(_) | UnOp::Choose(_)) {
+            Expr::Closure(expr_closure(input, allow_struct)?)
+        } else {
+            unary_expr(input, allow_struct)?
+        };
+
         Ok(ExprUnary {
             attrs,
-            op: input.parse()?,
-            expr: Box::new(unary_expr(input, allow_struct)?),
+            op,
+            expr: Box::new(expr),
         })
     }
 
@@ -2830,10 +2856,11 @@ pub(crate) mod parsing {
 
         let needs_block =
             input.peek(Token![->]) || input.peek(Token![requires]) || input.peek(Token![ensures]);
-        let (output, requires, ensures, inner_attrs, body) = if needs_block {
+        let (output, requires, ensures, invariants, inner_attrs, body) = if needs_block {
             let output = input.parse()?;
             let requires: Option<Requires> = Requires::parse_optional_in(Context::Expr, input)?;
             let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Expr, input)?;
+            let invariants: Option<SignatureInvariants> = input.parse()?;
             let body: Block = input.parse()?;
             let inner_attrs = input.call(Attribute::parse_inner)?;
             let block = Expr::Block(ExprBlock {
@@ -2841,11 +2868,11 @@ pub(crate) mod parsing {
                 label: None,
                 block: body,
             });
-            (output, requires, ensures, inner_attrs, block)
+            (output, requires, ensures, invariants, inner_attrs, block)
         } else {
             let inner_attrs = input.call(Attribute::parse_inner)?;
             let body = ambiguous_expr(input, allow_struct)?;
-            (ReturnType::Default, None, None, inner_attrs, body)
+            (ReturnType::Default, None, None, None, inner_attrs, body)
         };
 
         Ok(ExprClosure {
@@ -2863,6 +2890,7 @@ pub(crate) mod parsing {
             output,
             requires,
             ensures,
+            invariants: invariants.map(Box::new),
             inner_attrs,
             body: Box::new(body),
         })
@@ -3818,6 +3846,8 @@ pub(crate) mod printing {
         e.paren_token.surround(tokens, |tokens| {
             e.args.to_tokens(tokens);
         });
+
+        e.atomically.to_tokens(tokens);
     }
 
     #[cfg_attr(docsrs, doc(cfg(feature = "printing")))]
@@ -3880,6 +3910,7 @@ pub(crate) mod printing {
         e.output.to_tokens(tokens);
         e.requires.to_tokens(tokens);
         e.ensures.to_tokens(tokens);
+        e.invariants.to_tokens(tokens);
         inner_attrs_to_tokens(&e.inner_attrs, tokens);
         if matches!(e.output, ReturnType::Default)
             || matches!(&*e.body, Expr::Block(body) if body.attrs.is_empty() && body.label.is_none())
@@ -4157,6 +4188,7 @@ pub(crate) mod printing {
         e.paren_token.surround(tokens, |tokens| {
             e.args.to_tokens(tokens);
         });
+        e.atomically.to_tokens(tokens);
     }
 
     #[cfg_attr(docsrs, doc(cfg(feature = "printing")))]

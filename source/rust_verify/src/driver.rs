@@ -35,6 +35,7 @@ fn run_compiler<'a, 'b>(
 pub fn is_verifying_entire_crate(verifier: &Verifier) -> bool {
     verifier.args.verify_function.is_none()
         && verifier.args.verify_module.is_empty()
+        && verifier.args.verify_only_module.is_empty()
         && !verifier.args.verify_root
 }
 
@@ -222,27 +223,31 @@ pub fn find_verusroot() -> Option<VerusRoot> {
             })
         })
         .or_else(|| {
-            let current_exe = std::env::current_exe().ok()
-                .and_then(|c| {
-                    if c.symlink_metadata().ok()?.is_symlink() {
-                        std::fs::read_link(c).ok()
-                    } else {
-                        Some(c)
-                    }
-                });
+            let current_exe = std::env::current_exe().ok().and_then(|c| {
+                if c.symlink_metadata().ok()?.is_symlink() {
+                    std::fs::read_link(c).ok()
+                } else {
+                    Some(c)
+                }
+            });
             current_exe.and_then(|current| {
                 current.parent().and_then(|p| {
                     let mut path = std::path::PathBuf::from(&p);
-                    if path.join("verus-root").is_file() {
+                    if let Err(missing) =
+                        cargo_verus_toolchains::installed::check_required_artifacts(&path)
+                    {
+                        eprintln!("warning: Verus installation is incomplete; missing components:");
+                        for path in missing {
+                            eprintln!("  {}", path.display());
+                        }
+                        None
+                    } else {
                         if !path.is_absolute() {
-                            path =
-                                std::env::current_dir().expect("working directory invalid").join(path);
+                            path = std::env::current_dir()
+                                .expect("working directory invalid")
+                                .join(path);
                         }
                         Some(VerusRoot { path, in_vargo: false })
-                    } else {
-                        // TODO suppress warning when building verus itself
-                        eprintln!("warning: did not find a valid verusroot; continuing, but the verus_builtin and vstd crates are likely missing");
-                        None
                     }
                 })
             })
@@ -361,9 +366,8 @@ fn stable_attr(span: Span) -> Attribute {
     Attribute::Parsed(AttributeKind::Stability {
         stability: Stability {
             level: StabilityLevel::Unstable {
-                reason: UnstableReason::Default,
+                reason: rustc_hir::attrs::UnstableReason::Default,
                 issue: None,
-                is_soft: false,
                 implied_by: None,
                 old_name: None,
             },

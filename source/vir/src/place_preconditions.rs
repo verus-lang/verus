@@ -115,6 +115,28 @@ fn field_msg(span: &Span) -> Message {
     )
 }
 
+/// `get_variant` accessors are total - just a recommends-only nudge for a likely mistake.
+pub(crate) fn sst_field_recommends_check(
+    span: &Span,
+    e1: &Exp,
+    field_opr: &FieldOpr,
+) -> (Exp, Message) {
+    let FieldOpr { datatype, variant, field: _, get_variant: _, check: _ } = field_opr;
+    let unary = UnaryOpr::IsVariant { datatype: datatype.clone(), variant: variant.clone() };
+    let condition = ExpX::UnaryOpr(unary, e1.clone());
+    let condition = SpannedTyped::new(&e1.span, &Arc::new(TypX::Bool), condition);
+    (condition, field_recommends_msg(span, variant))
+}
+
+fn field_recommends_msg(span: &Span, variant: &Ident) -> Message {
+    crate::messages::error(
+        span,
+        format!(
+            "recommendation not met: cannot show that this value is variant `{variant}` before accessing this field"
+        ),
+    )
+}
+
 impl ArrayKind {
     pub(crate) fn getting_len_requires_read(&self) -> bool {
         match self {

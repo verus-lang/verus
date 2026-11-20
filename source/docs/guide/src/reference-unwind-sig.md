@@ -40,7 +40,7 @@ Rust allows a program to ["catch" an unwind](https://doc.rust-lang.org/std/panic
 As a result, Verus cannot permit the program to exit an invariant-block early without restoring
 the invariant, not even for unwinding.
 
-This is restriction is what enables Verus to rule out [exception safety violations](https://doc.rust-lang.org/nomicon/exception-safety.html).
+This restriction is what enables Verus to rule out [exception safety violations](https://doc.rust-lang.org/nomicon/exception-safety.html).
 
 ## Drops
 

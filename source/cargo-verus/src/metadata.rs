@@ -4,14 +4,18 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
+use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId, Source, semver::Version};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Default, Deserialize)]
 pub struct VerusMetadata {
+    #[serde(rename = "fmt-as-rust", default)]
+    pub fmt_as_rust: bool,
     #[serde(default)]
     pub verify: bool,
+    #[serde(default)]
+    pub trusted_crates: Set<String>,
     #[serde(rename = "no-vstd", default)]
     pub no_vstd: bool,
     #[serde(rename = "is-vstd", default)]
@@ -25,26 +29,26 @@ pub struct VerusMetadata {
 }
 
 impl VerusMetadata {
-    pub fn parse_from_package(package: &cargo_metadata::Package) -> Result<VerusMetadata> {
+    pub fn parse_from_package(package: &cargo_metadata::Package) -> Result<Option<VerusMetadata>> {
         match package.metadata.as_object().and_then(|obj| obj.get("verus")) {
-            Some(value) => {
-                serde_json::from_value::<VerusMetadata>(value.clone()).with_context(|| {
+            Some(value) => serde_json::from_value::<VerusMetadata>(value.clone())
+                .map(Some)
+                .with_context(|| {
                     format!("Failed to parse {}-{}.metadata.verus", package.name, package.version)
-                })
-            }
-            None => Ok(Default::default()),
+                }),
+            None => Ok(None),
         }
     }
 }
 
 pub struct MetadataIndex<'a> {
-    entries: BTreeMap<&'a PackageId, MetadataIndexEntry<'a>>,
+    pub entries: BTreeMap<&'a PackageId, MetadataIndexEntry<'a>>,
 }
 
 pub struct MetadataIndexEntry<'a> {
-    package: &'a Package,
-    verus_metadata: VerusMetadata,
-    deps: BTreeMap<&'a PackageId, &'a cargo_metadata::NodeDep>,
+    pub package: &'a Package,
+    pub verus_metadata: Option<VerusMetadata>,
+    pub deps: BTreeMap<&'a PackageId, &'a cargo_metadata::NodeDep>,
 }
 
 impl<'a> MetadataIndex<'a> {
@@ -77,6 +81,10 @@ impl<'a> MetadataIndex<'a> {
         Ok(Self { entries })
     }
 
+    pub fn iter_package_ids(&self) -> impl Iterator<Item = &PackageId> {
+        self.entries.keys().map(|package_id| *package_id)
+    }
+
     pub fn get(&self, id: &PackageId) -> &MetadataIndexEntry<'a> {
         self.entries.get(id).unwrap()
     }
@@ -95,6 +103,44 @@ impl<'a> MetadataIndex<'a> {
             }
         }
         visited
+    }
+
+    /// Collect the trusted packages for the build by unioning the `trusted_crates` sets from the
+    /// `Cargo.toml` manifests of `root_packages`.
+    ///
+    /// If the resulting set intersects `root_packages`, fail with an error.
+    pub fn get_trusted(
+        &self,
+        root_packages: &Set<PackageId>,
+        all_packages: &Set<PackageId>,
+    ) -> Set<PackageId> {
+        let trusted_names: Set<String> = root_packages
+            .iter()
+            .flat_map(|root| {
+                self.get(root)
+                    .verus_metadata
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|metadata| metadata.trusted_crates.iter().cloned())
+            })
+            .collect();
+        let trusted_packages: Set<PackageId> = all_packages
+            .iter()
+            .filter(|package_id| trusted_names.contains(self.get(package_id).package.name.as_str()))
+            .cloned()
+            .collect();
+
+        let trusted_roots: Vec<String> = trusted_packages
+            .intersection(root_packages)
+            .map(|package_id| self.get(package_id).package.name.to_string())
+            .collect();
+        assert!(
+            trusted_roots.is_empty(),
+            "root packages cannot be marked as trusted: {}",
+            trusted_roots.join(", "),
+        );
+
+        trusted_packages
     }
 
     /// Names to pass via `--import-dep-if-present` for every `verify=true`
@@ -118,7 +164,7 @@ impl<'a> MetadataIndex<'a> {
                 continue;
             }
             let entry = self.get(pkg_id);
-            if entry.verus_metadata.verify {
+            if entry.verus_metadata.as_ref().is_some_and(|metadata| metadata.verify) {
                 let import_name = name_override.or_else(|| {
                     entry.package.targets.iter().find(|t| t.is_lib()).map(|t| t.name.clone())
                 });
@@ -132,15 +178,97 @@ impl<'a> MetadataIndex<'a> {
         }
         names
     }
+
+    /// Collect sources of `vstd` that appear in the verified part of the build.
+    pub fn collect_vstd_metadata(
+        &self,
+        packages_to_verify: &Set<PackageId>,
+    ) -> Set<PackageMetadata> {
+        // Packages that verification will run on.
+        let packages_will_verify = Set::from_iter(
+            packages_to_verify
+                .iter()
+                .filter(|package_id| {
+                    self.get(package_id)
+                        .verus_metadata
+                        .as_ref()
+                        .is_some_and(|metadata| metadata.verify)
+                })
+                .cloned(),
+        );
+        // Transitive closure of packages that verification will run on.
+        let tclosure_will_verify = self.get_transitive_closure(packages_will_verify);
+
+        // Metadata of all `vstd` instances that appear anywhere in the transitive closure.
+        let vstd_metadata: Set<PackageMetadata> = tclosure_will_verify
+            .iter()
+            .flat_map(|package_id| {
+                let entry = self.get(package_id);
+                if entry.verus_metadata.as_ref().is_some_and(|metadata| metadata.is_vstd) {
+                    Some(PackageMetadata::from(entry.package))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert!(
+            vstd_metadata.len() <= 1,
+            "The `vstd` versioning scheme prevents multiple instances in a resolve set.",
+            // This is a consequence of the current `vstd` versioning scheme.
+            // In the current scheme, each version matches `0.0.0-*`.
+            // By definition, *all* such versions are semver-compatible.
+            // Cargo disallows different *compatible* versions in a resolve set.
+            // https://doc.rust-lang.org/cargo/reference/resolver.html#semver-compatibility
+        );
+
+        vstd_metadata
+    }
 }
 
-impl<'a> MetadataIndexEntry<'a> {
-    pub fn package(&self) -> &'a Package {
-        self.package
-    }
+/// Metadata about a package.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PackageMetadata {
+    pub version: Version,
+    pub source: PackageSource,
+}
 
-    pub fn verus_metadata(&self) -> &VerusMetadata {
-        &self.verus_metadata
+/// Details of a package source.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PackageSource {
+    Registry { url: String },
+    Git { url: String, rev: Option<String> },
+    Unsupported,
+}
+
+impl From<&Package> for PackageMetadata {
+    fn from(package: &Package) -> Self {
+        let version = package.version.clone();
+        let source =
+            package.source.as_ref().map(PackageSource::from).unwrap_or(PackageSource::Unsupported);
+        PackageMetadata { version, source }
+    }
+}
+
+/// NOTE: This code relies on Cargo internals because there's no stable API.
+/// The tests in `test_vstd_sources.rs` should be able to detect if these assumptions break.
+impl From<&Source> for PackageSource {
+    fn from(source: &Source) -> Self {
+        let repr = &source.repr;
+        if let Some(registry) = repr.strip_prefix("registry+") {
+            PackageSource::Registry { url: registry.to_string() }
+        } else if let Some(git_source) = repr.strip_prefix("git+") {
+            let (url, rev) = if let Some((url, rev)) = git_source.rsplit_once('#') {
+                (url, Some(rev.to_owned()))
+            } else {
+                (git_source, None)
+            };
+            // Trim the query part of the URL.
+            let url = url.split_once('?').map_or(url, |(trimmed_url, _query)| trimmed_url);
+            PackageSource::Git { url: url.to_string(), rev }
+        } else {
+            PackageSource::Unsupported
+        }
     }
 }
 
@@ -242,5 +370,40 @@ mod tests {
         // - `not_verified` is not emitted, but the walk still descends into
         //   its deps to reach `deeper`.
         assert_eq!(names, vec!["deeper".to_string(), "renamed".to_string()]);
+    }
+
+    #[test]
+    fn trusted_crates_are_selected_from_root_metadata() {
+        let workspace = MockWorkspace::new()
+            .members([
+                MockPackage::new("deeper").lib(),
+                MockPackage::new("mid")
+                    .lib()
+                    .trusted_crates(["deeper"])
+                    .deps([MockDep::workspace("deeper")]),
+                MockPackage::new("root")
+                    .lib()
+                    .trusted_crates(["mid"])
+                    .deps([MockDep::workspace("mid")]),
+            ])
+            .materialize();
+
+        let metadata = fetch_metadata(vec![], workspace.path().to_path_buf()).unwrap();
+        let index = MetadataIndex::new(&metadata).unwrap();
+        let roots: Set<PackageId> = metadata
+            .packages
+            .iter()
+            .filter(|package| package.name.as_str() == "root")
+            .map(|package| package.id.clone())
+            .collect();
+
+        let all_packages = index.get_transitive_closure(roots.clone());
+        let trusted_names: Set<String> = index
+            .get_trusted(&roots, &all_packages)
+            .iter()
+            .map(|package_id| index.get(package_id).package.name.to_string())
+            .collect();
+
+        assert_eq!(trusted_names, Set::from(["mid".to_string()]));
     }
 }

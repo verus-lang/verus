@@ -11,6 +11,7 @@ use crate::inherent_safety_conditions::check_inherent_conditions;
 use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
 use std::collections::HashSet;
+use verus_syn::ext::IdentExt;
 use verus_syn::parse;
 use verus_syn::spanned::Spanned;
 use verus_syn::{Error, GenericArgument, GenericParam, Ident, Path, PathArguments, Type, TypePath};
@@ -254,12 +255,17 @@ fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
         | ShardableType::Multiset(_)
         | ShardableType::Option(_)
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::StorageOption(_)
         | ShardableType::StorageMap(_, _)
+        | ShardableType::StorageIMap(_, _)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentIMap(_, _)
         | ShardableType::PersistentOption(_)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::Count
         | ShardableType::PersistentCount
         | ShardableType::Bool
@@ -288,15 +294,20 @@ fn is_allowed_in_special_op(
         }
 
         ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::Option(_)
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::Bool
         | ShardableType::Multiset(_)
         | ShardableType::StorageOption(_)
         | ShardableType::StorageMap(_, _)
+        | ShardableType::StorageIMap(_, _)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentIMap(_, _)
         | ShardableType::PersistentOption(_)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::PersistentBool
         | ShardableType::PersistentCount
         | ShardableType::Count => {
@@ -385,14 +396,20 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
         | ShardableType::NotTokenized(_) => false,
 
         ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::PersistentMap(_, _)
-        | ShardableType::StorageMap(_, _) => match elt {
+        | ShardableType::PersistentIMap(_, _)
+        | ShardableType::StorageMap(_, _)
+        | ShardableType::StorageIMap(_, _) => match elt {
             MonoidElt::General(_) => true,
             MonoidElt::SingletonKV(_, _) => true,
             _ => false,
         },
 
-        ShardableType::Set(_) | ShardableType::PersistentSet(_) => match elt {
+        ShardableType::Set(_)
+        | ShardableType::ISet(_)
+        | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_) => match elt {
             MonoidElt::General(_) => true,
             MonoidElt::SingletonSet(_) => true,
             _ => false,
@@ -753,6 +770,25 @@ fn check_label_param(sm: &SM, tr: &Transition, errors: &mut Vec<Error>) {
                 };
                 errors.push(Error::new(tr.name.span(),
                   format!("Since '{TRANSITION_LABEL_TYPE_NAME:}' was declared, the first param to a {kindname:} must be '{TRANSITION_LABEL_TYPE_NAME:}'")));
+            }
+        }
+    }
+
+    // `next_by` and `init_by` bind the other params alongside their label argument.
+    let label_arg = match tr.kind {
+        TransitionKind::Property => None,
+        TransitionKind::Init => sm.init_label.as_ref().map(|_| "init_label"),
+        TransitionKind::ReadonlyTransition | TransitionKind::Transition => {
+            sm.transition_label.as_ref().map(|_| "label")
+        }
+    };
+    if let Some(label_arg) = label_arg {
+        for param in tr.params.iter().skip(1) {
+            if param.name.unraw() == label_arg {
+                errors.push(Error::new(
+                    param.name.span(),
+                    format!("'{label_arg:}' cannot be used as a param name since it would shadow the label"),
+                ));
             }
         }
     }

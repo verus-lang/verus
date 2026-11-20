@@ -58,7 +58,7 @@ test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
         const C: u64 = S;
         const S: u64 = C;
-    } => Err(err) => assert_rust_error_msg(err, "cycle detected when checking if `C` is a trivial const")
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when simplifying constant for the type system `C`")
 }
 
 test_verify_one_file! {
@@ -75,7 +75,7 @@ test_verify_one_file! {
     #[test] test1_fails3 verus_code! {
         spec const C: u64 = S;
         spec const S: u64 = C;
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -127,6 +127,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] dual_mode_const_branch_on_spec_const_issue3211 verus_code! {
+        pub spec const S: bool = true;
+        const C: u8 = if S { 1 } else { 2 };
+    } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] exec_static_branch_on_spec_const_issue3211 verus_code! {
+        pub spec const S: bool = true;
+        exec static X: u8 = if S { 1 } else { 2 };
+    } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
     #[test] test_used_as_spec verus_code! {
         spec const SPEC_E: u64 = 7;
         #[verifier::when_used_as_spec(SPEC_E)]
@@ -164,7 +178,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] static_mut_unsupported verus_code! {
         static mut x: u64 = 0;
-    } => Err(e) => assert_vir_error_msg(e, "Verus does not support 'static mut'")
+    } => Err(e) => assert_vir_error_msg(e, "Verus does not currently support static mut")
 }
 
 test_verify_one_file! {
@@ -189,7 +203,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] spec_dual_mode_unsupported verus_code! {
         static E: u64 = 0;
-    } => Err(e) => assert_vir_error_msg(e, "explicitly mark the static as `exec`")
+    } => Err(e) => assert_vir_error_msg(e, "explicitly mark the `static` item as `exec`")
 }
 
 test_verify_one_file! {
@@ -261,7 +275,10 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot read static with mode exec")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "cannot read static with mode exec",
+        "cannot read static with mode exec",
+    ])
 }
 
 test_verify_one_file! {
@@ -275,7 +292,10 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "cannot read const with mode exec",
+        "cannot read const with mode exec",
+    ])
 }
 
 test_verify_one_file! {
@@ -562,8 +582,246 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] const_with_ensures_issue2175 verus_code! {
+    #[test] const_with_ensures_issue2175 code! {
         #[verus_spec(ensures true)]
         pub const C: char = 'x';
-    } => Err(err) => assert_vir_error_msg(err, "const cannot have `ensures` unless it is `exec const`")
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] const_with_ensures_in_verus_macro_issue2175 verus_code! {
+        #[verus_spec(ensures true)]
+        pub const C: char = 'x';
+    } => Err(err) => {
+        assert!(err.warnings.len() == 1);
+        assert!(err.errors.len() == 1);
+        assert!(err.warnings[0].message.contains("#[verus_spec] is likely used inside a verus! block"));
+        assert_vir_error_msg(err, "const is marked `exec` mode but also has an internal `open` attribute (note: this can happen if `#[verus_spec(...)]` is used inside the `verus!` macro)");
+    }
+}
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/2659
+    // A type parameter from the surrounding `impl` block should be usable in an
+    // associated const's type.
+    #[test] assoc_const_impl_type_param_issue2659 verus_code! {
+        enum Maybe<T> { Nothing, Just(T) }
+
+        struct WrappedU64<T> {
+            val: u64,
+            t: Maybe<T>,
+        }
+
+        struct MyStruct<T> { t: T }
+
+        impl<T> MyStruct<T> {
+            const X: WrappedU64<T> = WrappedU64 {
+                val: 42,
+                t: Maybe::Nothing,
+            };
+        }
+
+        fn test() {
+            let w = MyStruct::<bool>::X;
+            assert(w.val == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Referencing the value of a generic associated const should still verify facts
+    // about the value, so a false assertion must fail.
+    #[test] assoc_const_impl_type_param_fails_issue2659 verus_code! {
+        enum Maybe<T> { Nothing, Just(T) }
+
+        struct WrappedU64<T> {
+            val: u64,
+            t: Maybe<T>,
+        }
+
+        struct MyStruct<T> { t: T }
+
+        impl<T> MyStruct<T> {
+            const X: WrappedU64<T> = WrappedU64 {
+                val: 42,
+                t: Maybe::Nothing,
+            };
+        }
+
+        fn test() {
+            let w = MyStruct::<bool>::X;
+            assert(w.val == 43); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // A generic associated const whose type does not mention the type parameter,
+    // used from a generic function with a trait bound.
+    #[test] assoc_const_impl_type_param_bounded_issue2659 verus_code! {
+        trait Tr { spec fn v() -> u64; }
+
+        struct S<T> { t: T }
+
+        impl<T: Tr> S<T> {
+            const C: u64 = 7;
+        }
+
+        fn test<T: Tr>() {
+            let c = S::<T>::C;
+            assert(c == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // A generic associated const whose type refers to an associated type of a trait
+    // bound on the impl's type parameter (`T::Assoc` where `T: Tr`).
+    #[test] assoc_const_impl_type_param_assoc_type_issue2659 verus_code! {
+        trait Tr {
+            type Assoc;
+        }
+
+        enum Wrapper<A> { Empty, Full(A) }
+
+        struct MyStruct<T> { t: T }
+
+        impl<T: Tr> MyStruct<T> {
+            const X: Wrapper<T::Assoc> = Wrapper::Empty;
+        }
+
+        fn test<T: Tr>() {
+            let w = MyStruct::<T>::X;
+            assert(w is Empty);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_attr_spec_const_issue3147 verus_code! {
+        #[verifier::exec]
+        spec const C: bool = true;
+    } => Err(err) => assert_vir_error_msg(err, "conflicting mode attributes: `exec` and `spec`")
+}
+
+test_verify_one_file! {
+    #[test] conflicting_const_attrs_without_verus_issue3147 code! {
+        #[verifier::exec]
+        #[verifier::spec]
+        const C: u64 = 5;
+    } => Err(err) => assert_vir_error_msg(err, "conflicting mode attributes: `exec` and `spec`")
+}
+
+// Rust's const evaluator must not observe items changed by ghost erasure.
+test_verify_one_file! {
+    #[test] array_length_ghost_const verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        fn f() -> (r: usize) ensures r == 8 {
+            let a = [0u8; core::mem::size_of_val(&N)];
+            a.len()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] const_generic_ghost_const verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        struct S<const K: usize> { a: [u8; K] }
+        fn f() { let s = S::<{ core::mem::size_of_val(&N) }> { a: [0; 8] }; }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] const_default_ghost_const verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        struct S<const K: usize = { core::mem::size_of_val(&N) }> { a: [u8; K] }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] discriminant_ghost_const verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        #[repr(usize)]
+        enum E { A = core::mem::size_of_val(&N) }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] array_length_ghost_proof verus_code! {
+        use vstd::prelude::*;
+        const proof fn p() {}
+        fn f() { let a = [0u8; { p(); 8 }]; }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::p` with mode proof")
+}
+
+test_verify_one_file! {
+    #[test] array_length_ghost_associated_const verus_code! {
+        use vstd::prelude::*;
+        struct S;
+        trait T { const N: usize; }
+        impl T for S { const N: usize = 7; }
+        impl S { spec const N: usize = 0; }
+        fn f() -> (r: usize) ensures r == 0 {
+            let a = [0u8; S::N];
+            a.len()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] array_length_external_exec_const code! {
+        use vstd::prelude::*;
+        const C: usize = 5;
+        const fn c() -> usize { C }
+        verus! {
+            assume_specification[C] -> usize returns 5usize;
+            assume_specification[c]() -> usize returns 5usize;
+
+            fn f() -> (r: usize) ensures r == 5 {
+                let a: [u8; C] = [0u8; c()];
+                a.len()
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] array_length_ghost_const_in_exec_const verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        exec const C: usize = {
+            let a = [0u8; core::mem::size_of_val(&N)];
+            a.len()
+        };
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
+}
+
+// Rust's const evaluator checks arithmetic in anonymous constants; Verus does not verify it.
+test_verify_one_file! {
+    #[test] array_length_arithmetic_not_verified code! {
+        use vstd::prelude::*;
+        const K: usize = 3;
+        verus! {
+            assume_specification[K] -> usize;
+
+            fn f() {
+                let a = [0u8; (1 << K) - 1];
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] array_length_external_body_signature verus_code! {
+        use vstd::prelude::*;
+        spec const N: usize = 5;
+        #[verifier::external_body]
+        fn make() -> [u8; core::mem::size_of_val(&N)] {
+            Default::default()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }

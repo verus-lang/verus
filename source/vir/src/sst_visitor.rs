@@ -204,14 +204,12 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         Ok(typ_inv_vars2)
     }
 
-    fn visit_havoc_set(&mut self, hset: &Arc<HavocSet>) -> Result<R::Ret<Arc<HavocSet>>, Err> {
-        let mut typ_inv_vars2 = R::vec();
-        for (uid, (typ, hvar)) in hset.vars.iter() {
-            let typ = self.visit_typ(typ)?;
-            let hvar = *hvar;
-            R::push(&mut typ_inv_vars2, R::ret(|| (uid.clone(), (R::get(typ), hvar)))?);
-        }
-        R::ret(|| Arc::new(HavocSet { vars: R::get_vec(typ_inv_vars2).into_iter().collect() }))
+    fn visit_havoc_set(&mut self, _hset: &Arc<HavocSet>) -> Result<R::Ret<Arc<HavocSet>>, Err> {
+        // The HavocSet internally has a bunch of types which need to be traversed
+        // to make an accurate visitor.
+        // Right now, the HavocSets are filled as the last step before translating to AIR,
+        // so it's fine to leave this unimplemented.
+        unimplemented!("running SST visitor after HavocSets are added");
     }
 
     fn visit_havoc_set_opt(
@@ -289,9 +287,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exp_new(ExpX::NullaryOpr(NullaryOpr::ConstTypBound(R::get(t1), R::get(t2))))
                 })
             }
-            ExpX::NullaryOpr(NullaryOpr::NoInferSpecForLoopIter) => {
-                R::ret(|| exp_new(exp.x.clone()))
-            }
             ExpX::Unary(op, e1) => {
                 let e1 = self.visit_exp(e1)?;
                 R::ret(|| exp_new(ExpX::Unary(*op, R::get(e1))))
@@ -315,9 +310,9 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         let t = self.visit_typ(t)?;
                         R::ret(|| UnaryOpr::HasResolved(R::get(t)))
                     }
-                    UnaryOpr::ToDyn(t) => {
+                    UnaryOpr::ToDyn(t, impl_paths) => {
                         let t = self.visit_typ(t)?;
-                        R::ret(|| UnaryOpr::ToDyn(R::get(t)))
+                        R::ret(|| UnaryOpr::ToDyn(R::get(t), impl_paths.clone()))
                     }
                     UnaryOpr::IsVariant { .. }
                     | UnaryOpr::Field { .. }
@@ -325,7 +320,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     | UnaryOpr::CustomErr(..)
                     | UnaryOpr::AutoDecreases
                     | UnaryOpr::AutoLoopEnsures
-                    | UnaryOpr::ProofNote(..) => R::ret(|| op.clone()),
+                    | UnaryOpr::ProofNote(..)
+                    | UnaryOpr::LoopIsolationBoundary(_) => R::ret(|| op.clone()),
                 }?;
                 R::ret(|| exp_new(ExpX::UnaryOpr(R::get(op), R::get(e1))))
             }
@@ -425,6 +421,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 split,
                 dest,
                 assert_id,
+                body,
             } => {
                 let resolved_method = if let Some((f, ts)) = resolved_method {
                     let ts = self.visit_typs(ts)?;
@@ -435,6 +432,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let typ_args = self.visit_typs(typ_args)?;
                 let args = self.visit_exps(args)?;
                 let dest = R::map_vec(dest, &mut |d| self.visit_dest(d))?;
+                let body = R::map_opt(body, &mut |s| self.visit_stm(s))?;
                 R::ret(|| {
                     stm_new(StmX::Call {
                         fun: fun.clone(),
@@ -446,6 +444,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         split: split.clone(),
                         dest: R::get_vec_a(dest),
                         assert_id: assert_id.clone(),
+                        body: R::get_opt(body),
                     })
                 })
             }
@@ -478,6 +477,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             }
             StmX::Fuel(..) => R::ret(|| stm.clone()),
             StmX::RevealString(_) => R::ret(|| stm.clone()),
+            StmX::RevealByteString(_) => R::ret(|| stm.clone()),
             StmX::DeadEnd(stm) => {
                 let s = self.visit_stm(&stm)?;
                 R::ret(|| stm_new(StmX::DeadEnd(R::get(s))))
@@ -501,6 +501,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 R::ret(|| stm_new(StmX::If(R::get(exp), R::get(s1), R::get_opt(s2))))
             }
             StmX::Loop {
+                pre_stms,
                 loop_isolation,
                 is_for_loop,
                 id,
@@ -511,22 +512,34 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 decrease,
                 typ_inv_vars,
                 modified_vars,
-                pre_modified_params,
+                au_branch_bool,
+                pre_modified_params_incl,
+                pre_modified_params_excl,
+                known_no_back_edge,
             } => {
+                let pre_stms = self.visit_stms(pre_stms)?;
                 let cond = R::map_opt(cond, &mut |(cond_stm, cond_exp)| {
                     let cond_stm = self.visit_stm(cond_stm)?;
                     let cond_exp = self.visit_exp(cond_exp)?;
                     R::ret(|| (R::get(cond_stm), R::get(cond_exp)))
+                })?;
+                let au_branch_bool = R::map_opt(au_branch_bool, &mut |exp| {
+                    let exp = self.visit_exp(exp)?;
+                    R::ret(|| R::get(exp))
                 })?;
                 let body = self.visit_stm(body)?;
                 let invs = R::map_vec(invs, &mut |inv| self.visit_loop_inv(inv))?;
                 let decrease = self.visit_exps(decrease)?;
                 let typ_inv_vars = self.visit_typ_inv_vars(typ_inv_vars)?;
                 let modified_vars = self.visit_havoc_set_opt(modified_vars)?;
-                let pre_modified_params = self.visit_havoc_set_opt(pre_modified_params)?;
+                let pre_modified_params_incl =
+                    self.visit_havoc_set_opt(pre_modified_params_incl)?;
+                let pre_modified_params_excl =
+                    self.visit_havoc_set_opt(pre_modified_params_excl)?;
                 R::ret(|| {
                     stm_new(StmX::Loop {
                         loop_isolation: *loop_isolation,
+                        pre_stms: R::get_vec_a(pre_stms),
                         is_for_loop: *is_for_loop,
                         id: *id,
                         label: label.clone(),
@@ -536,7 +549,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         decrease: R::get_vec_a(decrease),
                         typ_inv_vars: R::get_vec_a(typ_inv_vars),
                         modified_vars: R::get_opt(modified_vars),
-                        pre_modified_params: R::get_opt(pre_modified_params),
+                        au_branch_bool: R::get_opt(au_branch_bool),
+                        pre_modified_params_incl: R::get_opt(pre_modified_params_incl),
+                        pre_modified_params_excl: R::get_opt(pre_modified_params_excl),
+                        known_no_back_edge: *known_no_back_edge,
                     })
                 })
             }
@@ -580,12 +596,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         R::ret(|| {
             Spanned::new(
                 par.span.clone(),
-                ParX {
-                    name: par.x.name.clone(),
-                    typ: R::get(t),
-                    mode: par.x.mode,
-                    purpose: par.x.purpose,
-                },
+                ParX { name: par.x.name.clone(), typ: R::get(t), mode: par.x.mode },
             )
         })
     }
@@ -690,6 +701,12 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
 
     fn visit_func_check(&mut self, def: &FuncCheckSst) -> Result<R::Ret<FuncCheckSst>, Err> {
         let reqs = self.visit_exps(&def.reqs)?;
+        let return_opaque_type_eqs =
+            R::map_vec(&def.return_opaque_type_eqs, &mut |(opaque, hidden)| {
+                let opaque = self.visit_typ(opaque)?;
+                let hidden = self.visit_typ(hidden)?;
+                R::ret(|| (R::get(opaque), R::get(hidden)))
+            })?;
         let post_condition = self.visit_postcondition(&def.post_condition)?;
         let body = self.visit_stm(&def.body)?;
         let local_decls = R::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
@@ -698,6 +715,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
 
         R::ret(|| FuncCheckSst {
             reqs: R::get_vec_a(reqs),
+            return_opaque_type_eqs: R::get_vec_a(return_opaque_type_eqs),
             post_condition: Arc::new(R::get(post_condition)),
             unwind: R::get(unwind),
             body: R::get(body),
@@ -737,7 +755,9 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
     fn visit_function(&mut self, f: &FunctionSst) -> Result<R::Ret<FunctionSst>, Err> {
         let typ_bounds = self.visit_generic_bounds(&f.x.typ_bounds)?;
         let pars = self.visit_pars(&f.x.pars)?;
-        let ret = self.visit_pars(&f.x.ret)?;
+        let inner_ret = self.visit_par(&f.x.inner_ret)?;
+        let outer_ret = self.visit_par(&f.x.outer_ret)?;
+        let extra_rets = self.visit_pars(&f.x.extra_rets)?;
         let decl = self.visit_func_decl(&f.x.decl)?;
         let axioms = self.visit_func_axioms(&f.x.axioms)?;
         let exec_proof_check =
@@ -745,7 +765,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let recommends_check =
             R::map_opt(&f.x.recommends_check, &mut |c| self.visit_func_check(c))?;
         let safe_api_check = R::map_opt(&f.x.safe_api_check, &mut |c| self.visit_func_check(c))?;
-        let async_ret = R::map_opt(&f.x.async_ret, &mut |c| self.visit_par(c))?;
         R::ret(|| {
             Spanned::new(
                 f.span.clone(),
@@ -760,7 +779,9 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     typ_bounds: R::get_vec_a(typ_bounds),
                     n_orig_params: f.x.n_orig_params,
                     pars: R::get_vec_a(pars),
-                    ret: R::get_vec_a(ret),
+                    inner_ret: R::get(inner_ret),
+                    outer_ret: R::get(outer_ret),
+                    extra_rets: R::get_vec_a(extra_rets),
                     ens_has_return: f.x.ens_has_return,
                     item_kind: f.x.item_kind,
                     attrs: f.x.attrs.clone(),
@@ -770,7 +791,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exec_proof_check: R::get_opt(exec_proof_check).map(|c| Arc::new(c)),
                     recommends_check: R::get_opt(recommends_check).map(|c| Arc::new(c)),
                     safe_api_check: R::get_opt(safe_api_check).map(|c| Arc::new(c)),
-                    async_ret: R::get_opt(async_ret),
+                    hidden: f.x.hidden.clone(),
                 },
             )
         })
@@ -931,41 +952,6 @@ pub(crate) fn exp_rename_vars(exp: &Exp, map: &HashMap<UniqueIdent, UniqueIdent>
         }
         _ => exp.clone(),
     })
-}
-
-struct MapShallowExp<'a, E, FT, FE> {
-    env: &'a mut E,
-    ft: &'a FT,
-    fe: &'a FE,
-}
-
-impl<'a, E, FT, FE> Visitor<Rewrite, VirErr, NoScoper> for MapShallowExp<'a, E, FT, FE>
-where
-    FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
-    FE: Fn(&mut E, &Exp) -> Result<Exp, VirErr>,
-{
-    fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, VirErr> {
-        (self.ft)(&mut self.env, typ)
-    }
-
-    fn visit_exp(&mut self, exp: &Exp) -> Result<Exp, VirErr> {
-        (self.fe)(&mut self.env, exp)
-    }
-}
-
-// non-recursive visitor
-pub(crate) fn map_shallow_exp<E, FT, FE>(
-    exp: &Exp,
-    env: &mut E,
-    ft: &FT,
-    fe: &FE,
-) -> Result<Exp, VirErr>
-where
-    FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
-    FE: Fn(&mut E, &Exp) -> Result<Exp, VirErr>,
-{
-    let mut visitor = MapShallowExp { env, ft, fe };
-    visitor.visit_exp_rec(exp)
 }
 
 struct MapStmVisitor<'a, F> {
@@ -1226,4 +1212,62 @@ where
 {
     let mut visitor = MapExpsInStmVisitor { fe };
     visitor.visit_stm(stm).unwrap()
+}
+
+struct ExpTypVisitorMap<'a, Env, FE, FT> {
+    map: &'a mut VisitorScopeMap,
+    env: &'a mut Env,
+    fe: &'a mut FE,
+    ft: &'a mut FT,
+}
+
+impl<'a, E, Env, FE, FT> Visitor<Rewrite, E, VisitorScopeMap> for ExpTypVisitorMap<'a, Env, FE, FT>
+where
+    FE: FnMut(&Exp, &mut Env, &mut VisitorScopeMap) -> Result<Exp, E>,
+    FT: FnMut(&Typ, &mut Env, &mut VisitorScopeMap) -> Result<Typ, E>,
+{
+    fn visit_exp(&mut self, exp: &Exp) -> Result<Exp, E> {
+        let exp = self.visit_exp_rec(exp)?;
+        (self.fe)(&exp, &mut self.env, &mut self.map)
+    }
+
+    fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, E> {
+        let typ = self.visit_typ_rec(typ)?;
+        (self.ft)(&typ, &mut self.env, &mut self.map)
+    }
+
+    fn scoper(&mut self) -> Option<&mut VisitorScopeMap> {
+        Some(&mut self.map)
+    }
+}
+
+impl<'a, E, Env, FE, FT> crate::ast_visitor::AstVisitor<Rewrite, E, crate::ast_visitor::NoScoper>
+    for ExpTypVisitorMap<'a, Env, FE, FT>
+where
+    FE: FnMut(&Exp, &mut Env, &mut VisitorScopeMap) -> Result<Exp, E>,
+    FT: FnMut(&Typ, &mut Env, &mut VisitorScopeMap) -> Result<Typ, E>,
+{
+    fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, E> {
+        let typ = self.visit_typ_rec(typ)?;
+        (self.ft)(&typ, &mut self.env, &mut self.map)
+    }
+}
+
+/// Bottom-up map over all the Exps and Typs in exp (including Typs nested inside Typs).
+/// Each node's children are mapped first, then fe/ft is applied to the rebuilt node.
+/// The result of fe/ft is not visited again.
+/// map tracks the variables bound by binders enclosing the current node.
+pub(crate) fn exp_typ_visitor_map<E, Env, FE, FT>(
+    exp: &Exp,
+    map: &mut VisitorScopeMap,
+    env: &mut Env,
+    fe: &mut FE,
+    ft: &mut FT,
+) -> Result<Exp, E>
+where
+    FE: FnMut(&Exp, &mut Env, &mut VisitorScopeMap) -> Result<Exp, E>,
+    FT: FnMut(&Typ, &mut Env, &mut VisitorScopeMap) -> Result<Typ, E>,
+{
+    let mut visitor = ExpTypVisitorMap { map, env, fe, ft };
+    visitor.visit_exp(exp)
 }

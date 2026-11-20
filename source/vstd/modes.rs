@@ -102,4 +102,14 @@ unsafe impl<T: TrivialOwnership> TrivialOwnership for [T] {
     }
 }
 
+/// Coerce the executable value to a tracked value. Equivalent to [`core::mem::forget`](https://doc.rust-lang.org/std/mem/fn.forget.html).
+#[verifier::external_body]
+pub fn forget<T>(t: T) -> Tracked<T>
+    returns
+        t,
+{
+    core::mem::forget(t);
+    Tracked::assume_new()
+}
+
 } // verus!

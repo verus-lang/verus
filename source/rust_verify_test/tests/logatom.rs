@@ -1,0 +1,1030 @@
+#![feature(rustc_private)]
+#[macro_use]
+mod common;
+use std::sync::LazyLock;
+
+use common::*;
+
+const TOKEN_LIB: &'static str = verus_code_str! {
+    use vstd::*;
+    use vstd::prelude::*;
+    use vstd::atomic::*;
+
+    pub tracked struct Token {
+        state: u16,
+    }
+
+    impl Token {
+        pub closed spec fn is_valid(self) -> bool {
+            self.state <= 1000
+        }
+
+        proof fn with_state(tracked state: u16) -> (tracked out: Self)
+            ensures out.state == state,
+        {
+            Self { state }
+        }
+
+        pub proof fn new() -> (tracked out: Self)
+            ensures out.is_valid(),
+        {
+            Self::with_state(250)
+        }
+
+        pub proof fn invalid() -> (tracked out: Self)
+            ensures !out.is_valid(),
+        {
+            Self::with_state(2000)
+        }
+
+        pub proof fn visit(tracked &self)
+            requires self.is_valid(),
+            ensures self.is_valid(),
+        {}
+
+        pub proof fn modify(tracked &mut self)
+            requires old(self).is_valid(),
+            ensures final(self).is_valid(),
+        {
+            self.state = (1000 - self.state) as u16;
+        }
+
+        pub proof fn consume(tracked self) {
+            let _ = self;
+        }
+    }
+};
+
+test_verify_one_file! {
+    #[test] token_lib_def TOKEN_LIB.to_owned() => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_args
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        pub fn atomic_function(x: u8, y: i32)
+            atomically (atomic_update) {}
+        {
+            assert(atomic_update.pred().args(x, y));
+            assume(false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_generic_function_call
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        fn generic_atomic<F>(_callback: F)
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+
+        fn client() {
+            generic_atomic(5u8) atomically |update| {
+                let tracked _token = update(Token::new());
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_method_impl_generic
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+
+        struct Wrapper<T> {
+            value: T,
+        }
+
+        impl<T> Wrapper<T> {
+            fn atomic_method(&self)
+                atomically (atomic_update) {
+                    (old: Token) -> (new: Commit<Token>),
+                    ensures new@ == old,
+                },
+            {
+                try_open_atomic_update!(atomic_update, token => {
+                    Tracked(Commit(token))
+                });
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_lifetime_generic
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+
+        fn atomic_ref<'a>(_value: &'a u8)
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_const_generic
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub tracked struct Token { pub len: usize }
+
+        pub fn atomic_array<const N: usize>(_value: [u8; N])
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                requires old.len == N,
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_commit_only
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        pub fn atomic_function()
+            atomically (atomic_update) {
+                (x: Token) -> (y: Result<Token, Token>),
+                requires x.is_valid(),
+                ensures match y {
+                    Ok(t) => t.is_valid(),
+                    Err(t) => t == x,
+                },
+            },
+        {
+            let res = try_open_atomic_update!(atomic_update, token => {
+                Tracked(Ok(token))
+            });
+
+            assert(res@ is Ok);
+            assert(atomic_update.resolves());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_commit_fail_atomic_post
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        pub fn atomic_function()
+            atomically (atomic_update) {
+                (x: Token) -> (y: Result<Token, Token>),
+                requires x.is_valid(),
+                ensures match y {
+                    Ok(t) => t.is_valid(),
+                    Err(t) => t == x,
+                },
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Ok(Token::invalid()))
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot show atomic postcondition holds at end of block")
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_abort_only
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        pub fn atomic_function()
+            atomically (atomic_update) {
+                (x: Token) -> (y: Result<Token, Token>),
+                requires x.is_valid(),
+                ensures match y {
+                    Ok(t) => t.is_valid(),
+                    Err(t) => t == x,
+                },
+            },
+        {
+            let tracked au = atomic_update;
+            let res = try_open_atomic_update!(au, token => {
+                Tracked(Err(token))
+            });
+
+            assert(res@ is Err);
+            assert(res@->Err_0 == atomic_update);
+            assume(false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_abort_fail_atomic_post
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        pub fn atomic_function()
+            atomically (atomic_update) {
+                (x: Token) -> (y: Result<Token, Token>),
+                requires x.is_valid(),
+                ensures match y {
+                    Ok(t) => t.is_valid(),
+                    Err(t) => t == x,
+                },
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Err(Token::invalid()))
+            });
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "cannot show atomic postcondition holds at end of block")
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_abort_and_commit
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        pub fn atomic_function()
+            atomically (atomic_update) {
+                (x: Token) -> (y: Result<Token, Token>),
+                requires x.is_valid(),
+                ensures match y {
+                    Ok(t) => t.is_valid(),
+                    Err(t) => t == x,
+                },
+            },
+        {
+            let tracked au = atomic_update;
+            let res = try_open_atomic_update!(au, token => {
+                Tracked(Err(token))
+            });
+
+            assert(res@ is Err);
+            let tracked au = res.get().tracked_unwrap_err();
+            assert(au == atomic_update);
+
+            let res = try_open_atomic_update!(au, mut token => {
+                proof { token.modify() };
+                Tracked(Ok(token))
+            });
+
+            assert(res@ is Ok);
+            assert(atomic_update.resolves());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_lifetime_escape
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        pub fn atomic_function()
+            atomically (atomic_update) {
+                (x: Token) -> (y: Result<Token, Token>),
+                requires x.is_valid(),
+                ensures match y {
+                    Ok(t) => t.is_valid(),
+                    Err(t) => t == x,
+                },
+            },
+        {
+            let tracked dummy = Token::invalid();
+            let tracked mut escape = &dummy;
+
+            let res = try_open_atomic_update!(atomic_update, token => {
+                proof { escape = &token };
+                Tracked(Ok(Token::new()))
+            });
+
+            proof { escape.visit() };
+        }
+    } => Err(_err)
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_lifetime_escape_ref
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        pub fn atomic_function()
+            atomically (atomic_update) {
+                (x: &Token) -> (y: Commit<&Token>),
+                requires x.is_valid(),
+                ensures true,
+            },
+        {
+            let tracked dummy = Token::invalid();
+            let tracked mut escape = &dummy;
+
+            let res = try_open_atomic_update!(atomic_update, token => {
+                proof { escape = token };
+                Tracked(Commit(token))
+            });
+
+            proof { escape.visit() };
+        }
+    } => Err(_err)
+}
+
+static ATOMIC_FUNCTION: LazyLock<String> = LazyLock::new(|| {
+    TOKEN_LIB.to_owned()
+        + verus_code_str! {
+            type FunAU = AtomicUpdate<Token, Result<Token, Token>, FunPred>;
+
+            pub fn atomic_function()
+                atomically (atomic_update) {
+                    type FunPred,
+                    (x: Token) -> (y: Result<Token, Token>),
+                    requires x.is_valid(),
+                    ensures match y {
+                        Ok(t) => t.is_valid(),
+                        Err(t) => t == x,
+                    },
+                },
+            {
+                assume(atomic_update.resolves());
+            }
+
+            uninterp spec fn cond<X>(x: X) -> bool;
+        }
+});
+
+test_verify_one_file! {
+    #[test] atomic_function_def ATOMIC_FUNCTION.to_owned() => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_predicate_type
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        pub proof fn check_predicate_type(
+            tracked au: FunAU,
+            tracked x: Token,
+            tracked y: Result<Token, Token>,
+        )
+            ensures
+                au.req(x) <==> x.is_valid(),
+                au.ens(x, y) <==> match y {
+                    Ok(t) => t.is_valid(),
+                    Err(t) => t == x,
+                },
+                au.outer_mask().is_empty(),
+                au.inner_mask().is_empty(),
+        {}
+    }
+    => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_assume_both
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            atomic_function() atomically loop |update| {
+                let tracked res: Result<Token, Token> = update(Token::new());
+                if cond(res) {
+                    assume(res.branch() == UpdateControlFlow::Commit);
+                    break;
+                } else {
+                    assume(res.branch() == UpdateControlFlow::Abort);
+                    continue;
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_fail_commit
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            atomic_function() atomically loop |update| {
+                let tracked res: Result<Token, Token> = update(Token::new());
+                if cond(res) {
+                    break;
+                } else {
+                    assume(res.branch() == UpdateControlFlow::Abort);
+                    continue;
+                }
+            }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "cannot show the atomic update was committed")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_fail_abort
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            atomic_function() atomically loop |update| {
+                let tracked res: Result<Token, Token> = update(Token::new());
+                if cond(res) {
+                    assume(res.branch() == UpdateControlFlow::Commit);
+                    break;
+                } else {
+                    continue;
+                }
+            }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "cannot show the atomic update was aborted")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_fail_abort_implicit
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            atomic_function() atomically loop |update| {
+                let tracked res: Result<Token, Token> = update(Token::new());
+                if cond(res) {
+                    assume(res.branch() == UpdateControlFlow::Commit);
+                    break;
+                }
+            }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "cannot show the atomic update was aborted")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_no_update
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            atomic_function() atomically loop |update| {}
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "function must be called in `atomically` block")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_multiple_updates
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            atomic_function() atomically loop |update| {
+                let tracked _ = update(Token::new());
+                let tracked _ = update(Token::new());
+            }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "function must be called exactly once in `atomically` block")
+}
+
+const COMMIT_U8_FUNCTION: &'static str = verus_code_str! {
+    use vstd::prelude::*;
+    use vstd::atomic::*;
+
+    fn atomic_function()
+        atomically (au) {
+            (x: u8) -> (y: Commit<u8>),
+        },
+    {
+        try_open_atomic_update!(au, x => { Tracked(Commit(x)) });
+    }
+};
+
+test_verify_one_file! {
+    #[test] atomic_call_update_in_proof_closure
+    COMMIT_U8_FUNCTION.to_owned() + verus_code_str! {
+        fn client() -> (r: u8)
+            ensures r == 1,
+        {
+            atomic_function() atomically |update| -> (au) {
+                let tracked g = proof_fn|tracked v: u8|
+                    ensures au.input() == v,
+                {
+                    update(v);
+                };
+                g(1);
+                g(2);
+            };
+            0
+        }
+    } => Err(err) => assert_vir_error_msg(err, "function pointer types")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_update_in_proof_closure_with_direct_update
+    COMMIT_U8_FUNCTION.to_owned() + verus_code_str! {
+        fn client() {
+            atomic_function() atomically |update| {
+                let tracked g = proof_fn|tracked v: u8| { update(v); };
+                g(1);
+                update(2);
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "function pointer types")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_with_helper_closures
+    COMMIT_U8_FUNCTION.to_owned() + verus_code_str! {
+        fn client() {
+            atomic_function() atomically |update| -> (au) {
+                let ghost identity = |v: u8| v;
+                let tracked identity_proof = proof_fn|tracked v: u8| -> (tracked r: u8)
+                    ensures r == v,
+                { v };
+                let tracked v = identity_proof(1);
+                update(v);
+                assert(au.input() == identity(1));
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_success
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            let tracked mut token = Token::new();
+            atomic_function() atomically loop |update|
+                invariant token.is_valid(),
+            {
+                let tracked res: Result<Token, Token> = update(token);
+                match res {
+                    Ok(t) => break,
+                    Err(t) => token = t,
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_success_loop_isolation
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(true)]
+        fn atomic_function_call() {
+            let tracked mut token = Token::new();
+            atomic_function() atomically loop |update| -> (au: FunAU)
+                invariant token.is_valid(),
+            {
+                let tracked res: Result<Token, Token> = update(token);
+                match res {
+                    Ok(t) => {
+                        assert(res.branch() == UpdateControlFlow::Commit);
+                        break;
+                    }
+
+                    Err(t) => {
+                        assert(res.branch() == UpdateControlFlow::Abort);
+                        token = t;
+                        continue;
+                    }
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_with_labels
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            let tracked mut token = Token::new();
+            atomic_function() 'label: atomically loop |update| -> (au: FunAU)
+                invariant token.is_valid(),
+            {
+                let tracked res = update(token);
+                match res {
+                    Ok(t) => break 'label,
+                    Err(t) => {
+                        token = t;
+                        continue 'label;
+                    }
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_fail_atomic_pre
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            atomic_function() atomically loop |update| {
+                let tracked _ = update(Token::invalid());
+                assume(false);
+                break;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot show atomic precondition holds before update function")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_missing_loop
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            let tracked mut token = Token::new();
+            atomic_function() atomically |update| {
+                update(token);
+            }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "cannot show atomic update was committed")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_misplaced_invariant
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            let tracked mut token = Token::new();
+            atomic_function() atomically |update|
+                invariant token.is_valid(),
+            {
+                update(token);
+                assume(false);
+            }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "invariants are only effective on `atomically loop` function calls")
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_empty
+    verus_code! {
+        use vstd::atomic::*;
+        pub exec fn atomic_function()
+            atomically (au) {},
+        {
+            try_open_atomic_update!(au, _unit => {
+                Tracked(())
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_check_defaults
+    verus_code! {
+        use vstd::atomic::*;
+        pub exec fn atomic_function()
+            atomically (au) {
+                type PredType,
+            },
+        {
+            try_open_atomic_update!(au, _unit => {
+                Tracked(())
+            });
+        }
+
+        pub proof fn check_predicate_type(
+            tracked au: AtomicUpdate<(), (), PredType>,
+            tracked x: (),
+            tracked y: (),
+        )
+            ensures
+                au.req(x),
+                au.ens(x, y),
+                au.outer_mask().is_empty(),
+                au.inner_mask().is_empty(),
+        {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_private_ensures_callee
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function() -> (out: u32)
+            atomically (au) {
+                type FunctionPred,
+                (x: u32) -> (y: Commit<u32>),
+                requires x == 2,
+                ensures y@ == 3,
+            },
+            ensures out == x + y@,
+        {
+            try_open_atomic_update!(au, value => {
+                Tracked(Commit((value + 1_u32) as u32))
+            });
+
+            assert(au.input() == 2);
+            assert(au.output()@ == 3);
+
+            return 5;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_private_ensures_caller
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function() -> (out: u32)
+            atomically (au) {
+                type FunctionPred,
+                (x: u32) -> (y: Commit<u32>),
+                ensures x < y@,
+            },
+            ensures out == y@,
+        {
+            assume(false);
+            unreached()
+        }
+
+        #[verifier::loop_isolation(false)]
+        pub exec fn other_function() {
+            let tracked mut value: u32 = 5;
+
+            let out = atomic_function() atomically loop |update|
+                invariant value == 5,
+            {
+                let tracked Commit(next) = update(value);
+                value = next;
+                break;
+            };
+
+            assert(out > 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] previously_unsound_1
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        pub exec fn atomic_function()
+            atomically (au) {
+                type FunctionPred,
+                (x: Token) -> (y: Commit<Token>),
+            },
+            requires au.resolves(), // !!!
+        {}
+
+        #[verifier::loop_isolation(false)]
+        pub exec fn client() {
+            let tracked mut token = Token::new();
+            atomic_function() atomically loop |update| -> (au) {
+                assert(au.req(token));
+                let tracked Commit(new_token) = update(token);
+                assert(au.ens(token, Commit(new_token)));
+                assert(au.resolves());
+                break
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "precondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] previously_unsound_2
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function()
+            atomically (_au) {
+                requires true,
+                ensures false,
+            },
+            requires false,
+            ensures true,
+        {}
+
+        #[verifier::loop_isolation(false)]
+        pub exec fn client() {
+            atomic_function() atomically |update| {
+                update(())
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "precondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] bad_self_type
+    code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        struct Stuff;
+        struct Thing;
+
+        impl Thing {
+            verus! {
+                fn method(self)
+                    atomically (au) {
+                        type PredType,
+                        (input: Stuff) -> (output: Commit<Stuff>),
+                    }
+                {}
+            }
+        }
+    } => Err(err) => assert!(err.errors[0].message.contains("failed to resolve `self` type"))
+}
+
+test_verify_one_file! {
+    #[test] args_in_mask
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub uninterp spec fn ns<X>(x: X) -> int;
+
+        fn function(num: i32, text: &str)
+            atomically (au) {
+                outer_mask any / [ns(num)],
+                inner_mask [ns(text)],
+            },
+        {
+            assume(false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_create_credit_bad
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        use vstd::invariant::*;
+        fn test() {
+            atomic_function() atomically loop |update| {
+                // not ok because of the atomically loop
+                let tracked x = create_open_invariant_credit();
+
+                update(Token::new());
+                assume(false);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "creating an invariant credit in potentially-unbounded ghost code")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_create_credit_good
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        use vstd::invariant::*;
+        fn test() {
+            atomic_function() atomically |update| {
+                // this is fine because it's not a loop
+                let tracked x = create_open_invariant_credit();
+
+                update(Token::new());
+                assume(false);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_update_break_in_invariant_block verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        use vstd::atomic::*;
+
+        fn f<P: InvariantPredicate<(), ()>>(i: Tracked<&LocalInvariant<(), (), P>>)
+            atomically (au) {
+                () -> (),
+            },
+        {
+            loop
+                decreases 0int,
+            {
+                open_local_invariant!(i.borrow() => inner => {
+                    let _r = try_open_atomic_update!(au, x => { break; });
+                });
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
+}
+
+const EXTERNAL_BODY_ATOMIC_FUNCTION: &'static str = verus_code_str! {
+    use vstd::prelude::*;
+    use vstd::atomic::*;
+
+    pub tracked struct Token {
+        state: u16,
+    }
+
+    impl Token {
+        pub proof fn new() -> (tracked out: Self) {
+            Self { state: 250 }
+        }
+    }
+
+    #[verifier::external_body]
+    pub fn publish(slot: &mut u8, x: u8)
+        atomically (atomic_update) {
+            (old: Token) -> (new: Commit<Token>),
+            ensures
+                new@ == old,
+                x == 7,
+        },
+        requires x == 7,
+        ensures *final(slot) == x,
+    {
+        unimplemented!()
+    }
+};
+
+test_verify_one_file! {
+    #[test] external_body_atomic_spec_requires_fail
+    EXTERNAL_BODY_ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        fn test() {
+            let mut slot: u8 = 0;
+            let x: u8 = 3;
+            publish(&mut slot, x) atomically |update| { // FAILS
+                let tracked _t = update(Token::new());
+            };
+            assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] external_body_atomic_spec_requires_ensures_ok
+    EXTERNAL_BODY_ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        fn test() {
+            let mut slot: u8 = 0;
+            let x: u8 = 7;
+            publish(&mut slot, x) atomically |update| {
+                let tracked _t = update(Token::new());
+            };
+            assert(slot == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] distinct_calls_not_contradictory
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        fn f(x: u8)
+            atomically (au) {
+                (a: ()) -> (b: ()),
+            },
+        {
+            assume(false);
+        }
+
+        fn test() {
+            f(1) atomically |upd| { upd(()); };
+            f(2) atomically |upd| { upd(()); };
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_on_regular_function
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+        tracked struct Pred;
+
+        impl UpdatePredicate<Token, Commit<Token>> for Pred {}
+
+        type AU = AtomicUpdate<Token, Commit<Token>, Pred>;
+
+        fn function(_au: Tracked<AU>) {}
+
+        fn caller() {
+            function() atomically |update| {
+                update(Token);
+            };
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "invalid atomic function call")
+}
+
+test_verify_one_file! {
+    #[test] regular_call_on_atomic_function
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+
+        type AU = AtomicUpdate<Token, Commit<Token>, Pred>;
+
+        fn function()
+            atomically (au) {
+                type Pred,
+                (x: Token) -> (y: Commit<Token>),
+            },
+        {
+            try_open_atomic_update!(au, token => {
+                Tracked(Commit(token))
+            });
+        }
+
+        fn caller(au: Tracked<AU>) {
+            function(au);
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "invalid call to logically atomic function")
+}

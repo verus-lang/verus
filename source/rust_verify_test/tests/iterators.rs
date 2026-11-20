@@ -4,141 +4,471 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] mut_ref_forwarding verus_code! {
+    #[test] advance_back_by_and_nth_back_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
 
-        pub fn next_test<I: Iterator>(i: &mut I)
+        fn test() {
+            let mut iter = vec![1u32, 2, 3, 4].into_iter();
+            let ghost initial = iter;
+            let result = iter.advance_back_by(0);
+            assert(result == Ok(()));
+            assert(iter.remaining() == initial.remaining());
+            assert(iter.produces() == initial.produces());
+            let result = iter.next();
+            assert(result == Some(1));
+            let result = iter.advance_back_by(1);
+            assert(result == Ok(()));
+            assert(iter.remaining() =~= seq![2u32, 3]);
+            assert(iter.produces() =~= seq![true, true]);
+            let result = iter.nth_back(0);
+            assert(result == Some(3));
+            assert(iter.remaining() =~= seq![2u32]);
+            let result = iter.next();
+            assert(result == Some(2));
+
+            let mut iter = vec![1u32, 2, 3].into_iter();
+            let result = iter.advance_back_by(5);
+            assert(result is Err && result->Err_0@ == 2);
+            assert(iter.remaining().len() == 0);
+            assert(iter.produces().len() == 0);
+
+            let mut iter = vec![1u32, 2, 3].into_iter();
+            let result = iter.nth_back(1);
+            assert(result == Some(2));
+            let result = iter.next_back();
+            assert(result == Some(1));
+            let result = iter.nth_back(usize::MAX);
+            assert(result == None);
+            assert(iter.produces().len() == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] rfind_preserves_unconsumed_prefix verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test() {
+            let mut iter = vec![1u32, 2, 3].into_iter();
+            let result = iter.rfind(|x: &u32| -> (ret: bool)
+                ensures ret == (*x <= 2),
+            { *x <= 2 });
+            assert(result == Some(2));
+            assert(iter.remaining() =~= seq![1u32]);
+            assert(iter.produces() =~= seq![true]);
+            let result = iter.next();
+            assert(result == Some(1));
+
+            let mut iter = vec![1u32, 2].into_iter();
+            let result = iter.rfind(|x: &u32| -> (ret: bool)
+                ensures !ret,
+            { false });
+            assert(result == None);
+            assert(iter.remaining().len() == 0);
+            assert(iter.produces().len() == 0);
+
+            let mut iter = Vec::<u32>::new().into_iter();
+            let result = iter.rfind(|x: &u32| -> bool requires false, { false });
+            assert(result == None);
+        }
+
+        fn before_stuck_slot<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
             requires
-                i.obeys_prophetic_iter_laws(),
-                i.will_return_none(),
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![false, true],
+        {
+            let result = iter.rfind(|x: &u32| -> (ret: bool)
+                requires *x == 2,
+                ensures ret,
+            { true });
+            assert(result == Some(2));
+            assert(iter.remaining() =~= seq![1u32]);
+            assert(iter.produces() =~= seq![false]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] rfold_callback_preconditions_and_order verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test() {
+            let result = Vec::<u32>::new().into_iter().rfold(7u32,
+                |acc: u32, x: u32| -> u32 requires false, { 0 });
+            assert(result == 7);
+            let iter = vec![1u32, 2].into_iter();
+            assert(iter.remaining().reverse() =~= seq![2u32, 1]);
+            let result = iter.rfold(0u32,
+                |acc: u32, x: u32| -> (ret: u32)
+                    requires (acc == 0 && x == 2) || (acc == 2 && x == 1),
+                    ensures ret == acc * 10 + x,
+                { acc * 10 + x });
+            assert(result == 21);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reverse_folds_do_not_require_unreachable_front verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn rfold_test<I: DoubleEndedIterator<Item = u32>>(iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![true, false],
             ensures
-                // TODO: The number of operators needed here is unfortunate
-                (&(*final(i))).obeys_prophetic_iter_laws(),
-                (&(*final(i))).will_return_none(),
+                false,
         {
-            i.next();
+            assert forall |k: int| 0 < k <= 2 implies
+                !(#[trigger] iter.produces().reverse().take(k)).all(|p: bool| p) by {
+                assert(iter.produces().reverse().take(k)[0] == false);
+            }
+            // Rear traversal gets stuck on 2 before it can reach the rejected input 1.
+            let _ = iter.rfold(0u32,
+                |acc: u32, x: u32| -> (ret: u32)
+                    requires x == 2,
+                    ensures ret == acc,
+                { acc });
+        }
 
+        fn try_rfold_test<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![true, false],
+            ensures
+                false,
+        {
+            assert forall |k: int| 0 < k <= 2 implies
+                !(#[trigger] iter.produces().reverse().take(k)).all(|p: bool| p) by {
+                assert(iter.produces().reverse().take(k)[0] == false);
+            }
+            let _: Result<u32, u32> = iter.try_rfold(0u32,
+                |acc: u32, x: u32| -> (ret: Result<u32, u32>)
+                    requires x == 2,
+                    ensures ret == Ok(acc),
+                { Ok(acc) });
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] chars_next_falls_back_to_iterator_spec verus_code! {
+    #[test] try_rfold_short_circuits_and_preserves_prefix verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+        use core::ops::ControlFlow;
+
+        fn test() {
+            let mut iter = vec![1u32, 2, 3].into_iter();
+            let ghost initial = iter;
+            assert(iter.remaining().reverse() =~= seq![3u32, 2, 1]);
+            let result = iter.try_rfold(7u32,
+                |acc: u32, x: u32| -> (ret: Result<u32, u32>)
+                    requires acc == 7 && x == 3,
+                    ensures ret == Err(9),
+                { Err(9) });
+            assert(result == Err(9));
+            assert(iter.remaining() =~= seq![1u32, 2]);
+            assert(iter.produces().reverse() == initial.produces().reverse().skip(1));
+            assert(iter.produces() =~= seq![true, true]);
+            let next = iter.next_back();
+            assert(next == Some(2));
+
+            let mut iter = Vec::<u32>::new().into_iter();
+            let result = iter.try_rfold(7u32,
+                |acc: u32, x: u32| -> Option<u32> requires false, { None });
+            assert(result == Some(7));
+
+            let mut iter = vec![1u32].into_iter();
+            assert(iter.remaining().reverse()[0] == 1);
+            let result = iter.try_rfold(7u32,
+                |acc: u32, x: u32| -> (ret: ControlFlow<u32, u32>)
+                    requires acc == 7 && x == 1,
+                    ensures ret == ControlFlow::Continue(8),
+                { ControlFlow::Continue(8) });
+            assert(result == ControlFlow::Continue(8));
+            assert(iter.remaining().len() == 0);
+            assert(iter.produces().len() == 0);
+        }
+
+        fn before_stuck_slot<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![false, true],
+        {
+            let result = iter.try_rfold(7u32,
+                |acc: u32, x: u32| -> (ret: Result<u32, u32>)
+                    requires acc == 7 && x == 2,
+                    ensures ret == Err(9),
+                { Err(9) });
+            assert(result == Err(9));
+            assert(iter.remaining() =~= seq![1u32]);
+            assert(iter.produces() =~= seq![false]) by {
+                assert(iter.produces().reverse().reverse() =~= iter.produces());
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] rfind_override_without_laws_does_not_assume_predicate verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        struct It;
+
+        impl Iterator for It {
+            type Item = u32;
+
+            fn next(&mut self) -> Option<u32> { None }
+        }
+
+        impl DoubleEndedIterator for It {
+            fn next_back(&mut self) -> Option<u32> { None }
+
+            fn rfind<P>(&mut self, predicate: P) -> (ret: Option<u32>)
+                where P: FnMut(&u32) -> bool,
+                ensures ret == Some(7),
+            {
+                Some(7)
+            }
+        }
+
+        impl IteratorSpecImpl for It {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { false }
+            #[verifier::prophetic]
+            open spec fn remaining(&self) -> Seq<u32> { Seq::empty() }
+            #[verifier::prophetic]
+            open spec fn produces(&self) -> Seq<bool> { Seq::empty() }
+            open spec fn decrease(&self) -> Option<nat> { None }
+            open spec fn peek(&self, index: int) -> Option<u32> { None }
+        }
+
+        impl DoubleEndedIteratorSpecImpl for It {
+            open spec fn peek_back(&self, index: int) -> Option<u32> { None }
+        }
+
+        fn test() {
+            let mut iter = It;
+            let result = iter.rfind(|x: &u32| -> (ret: bool)
+                ensures !ret,
+            { false });
+            assert(result == Some(7));
+            assert(false); // FAILS: the override need not call the predicate.
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] backward_discard_does_not_imply_production verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
 
-        fn test(s: &str)
+        fn advance_back_by_test<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
             requires
-                s@.len() >= 1,
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![false, false],
         {
-            let mut it = s.chars();
-            assert(it.remaining() == s@);
-            let r = it.next();
-            assert(r == Some(s@[0]));
+            let result = iter.advance_back_by(2);
+            assert(result == Ok(()));
+            assert(iter.produces().len() == 0);
+            assert(false); // FAILS: discarded items need not have been produced.
         }
-    } => Ok(())
-}
 
-test_verify_one_file! {
-    #[test] range_works verus_code! {
-        use vstd::prelude::*;
-
-        fn test()
+        fn nth_back_test<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![true, false],
         {
-            let mut v = vec![];
-            for i in iter: 0..4
-            invariant
-                v.len() == iter.index(),
-                iter.index() <= 4,
-            {
-                assert(i < 4);
-                v.push(i);
-            }
-            assert(v.len() == 4);
+            let result = iter.nth_back(1);
+            assert(result == Some(1));
+            assert(iter.produces().len() == 0);
+            assert(false); // FAILS: only the returned item must have been produced.
         }
-    } => Ok(())
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {
-    #[test] range_inclusive_works verus_code! {
+    #[test] reverse_callbacks_require_universal_inputs_without_laws verus_code! {
         use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
 
-        fn test()
+        fn bad_rfind<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
+            requires !iter.obeys_prophetic_iter_laws(),
         {
-            let mut v = vec![];
-            for i in iter: 0..=4
-            invariant
-                v.len() == iter.index(),
-                i <= 5,
-            {
-                assert(i <= 4);
-                v.push(i);
-            }
-            assert(v.len() == 5);
+            let _ = iter.rfind(|x: &u32| -> bool requires false, { false }); // FAILS
         }
-    } => Ok(())
+
+        fn bad_rfold<I: DoubleEndedIterator<Item = u32>>(iter: I)
+            requires !iter.obeys_prophetic_iter_laws(),
+        {
+            let _ = iter.rfold(0u32,
+                |acc: u32, x: u32| -> u32 requires false, { 0 }); // FAILS
+        }
+
+        fn bad_try_rfold<I: DoubleEndedIterator<Item = u32>>(mut iter: I)
+            requires !iter.obeys_prophetic_iter_laws(),
+        {
+            let _ = iter.try_rfold(0u32,
+                |acc: u32, x: u32| -> Option<u32> requires false, { None }); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file! {
-    #[test] zip_works verus_code! {
+    #[test] advance_by_and_nth_works verus_code! {
         use vstd::prelude::*;
-        use vstd::std_specs::iter::zip_iterators;
+        use vstd::std_specs::iter::IteratorSpec;
 
-        fn zip_works() {
-            let w = vec![1u32, 2, 3];
-            let x = vec![2u32, 4, 6];
-            let y = vec![1u32, 2];
-            let z = vec![2u32, 4, 6, 8, 10];
+        fn test() {
+            let mut iter = vec![1u32, 2, 3].into_iter();
+            let ghost initial = iter;
+            let result = iter.advance_by(0);
+            assert(result == Ok(()));
+            assert(iter.remaining() == initial.remaining());
+            assert(iter.produces() == initial.produces());
+            let result = iter.advance_by(1);
+            assert(result == Ok(()));
+            assert(iter.remaining() =~= seq![2u32, 3]);
+            assert(iter.produces() == initial.produces().skip(1));
+            let result = iter.nth(0);
+            assert(result == Some(2));
+            assert(iter.remaining() =~= seq![3u32]);
+            assert(iter.produces() == initial.produces().skip(2));
+            let result = iter.advance_by(3);
+            assert(result is Err && result->Err_0@ == 2);
+            assert(iter.remaining().len() == 0);
+            assert(iter.produces().len() == 0);
 
-            let wx: Vec<(&u32, &u32)> = zip_iterators(w.iter(), x.iter()).collect();
-            assert(wx@.unref() == seq![(1u32,2u32), (2, 4), (3, 6)]);
-
-            let xy: Vec<(&u32, &u32)> = zip_iterators(x.iter(), y.iter()).collect();
-            assert(xy@.unref() == seq![(2u32,1u32), (4, 2)]);
-
-            let yz: Vec<(&u32, &u32)> = zip_iterators(y.iter(), z.iter()).collect();
-            assert(yz@.unref() == seq![(1u32,2u32), (2, 4)]);
+            let mut iter = vec![1u32, 2, 3].into_iter();
+            let result = iter.nth(1);
+            assert(result == Some(2));
+            let result = iter.next();
+            assert(result == Some(3));
+            let result = iter.nth(usize::MAX);
+            assert(result == None);
+            assert(iter.produces().len() == 0);
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] collect_works verus_code! {
+    #[test] fold_and_for_each_callback_preconditions verus_code! {
         use vstd::prelude::*;
 
         fn test() {
-            let v: Vec<u32> = vec![1, 2, 3, 4];
-            let w: Vec<u32> = v.into_iter().collect();
-            assert(v@ == w@);
-            let x: Vec<u32> = w.into_iter().rev().collect();
-            assert(x@ == seq![4u32, 3, 2, 1]);
-
-            let y: Vec<u32> = vec![1, 2, 3, 4];
-            let z: Vec<u32> = y.into_iter().rev().rev().collect();
-            assert(z@ == y@);
+            let result = Vec::<u32>::new().into_iter().fold(7u32,
+                |acc: u32, x: u32| -> u32 requires false, { 0 });
+            assert(result == 7);
+            let result = vec![1u32].into_iter().fold(7u32,
+                |acc: u32, x: u32| -> (ret: u32)
+                    requires acc == 7 && x == 1,
+                    ensures ret == 8,
+                { 8 });
+            assert(result == 8);
+            vec![1u32].into_iter().for_each(
+                |x: u32| requires x == 1, {});
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] find_works verus_code! {
+    #[test] fold_callback_does_not_require_unreachable_tail verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
 
-        fn test(v: Vec<u32>)
+        fn test<I: Iterator<Item = u32>>(iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![false, true],
+            ensures
+                false,
         {
-            let v_result = v.into_iter().find(
-                |i| -> (ret: bool)
-                ensures ret == (*i < 10)
-                {*i < 10}
-            );
-            if let Some(i) = v_result {
-                assert(i < 10);
-                assert(v@.contains(i));
-            } else {
-                assert(forall |i| 0 <= i < v.len() ==> v[i] >= 10);
+            assert forall |k: int| 0 < k <= 2 implies
+                !(#[trigger] iter.produces().take(k)).all(|p: bool| p) by {
+                assert(iter.produces().take(k)[0] == false);
             }
+            // The callback rejects the second item, which forward traversal cannot reach.
+            let _ = iter.fold(0u32,
+                |acc: u32, x: u32| -> (ret: u32)
+                    requires x == 1,
+                    ensures ret == acc,
+                { acc });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] try_fold_callback_does_not_require_unreachable_tail verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test<I: Iterator<Item = u32>>(mut iter: I)
+            requires
+                iter.obeys_prophetic_iter_laws(),
+                iter.remaining() == seq![1u32, 2],
+                iter.produces() == seq![false, true],
+            ensures
+                false,
+        {
+            assert forall |k: int| 0 < k <= 2 implies
+                !(#[trigger] iter.produces().take(k)).all(|p: bool| p) by {
+                assert(iter.produces().take(k)[0] == false);
+            }
+            // The callback rejects the second item, which forward traversal cannot reach.
+            let _: Result<u32, u32> = iter.try_fold(0u32,
+                |acc: u32, x: u32| -> (ret: Result<u32, u32>)
+                    requires x == 1,
+                    ensures ret == Ok(acc),
+                { Ok(acc) });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] try_fold_short_circuits_and_preserves_tail verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+        use core::ops::ControlFlow;
+
+        fn test() {
+            let mut iter = vec![1u32, 2].into_iter();
+            let ghost initial = iter;
+            let result = iter.try_fold(7u32,
+                |acc: u32, x: u32| -> (ret: Result<u32, u32>)
+                    requires acc == 7 && x == 1,
+                    ensures ret == Err(9),
+                { Err(9) });
+            assert(result == Err(9));
+            assert(iter.remaining() =~= seq![2u32]);
+            assert(iter.produces() == initial.produces().skip(1));
+            let next = iter.next();
+            assert(next == Some(2));
+
+            let mut iter = Vec::<u32>::new().into_iter();
+            let result = iter.try_fold(7u32,
+                |acc: u32, x: u32| -> Option<u32> requires false, { None });
+            assert(result == Some(7));
+
+            let mut iter = vec![1u32].into_iter();
+            let result = iter.try_fold(7u32,
+                |acc: u32, x: u32| -> (ret: ControlFlow<u32, u32>)
+                    requires acc == 7 && x == 1,
+                    ensures ret == ControlFlow::Continue(8),
+                { ControlFlow::Continue(8) });
+            assert(result == ControlFlow::Continue(8));
+            assert(iter.remaining().len() == 0);
+            assert(iter.produces().len() == 0);
         }
     } => Ok(())
 }
@@ -200,34 +530,505 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] map_works verus_code! {
+    #[test] chars_next_falls_back_to_iterator_spec verus_code! {
         use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
 
-        fn double_it() {
-            let f = |x: &u32| -> (y: u32) requires *x < 10, ensures y == x * 2 { *x * 2 };
-            let v = vec![1u32, 2, 3, 4];
-            let mut w = Vec::new();
-            for x in iter: v.iter().map(f)
-                invariant
-                    w.len() == iter.index(),
-                    forall |i| 0 <= i < w.len() ==> w[i] == iter.seq()[i],
-                    // TODO: Fails b/c we can't have a when_used_as_spec version of `map`
-                    //forall |i| 0 <= i < w.len() ==> w[i] == v[i] * 2,
-            {
-                assert(x == iter.seq()[iter.index()]);
-                // TODO: Fails b/c we can't have a when_used_as_spec version of `map`
-                //assert(x == v[iter.index()] * 2);
-                w.push(x);
-            }
-            assert(w@ == seq![2u32, 4, 6, 8]);
+        fn test(s: &str)
+            requires
+                s@.len() >= 1,
+        {
+            let mut it = s.chars();
+            assert(it.remaining() == s@);
+            let r = it.next();
+            assert(r == Some(s@[0]));
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] filter_works verus_code! {
+    #[test] collect_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let w: Vec<u32> = v.into_iter().collect();
+            assert(v@ == w@);
+            let x: Vec<u32> = w.into_iter().rev().collect();
+            assert(x@ == seq![4u32, 3, 2, 1]);
+
+            let y: Vec<u32> = vec![1, 2, 3, 4];
+            let z: Vec<u32> = y.into_iter().rev().rev().collect();
+            assert(z@ == y@);
+        }
+    } => Ok(())
+}
+
+// Regression tests for issue #3142.
+// The infinite counter from the guide, with an open remaining() so that the
+// collect regressions also exercise the prophetic specifications.
+const INFINITE_COLLECT_COMMON: &str = verus_code_str! {
+    use vstd::modes::tracked_swap;
+    use vstd::prelude::*;
+    use vstd::proph::ProphecyGhost;
+    use vstd::std_specs::iter::*;
+
+    pub struct IterCtr {
+        pub count: u64,
+        pub len: Tracked<ProphecyGhost<nat>>,
+    }
+
+    impl IterCtr {
+        fn new() -> Self {
+            IterCtr { count: 0, len: Tracked(ProphecyGhost::new()) }
+        }
+    }
+
+    impl Iterator for IterCtr {
+        type Item = u64;
+
+        fn next(&mut self) -> (ret: Option<Self::Item>) {
+            proof {
+                let tracked mut new = ProphecyGhost::new();
+                tracked_swap(&mut new, &mut self.len);
+                new.resolve_dependent(&self.len, |x: nat| (x + 1) as nat);
+            }
+            let ret = self.count;
+            if self.count == u64::MAX {
+                self.count = 0;
+            } else {
+                self.count = self.count + 1;
+            }
+            Some(ret)
+        }
+    }
+
+    impl IteratorSpecImpl for IterCtr {
+        open spec fn obeys_prophetic_iter_laws(&self) -> bool { true }
+
+        #[verifier::prophetic]
+        open spec fn remaining(&self) -> Seq<Self::Item> {
+            Seq::new(self.len@.value(), |i: int|
+                ((i + self.count) % (u64::MAX as int + 1)) as u64)
+        }
+
+        #[verifier::prophetic]
+        open spec fn produces(&self) -> Seq<bool> {
+            Seq::new(self.len@.value(), |i: int| true)
+        }
+        open spec fn decrease(&self) -> Option<nat> { None }
+        open spec fn peek(&self, index: int) -> Option<Self::Item> {
+            Some((index % (u64::MAX as int + 1)) as u64)
+        }
+    }
+
+    pub struct Nothing;
+
+    impl FromIterator<u64> for Nothing {
+        fn from_iter<T: IntoIterator<Item = u64>>(iter: T) -> Self {
+            let _ = iter.into_iter();
+            Nothing
+        }
+    }
+
+    impl FromIteratorSpecImpl<u64> for Nothing {
+        open spec fn from_iter_ensures(remaining: Seq<u64>, produces: Seq<bool>, s: Self) -> bool { true }
+    }
+};
+
+test_verify_one_file! {
+    #[test] collect_without_into_iter_does_not_imply_none
+    // Keep the exact early-returning implementation from the issue: it does
+    // not even convert its input. The branch's existential contract rejects
+    // that implementation, and collect must still not establish false.
+    INFINITE_COLLECT_COMMON.replace("let _ = iter.into_iter();", "") + verus_code_str! {
+        fn test() {
+            let n: Nothing = IterCtr::new().collect();
+            assert(false); // FAILS
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(err.errors.iter().any(|e| e.message == "postcondition not satisfied"));
+        assert!(err.errors.iter().any(|e| e.message == "assertion failed"));
+    }
+}
+
+test_verify_one_file! {
+    #[test] collect_user_from_iterator_does_not_imply_none
+    INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
+        fn test() {
+            let it = IterCtr::new();
+            let n: Nothing = it.collect();
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] collect_one_next_does_not_imply_none
+    INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
+        pub struct One;
+
+        impl FromIterator<u64> for One {
+            fn from_iter<T: IntoIterator<Item = u64>>(iter: T) -> Self {
+                let mut it = iter.into_iter();
+                it.next();
+                One
+            }
+        }
+
+        impl FromIteratorSpecImpl<u64> for One {
+            open spec fn from_iter_ensures(remaining: Seq<u64>, produces: Seq<bool>, s: Self) -> bool { true }
+        }
+
+        fn test() {
+            let n: One = IterCtr::new().collect();
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] collect_adaptors_do_not_imply_none
+    INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
+        impl FromIterator<(u64, u64)> for Nothing {
+            fn from_iter<T: IntoIterator<Item = (u64, u64)>>(iter: T) -> Self {
+                let _ = iter.into_iter();
+                Nothing
+            }
+        }
+
+        impl FromIteratorSpecImpl<(u64, u64)> for Nothing {
+            open spec fn from_iter_ensures(remaining: Seq<(u64, u64)>, produces: Seq<bool>, s: Self) -> bool {
+                true
+            }
+        }
+
+        fn skip() {
+            let n: Nothing = IterCtr::new().skip(3).collect();
+            assert(false); // FAILS
+        }
+
+        fn map() {
+            let n: Nothing = IterCtr::new().map(|x: u64| -> u64 { x }).collect();
+            assert(false); // FAILS
+        }
+
+        fn mut_ref() {
+            let mut it = IterCtr::new();
+            let n: Nothing = (&mut it).collect();
+            assert(false); // FAILS
+        }
+
+        fn zip() {
+            let a = IterCtr::new();
+            let b = IterCtr::new();
+            let n: Nothing = a.zip(b).collect();
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] collect_vec_of_other_item_type_does_not_imply_none
+    INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
+        pub struct Id;
+
+        impl FromIterator<Id> for Vec<u64> {
+            fn from_iter<T: IntoIterator<Item = Id>>(iter: T) -> Self {
+                let _ = iter.into_iter();
+                Vec::new()
+            }
+        }
+
+        impl FromIteratorSpecImpl<Id> for Vec<u64> {
+            open spec fn from_iter_ensures(remaining: Seq<Id>, produces: Seq<bool>, s: Self) -> bool { true }
+        }
+
+        fn test() {
+            let v: Vec<u64> = IterCtr::new().map(|x: u64| -> Id { Id }).collect();
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] collect_overridden_fold_does_not_imply_none
+    // The early-returning override also violates the provided-method contract.
+    INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
+        use std::collections::HashSet;
+
+        pub struct FoldCtr { pub inner: IterCtr }
+
+        impl Iterator for FoldCtr {
+            type Item = u64;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.inner.next()
+            }
+
+            #[verifier::assume_compatibility_with_trait_spec]
+            fn fold<B, F>(self, init: B, f: F) -> B
+                where F: FnMut(B, Self::Item) -> B,
+            {
+                init // FAILS: the override does not fold over the remaining items
+            }
+        }
+
+        impl IteratorSpecImpl for FoldCtr {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { true }
+
+            #[verifier::prophetic]
+            open spec fn remaining(&self) -> Seq<Self::Item> {
+                IteratorSpec::remaining(&self.inner)
+            }
+
+            #[verifier::prophetic]
+            open spec fn produces(&self) -> Seq<bool> {
+                IteratorSpec::produces(&self.inner)
+            }
+            open spec fn decrease(&self) -> Option<nat> { None }
+            open spec fn peek(&self, index: int) -> Option<Self::Item> {
+                IteratorSpec::peek(&self.inner, index)
+            }
+        }
+
+        fn test() {
+            let it = FoldCtr { inner: IterCtr::new() };
+            let s: HashSet<u64> = it.collect();
+            assert(false); // FAILS
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(err.errors.iter().any(|e| e.message.contains("postcondition not satisfied")));
+        assert!(err.errors.iter().any(|e| e.message.contains("assertion failed")));
+    }
+}
+
+test_verify_one_file! {
+    #[test] collect_adaptors_are_complete verus_code! {
+        use vstd::prelude::*;
+
+        fn mapped_collect() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let it = v.into_iter().map(|x: u64| -> (r: u64)
+                ensures r == x,
+            { x });
+            let w: Vec<u64> = it.collect();
+            assert(w.len() == 3);
+            assert(w@ == seq![1u64, 2, 3]);
+        }
+
+        fn filtered_collect() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let it = v.into_iter().filter(|x: &u64| -> (r: bool)
+                ensures r == true,
+            { true });
+            let w: Vec<u64> = it.collect();
+            reveal_with_fuel(Seq::filter_index, 4);
+            assert(w.len() == 3);
+        }
+
+        fn mapped_from_iter() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let it = v.into_iter().map(|x: u64| -> (r: u64)
+                ensures r == x,
+            { x });
+            let w: Vec<u64> = Vec::from_iter(it);
+            assert(w.len() == 3);
+            assert(w@ == seq![1u64, 2, 3]);
+        }
+
+        fn filtered_from_iter() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let it = v.into_iter().filter(|x: &u64| -> (r: bool)
+                ensures r == true,
+            { true });
+            let w: Vec<u64> = Vec::from_iter(it);
+            reveal_with_fuel(Seq::filter_index, 4);
+            assert(w.len() == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] from_iter_must_establish_claimed_production verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;
+
+        pub struct ClaimsToProduce;
+
+        impl FromIterator<u64> for ClaimsToProduce {
+            fn from_iter<T: IntoIterator<Item = u64>>(src: T) -> Self {
+                let it = src.into_iter();
+                ClaimsToProduce // FAILS
+            }
+        }
+
+        impl FromIteratorSpecImpl<u64> for ClaimsToProduce {
+            open spec fn from_iter_ensures(
+                remaining: Seq<u64>, produces: Seq<bool>, s: Self,
+            ) -> bool {
+                produces.len() == remaining.len() && produces.all(|p: bool| p)
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] collect_with_early_return_works
+    INFINITE_COLLECT_COMMON.to_string() + verus_code_str! {
+        fn finite() {
+            let n: Nothing = vec![1u64, 2, 3].into_iter().collect();
+        }
+
+        fn without_laws<I: Iterator<Item = u64>>(it: I)
+            requires
+                !it.obeys_prophetic_iter_laws(),
+        {
+            let n: Nothing = it.collect();
+        }
+
+        fn direct_from_iter() {
+            // FromIterator itself does not require exhaustion or termination.
+            let n = Nothing::from_iter(IterCtr::new());
+        }
+
+        fn take_zero() {
+            let v: Vec<u64> = IterCtr::new().take(0).collect();
+            assert(v@ == Seq::<u64>::empty());
+        }
+    } => Ok(())
+}
+
+// Regression tests for issue #3165.
+test_verify_one_file! {
+    #[test] from_iter_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        fn direct() {
+            let v = vec![1u8, 2, 3];
+            let w: Vec<u8> = Vec::from_iter(v.into_iter());
+            assert(w@ == v@);
+        }
+
+        fn mut_ref() {
+            let v = vec![1u8, 2, 3];
+            let mut it = v.into_iter();
+            let x: Vec<u8> = Vec::from_iter(&mut it);
+            assert(x@ == v@);
+        }
+
+        fn zip() {
+            let v = vec![1u8, 2, 3];
+            let y: Vec<(u8, u8)> = Vec::from_iter(v.into_iter().zip(vec![4u8, 5]));
+            assert(y@ == seq![(1u8, 4u8), (2, 5)]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] from_iter_requires_iterator_laws verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        pub struct It;
+
+        impl Iterator for It {
+            type Item = u8;
+
+            fn next(&mut self) -> Option<u8> {
+                None
+            }
+        }
+
+        impl IteratorSpecImpl for It {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { false }
+
+            #[verifier::prophetic]
+            open spec fn remaining(&self) -> Seq<u8> { seq![7u8] }
+
+            #[verifier::prophetic]
+            open spec fn produces(&self) -> Seq<bool> { seq![true] }
+
+            open spec fn decrease(&self) -> Option<nat> { None }
+
+            open spec fn peek(&self, index: int) -> Option<u8> { None }
+        }
+
+        fn direct() {
+            let v: Vec<u8> = Vec::from_iter(It);
+            assert(v.len() == 1); // FAILS
+        }
+
+        fn mut_ref() {
+            let mut it = It;
+            let v: Vec<u8> = Vec::from_iter(&mut it);
+            assert(v.len() == 1); // FAILS
+        }
+
+        fn zip() {
+            let w = vec![1u8, 2];
+            let v: Vec<(u8, u8)> = Vec::from_iter(w.into_iter().zip(It));
+            assert(v.len() == 1); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] from_iter_witness_is_prophetic verus_code! {
+        use vstd::prelude::*;
+        use vstd::proph::ProphecyGhost;
+        use vstd::std_specs::iter::*;
+
+        fn cannot_resolve_from_witness<T: IntoIterator<Item = u8>>(src: T) {
+            let tracked p = ProphecyGhost::<nat>::new();
+            let result: Vec<u8> = Vec::from_iter(src);
+            proof {
+                let witness = choose |i: T::IntoIter|
+                    call_ensures(T::into_iter, (src,), i)
+                    && (i.obeys_prophetic_iter_laws() ==> i.remaining() == result@);
+                p.resolve(witness.remaining().len());
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for argument to proof-mode function with tracked parameters")
+}
+
+test_verify_one_file! {
+    #[test] from_iter_into_iterator_can_vary code! {
+        use vstd::prelude::*;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+        verus! {
+            pub struct Src;
+
+            fn two() -> (r: (Vec<u64>, Vec<u64>))
+                ensures r.0@ == r.1@, // FAILS
+            {
+                let a: Vec<u64> = Vec::from_iter(Src);
+                let b: Vec<u64> = Vec::from_iter(Src);
+                (a, b)
+            }
+        }
+
+        impl IntoIterator for Src {
+            type Item = u64;
+            type IntoIter = std::vec::IntoIter<u64>;
+
+            fn into_iter(self) -> Self::IntoIter {
+                vec![COUNTER.fetch_add(1, Ordering::SeqCst)].into_iter()
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] filter_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
 
         fn test() {
             let p = |x: &u32| -> (b: bool)
@@ -252,928 +1053,403 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] vec_iter_mut_works verus_code! {
+    #[test] find_works verus_code! {
         use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
 
-        fn client_for_loop() {
-            let mut v: Vec<u32> = vec![1, 2, 3, 4];
-            for x in it: v.iter_mut()
-                invariant
-                    // TODO: Ideally we shouldn't need these first two invariants
-                    after_borrow(v)@.len() == it.seq().len(),
-                    forall |i: int| #![auto] 0 <= i < it.seq().len() ==> *final(it.seq()[i]) == after_borrow(v)@[i],
-                    forall |i: int| #![auto] 0 <= i < it.index() ==> *final(it.seq()[i]) == 0,
-            {
-                *x = 0;
+        fn test(v: Vec<u32>)
+        {
+            let v_result = v.into_iter().find(
+                |i| -> (ret: bool)
+                ensures ret == (*i < 10)
+                {*i < 10}
+            );
+            if let Some(i) = v_result {
+                assert(i < 10);
+                assert(v@.contains(i));
+            } else {
+                assert(forall |i| 0 <= i < v.len() ==> v[i] >= 10);
             }
-            assert(forall |i: int| 0 <= i < v.len() ==> v[i] == 0);
-            assert(v@ == seq![0, 0, 0, 0]);
         }
-
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] map_can_be_implemented verus_code! {
+    #[test] find_map_works verus_code! {
         use vstd::prelude::*;
-        use vstd::std_specs::iter::*;
+        use vstd::std_specs::iter::IteratorSpec;
 
-        /* proph util (this should be implementable) */
-
-        pub trait Predicate<T> {
-            #[verifier::prophetic]
-            spec fn pred(&self, i: int, t: T) -> bool;
-        }
-
-        #[verifier::external_body]
-        #[verifier::accept_recursive_types(T)]
-        #[verifier::accept_recursive_types(Pred)]
-        pub tracked struct ProphSeq<T, Pred> { t: T, pred: Pred }
-
-        impl<T, Pred> ProphSeq<T, Pred>
-            where Pred: Predicate<T>
+        fn test(v: Vec<u32>)
         {
-            pub uninterp spec fn pred(&self) -> Pred;
-            pub uninterp spec fn proph_elem(&self, i: int) -> Option<T>;
-            pub uninterp spec fn has_resolved(&self, i: int) -> bool;
-
-            pub axiom fn new(pred: Pred) -> (tracked s: Self)
-                ensures
-                    s.pred() == pred,
-                    forall |i| !s.has_resolved(i);
-
-
-            pub axiom fn proph_elem_meets_pred(tracked &self)
-                ensures forall |i: int| (match #[trigger] self.proph_elem(i) {
-                    Some(p) => self.pred().pred(i, p),
-                    None => true,
-                });
-
-            pub axiom fn resolve(tracked &mut self, i: int, t: T)
-                requires
-                    !old(self).has_resolved(i),
-                    old(self).pred().pred(i, t),
-                ensures
-                    final(self).pred() == old(self).pred(),
-                    forall |j| final(self).proph_elem(j) == old(self).proph_elem(j),
-                    forall |j| i != j ==> final(self).has_resolved(j) == old(self).has_resolved(j),
-                    final(self).has_resolved(i),
-                    final(self).proph_elem(i) == Some(t);
-        }
-
-
-        /* map iterator */
-        pub ghost struct MapIteratorPred<Iter, F> {
-            iter: Iter,
-            f: F,
-        }
-
-        impl<Item, Iter, F> Predicate<Item> for MapIteratorPred<Iter, F>
-            where
-                Iter: Iterator,
-                F: FnMut(Iter::Item) -> Item
-        {
-            #[verifier::prophetic]
-            closed spec fn pred(&self, i: int, t: Item) -> bool {
-                call_ensures(self.f, (self.iter.remaining()[i],), t)
-            }
-        }
-
-        #[verifier::reject_recursive_types(Item)]
-        pub struct MapIterator<Item, Iter, F>
-            where
-                Iter: Iterator,
-                F: FnMut(Iter::Item) -> Item
-        {
-            f: F,
-            iter: Iter,
-
-            prophs: Tracked<ProphSeq<Item, MapIteratorPred<Iter, F>>>,
-            idx: Ghost<int>,
-        }
-
-        impl<Item, Iter, F> MapIterator<Item, Iter, F>
-            where
-                Iter: Iterator,
-                F: FnMut(Iter::Item) -> Item
-        {
-            pub closed spec fn inner(self) -> Iter {
-                self.iter
-            }
-
-            pub closed spec fn func(self) -> F {
-                self.f
-            }
-
-            pub closed spec fn the_prophs(self) -> ProphSeq<Item, MapIteratorPred<Iter, F>> {
-                self.prophs@
-            }
-
-            pub closed spec fn count(self) -> nat {
-                self.idx@ as nat
-            }
-
-            //#[verifier::type_invariant] // fake this due to &mut limitations
-            #[verifier::prophetic]
-            pub closed spec fn map_iterator_type_inv(self) -> bool {
-                0 <= self.idx@ <= self.prophs@.pred().iter.remaining().len()
-                  && self.iter.remaining() =~= self.prophs@.pred().iter.remaining().skip(self.idx@)
-                  && self.prophs@.pred().f == self.f
-                  && (forall |i| #![auto] 0 <= i < self.iter.remaining().len() ==> call_requires(self.f, (self.iter.remaining()[i], )))
-                  && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.remaining().len() ==> !self.prophs@.has_resolved(i))
-                  && self.iter.obeys_prophetic_iter_laws()
-            }
-
-            pub fn new(iter: Iter, f: F) -> (s: Self)
-                requires
-                    iter.obeys_prophetic_iter_laws(),
-                    forall |i| #![auto] 0 <= i < iter.remaining().len() ==>
-                        call_requires(f, (iter.remaining()[i], ))
-                ensures
-                    IteratorSpec::remaining(&s).len() <= iter.remaining().len(),
-                    forall |i| #![auto] 0 <= i < IteratorSpec::remaining(&s).len() ==>
-                        call_ensures(f, (iter.remaining()[i],), IteratorSpec::remaining(&s)[i]),
-                    IteratorSpec::will_return_none(&s) ==> iter.will_return_none() && IteratorSpec::remaining(&s).len() == iter.remaining().len(),
-                    s.count() == 0,
-                    s.inner() == iter,
-                    IteratorSpec::decrease(&s) is Some == iter.decrease() is Some,
-            {
-                let s = Self {
-                    f: f,
-                    iter: iter,
-                    prophs: Tracked(ProphSeq::new(MapIteratorPred {
-                        iter: iter,
-                        f: f,
-                    })),
-                    idx: Ghost(0),
-                };
-
-                assert(s.map_iterator_type_inv());
-                proof {
-                    s.prophs.borrow().proph_elem_meets_pred();
-                    // PAPER CUT: can't call lemma with prophetic arg
-                    broadcast use unwrap_up_to_first_none_len_le;
-                    broadcast use unwrap_up_to_first_none_len_le_values;
-                }
-                s
-            }
-
-            #[verifier::prophetic]
-            spec fn seq_of_options(&self) -> Seq<Option<Item>> {
-                Seq::new(self.iter.remaining().len(), |i| {
-                    self.prophs@.proph_elem(self.idx@ + i)
-                })
-            }
-        }
-
-        pub closed spec fn unwrap_up_to_first_none<T>(seq: Seq<Option<T>>) -> Seq<T>
-            decreases seq.len()
-        {
-            if seq.len() == 0 {
-                seq![]
-            } else if seq[0].is_some() {
-                seq![seq[0].unwrap()] + unwrap_up_to_first_none(seq.drop_first())
-            } else {
-                seq![]
-            }
-        }
-
-        pub broadcast proof fn unwrap_up_to_first_none_len_le<T>(seq: Seq<Option<T>>)
-            ensures #[trigger] unwrap_up_to_first_none(seq).len() <= seq.len(),
-                (forall |i| 0 <= i < seq.len() ==> seq[i].is_some()) ==>
-                    unwrap_up_to_first_none(seq).len() == seq.len(),
-            decreases seq.len()
-        {
-            if seq.len() != 0 && seq[0].is_some() {
-                unwrap_up_to_first_none_len_le(seq.drop_first());
-            }
-        }
-
-        pub broadcast proof fn unwrap_up_to_first_none_len_le_values<T>(seq: Seq<Option<T>>, i: int)
-            requires 0 <= i < unwrap_up_to_first_none(seq).len()
-            ensures
-                i < seq.len(),
-                seq[i].is_some(),
-                #[trigger] unwrap_up_to_first_none(seq)[i] == seq[i].unwrap(),
-            decreases seq.len()
-        {
-            if i > 0 {
-                unwrap_up_to_first_none_len_le_values(seq.drop_first(), i-1);
-            }
-        }
-
-        impl<Item, Iter, F> Iterator for MapIterator<Item, Iter, F>
-            where
-                Iter: Iterator,
-                F: FnMut(Iter::Item) -> Item
-        {
-            type Item = Item;
-
-            fn next(&mut self) -> (ret: Option<Self::Item>)
-            {
-                assume(self.map_iterator_type_inv());
-
-                match self.iter.next() {
-                    None => {
-                        assert(self.map_iterator_type_inv());
-                        return None;
-                    }
-                    Some(elem) => {
-                        let output = (self.f)(elem);
-                        proof {
-                            self.prophs.borrow_mut().resolve(self.idx@, output);
-                            self.idx@ = self.idx@ + 1;
-                        }
-
-                        assert(self.seq_of_options() == old(self).seq_of_options().drop_first());
-                        assert(self.map_iterator_type_inv());
-                        return Some(output);
-                    }
-                }
-            }
-        }
-
-        impl<Item, Iter, F> IteratorSpecImpl for MapIterator<Item, Iter, F>
-            where
-                Iter: Iterator,
-                F: FnMut(Iter::Item) -> Item
-        {
-
-            open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-                true
-            }
-
-            #[verifier::prophetic]
-            closed spec fn remaining(&self) -> Seq<Self::Item> {
-                unwrap_up_to_first_none(self.seq_of_options())
-            }
-
-            #[verifier::prophetic]
-            closed spec fn will_return_none(&self) -> bool {
-                self.iter.will_return_none()
-                  && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.remaining().len() ==> self.prophs@.proph_elem(i).is_some())
-            }
-
-            #[verifier::prophetic]
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-                &&& self.inner().initial_value_relation(&init.inner())
-            }
-
-
-            closed spec fn decrease(&self) -> Option<nat> {
-                self.inner().decrease()
-            }
-
-
-            open spec fn peek(&self, index: int) -> Option<Self::Item> {
-                match self.inner().peek(index) {
-                    Some(v) => {
-                        let x = choose |x| self.func().ensures((v,), x);
-                        Some(x)
-                    }
-                    None => None,
-                }
-            }
-        }
-
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] filter_can_be_implemented verus_code! {
-        use vstd::prelude::*;
-        use vstd::std_specs::iter::*;
-
-        /* proph util (this should be implementable) */
-
-        pub trait Predicate<T> {
-            #[verifier::prophetic]
-            spec fn pred(&self, i: int, t: T) -> bool;
-        }
-
-        #[verifier::external_body]
-        #[verifier::accept_recursive_types(T)]
-        #[verifier::accept_recursive_types(Pred)]
-        pub tracked struct ProphSeq<T, Pred> { t: T, pred: Pred }
-
-        impl<T, Pred> ProphSeq<T, Pred>
-            where Pred: Predicate<T>
-        {
-            pub uninterp spec fn pred(&self) -> Pred;
-            pub uninterp spec fn proph_elem(&self, i: int) -> Option<T>;
-            pub uninterp spec fn has_resolved(&self, i: int) -> bool;
-
-            pub axiom fn new(pred: Pred) -> (tracked s: Self)
-                ensures
-                    s.pred() == pred,
-                    forall |i| !s.has_resolved(i);
-
-
-            pub axiom fn proph_elem_meets_pred(tracked &self)
-                ensures forall |i: int| (match #[trigger] self.proph_elem(i) {
-                    Some(p) => self.pred().pred(i, p),
-                    None => true,
-                });
-
-            pub axiom fn resolve(tracked &mut self, i: int, t: T)
-                requires
-                    !old(self).has_resolved(i),
-                    old(self).pred().pred(i, t),
-                ensures
-                    final(self).pred() == old(self).pred(),
-                    forall |j| final(self).proph_elem(j) == old(self).proph_elem(j),
-                    forall |j| i != j ==> final(self).has_resolved(j) == old(self).has_resolved(j),
-                    final(self).has_resolved(i),
-                    final(self).proph_elem(i) == Some(t);
-        }
-
-        /* filter iterator */
-        pub ghost struct FilterIteratorPred<Iter, F> {
-            iter: Iter,
-            f: F,
-        }
-
-        impl<Iter, F> Predicate<bool> for FilterIteratorPred<Iter, F>
-            where
-                Iter: Iterator,
-                F: FnMut(&Iter::Item) -> bool
-        {
-            #[verifier::prophetic]
-            closed spec fn pred(&self, i: int, b: bool) -> bool {
-                self.f.ensures((&self.iter.remaining()[i],), b)
-            }
-        }
-
-        pub struct FilterIterator<Iter, F>
-            where
-                Iter: Iterator,
-                F: FnMut(&Iter::Item) -> bool
-        {
-            f: F,
-            iter: Iter,
-
-            prophs: Tracked<ProphSeq<bool, FilterIteratorPred<Iter, F>>>,
-            idx: Ghost<int>,
-        }
-
-        impl<Iter, F> FilterIterator<Iter, F>
-            where
-                Iter: Iterator,
-                F: FnMut(&Iter::Item) -> bool
-        {
-            pub closed spec fn inner(self) -> Iter {
-                self.iter
-            }
-
-            pub closed spec fn func(self) -> F {
-                self.f
-            }
-
-            pub closed spec fn the_prophs(self) -> ProphSeq<bool, FilterIteratorPred<Iter, F>> {
-                self.prophs@
-            }
-
-            pub closed spec fn count(self) -> nat {
-                self.idx@ as nat
-            }
-
-            //#[verifier::type_invariant] // fake this due to &mut limitations
-            #[verifier::prophetic]
-            pub closed spec fn filter_iterator_type_inv(self) -> bool {
-                0 <= self.idx@ <= self.prophs@.pred().iter.remaining().len()
-                && self.iter.remaining() =~= self.prophs@.pred().iter.remaining().skip(self.idx@)
-                && self.prophs@.pred().f == self.f
-                && (forall |i| #![auto] 0 <= i < self.iter.remaining().len() ==> self.f.requires((&self.iter.remaining()[i], )))
-                && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.remaining().len() ==> !self.prophs@.has_resolved(i))
-                && self.iter.obeys_prophetic_iter_laws()
-                // We need this to prove termination of our loop in `next()`
-                && self.iter.decrease() is Some
-            }
-
-            pub fn new(iter: Iter, f: F) -> (s: Self)
-                requires
-                    iter.obeys_prophetic_iter_laws(),
-                    iter.decrease() is Some,
-                    forall |i| #![auto] 0 <= i < iter.remaining().len() ==>
-                        f.requires((&iter.remaining()[i], ))
-                ensures
-                    s.keep().len() <= iter.remaining().len(),
-                    forall |j| 0 <= j < s.keep().len() ==> f.ensures((&iter.remaining()[j],), #[trigger] s.keep()[j]),
-                    IteratorSpec::remaining(&s) == iter.remaining().take(s.keep().len() as int).filter_index(|j: int| s.keep()[j]),
-                    IteratorSpec::remaining(&s).len() <= iter.remaining().len(),
-                    forall |i| #![trigger IteratorSpec::remaining(&s)[i]] 0 <= i < IteratorSpec::remaining(&s).len() ==>
-                        exists |j| 0 <= j < iter.remaining().len()
-                            && IteratorSpec::remaining(&s)[i] == #[trigger] iter.remaining()[j]
-                            && f.ensures((&iter.remaining()[j],), true),
-                    IteratorSpec::will_return_none(&s) ==> iter.will_return_none() && s.keep().len() == iter.remaining().len(),
-                    s.count() == 0,
-                    s.inner() == iter,
-                    IteratorSpec::decrease(&s) is Some == iter.decrease() is Some,
-            {
-                let s = Self {
-                    f: f,
-                    iter: iter,
-                    prophs: Tracked(ProphSeq::new(FilterIteratorPred {
-                        iter: iter,
-                        f: f,
-                    })),
-                    idx: Ghost(0),
-                };
-
-                assert(s.filter_iterator_type_inv());
-                proof {
-                    s.prophs.borrow().proph_elem_meets_pred();
-                    // PAPER CUT: can't call lemma with prophetic arg
-                    broadcast use unwrap_up_to_first_none_len_le;
-                    broadcast use unwrap_up_to_first_none_len_le_values;
-                    broadcast use Seq::lemma_filter_index;
-                }
-                s
-            }
-
-            #[verifier::prophetic]
-            spec fn seq_of_options(&self) -> Seq<Option<bool>> {
-                Seq::new(self.iter.remaining().len(), |i| {
-                    self.prophs@.proph_elem(self.idx@ + i)
-                })
-            }
-
-            #[verifier::prophetic]
-            pub closed spec fn keep(self) -> Seq<bool> {
-                unwrap_up_to_first_none(self.seq_of_options())
-            }
-
-            #[verifier::prophetic]
-            closed spec fn spec_remaining(&self) -> Seq<Iter::Item> {
-                self.iter.remaining().take(self.keep().len() as int).filter_index(|i| self.keep()[i])
-            }
-
-            #[verifier::prophetic]
-            closed spec fn spec_will_return_none(&self) -> bool {
-                self.iter.will_return_none()
-                && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.remaining().len() ==> self.prophs@.proph_elem(i).is_some())
-            }
-        }
-
-        pub closed spec fn unwrap_up_to_first_none<T>(seq: Seq<Option<T>>) -> Seq<T>
-            decreases seq.len()
-        {
-            if seq.len() == 0 {
-                seq![]
-            } else if seq[0].is_some() {
-                seq![seq[0].unwrap()] + unwrap_up_to_first_none(seq.drop_first())
-            } else {
-                seq![]
-            }
-        }
-
-        pub broadcast proof fn unwrap_up_to_first_none_len_le<T>(seq: Seq<Option<T>>)
-            ensures #[trigger] unwrap_up_to_first_none(seq).len() <= seq.len(),
-                (forall |i| 0 <= i < seq.len() ==> seq[i].is_some()) ==>
-                    unwrap_up_to_first_none(seq).len() == seq.len(),
-            decreases seq.len()
-        {
-            if seq.len() != 0 && seq[0].is_some() {
-                unwrap_up_to_first_none_len_le(seq.drop_first());
-            }
-        }
-
-        pub broadcast proof fn unwrap_up_to_first_none_len_le_values<T>(seq: Seq<Option<T>>, i: int)
-            requires 0 <= i < unwrap_up_to_first_none(seq).len()
-            ensures
-                i < seq.len(),
-                seq[i].is_some(),
-                #[trigger] unwrap_up_to_first_none(seq)[i] == seq[i].unwrap(),
-            decreases seq.len()
-        {
-            if i > 0 {
-                unwrap_up_to_first_none_len_le_values(seq.drop_first(), i-1);
-            }
-        }
-
-        // Dropping the head element either preserves `remaining()` (if `b == false`, i.e.
-        // `f` rejected the head) or pops its first element (if `b == true`).
-        proof fn lemma_remaining_step<T>(rem: Seq<T>, opts: Seq<Option<bool>>, b: bool)
-            requires
-                rem.len() == opts.len(),
-                rem.len() > 0,
-                opts[0] == Some(b),
-            ensures
-                ({
-                    let keep = unwrap_up_to_first_none(opts);
-                    let keep_n = unwrap_up_to_first_none(opts.drop_first());
-                    let remaining = rem.take(keep.len() as int).filter_index(|i: int| keep[i]);
-                    let remaining_n = rem.drop_first().take(keep_n.len() as int).filter_index(|i: int| keep_n[i]);
-                    &&& keep.len() == keep_n.len() + 1
-                    &&& b ==> remaining == seq![rem[0]] + remaining_n
-                    &&& !b ==> remaining == remaining_n
-                }),
-        {
-            broadcast use unwrap_up_to_first_none_len_le;
-            let keep = unwrap_up_to_first_none(opts);
-            let keep_n = unwrap_up_to_first_none(opts.drop_first());
-            assert(keep == seq![b] + keep_n) by {
-                reveal(unwrap_up_to_first_none);
-            }
-            assert(forall|i: int| 0 <= i < keep_n.len() ==> keep[i + 1] == keep_n[i]);
-            let s = rem.take(keep.len() as int);
-            let pred = |i: int| keep[i];
-            s.lemma_filter_index_head(pred);
-
-            let rem_n = rem.drop_first();
-            assert(s.drop_first() =~= rem_n.take(keep_n.len() as int));
-
-            let shifted = |i: int| pred(i + 1);
-            let pred_n = |i: int| keep_n[i];
-            rem_n.take(keep_n.len() as int).filter_index_ext(shifted, pred_n);
-        }
-
-        proof fn lemma_filter_step<Iter, F>(
-            h: FilterIterator<Iter, F>,
-            n: FilterIterator<Iter, F>,
-            b: bool,
-        )
-            where
-                Iter: Iterator,
-                F: FnMut(&Iter::Item) -> bool,
-            requires
-                h.iter.remaining().len() > 0,
-                h.prophs@.proph_elem(h.idx@) == Some(b),
-                n.idx@ == h.idx@ + 1,
-                n.iter.remaining() == h.iter.remaining().drop_first(),
-                forall|j: int| n.prophs@.proph_elem(j) == h.prophs@.proph_elem(j),
-                n.iter.will_return_none() == h.iter.will_return_none(),
-            ensures
-                b ==> h.spec_remaining()
-                        == seq![h.iter.remaining()[0]] + n.spec_remaining(),
-                !b ==> h.spec_remaining() == n.spec_remaining(),
-                n.spec_will_return_none() == h.spec_will_return_none(),
-        {
-            assert(n.seq_of_options() =~= h.seq_of_options().drop_first());
-            lemma_remaining_step(h.iter.remaining(), h.seq_of_options(), b);
-        }
-
-        impl<Iter, F> Iterator for FilterIterator<Iter, F>
-            where
-                Iter: Iterator,
-                F: FnMut(&Iter::Item) -> bool
-        {
-            type Item = Iter::Item;
-
-            fn next(&mut self) -> (ret: Option<Self::Item>)
-            {
-                broadcast use {Seq::lemma_filter_index,unwrap_up_to_first_none_len_le,unwrap_up_to_first_none_len_le_values};
-                assume(self.filter_iterator_type_inv());
-
-                loop
-                    invariant
-                        self.filter_iterator_type_inv(),
-                        self.iter.decrease() is Some,
-                        old(self).iter.decrease() is Some,
-                        self.iter.decrease()->0 <= old(self).iter.decrease()->0,
-                        self.idx@ >= old(self).idx@,
-                        self.spec_remaining() == old(self).spec_remaining(),
-                        self.spec_will_return_none() == old(self).spec_will_return_none(),
-                    decreases self.iter.decrease()->0,
+            let mut it = v.into_iter();
+            let ghost g = it;
+            let v_result = it.find_map(
+                |x| -> (ret: Option<u32>)
+                    ensures ret == if x % 4 == 0 { Some(x / 4) } else { None },
                 {
-                    let ghost h = *self;
-                    let item = self.iter.next();
-                    match item {
-                        None => {
-                            assert(self.spec_remaining().len() == 0) by {
-                                reveal(Seq::filter_index);
-                            }
-                            assert(self.filter_iterator_type_inv());
-                            return None;
-                        }
-                        Some(i) => {
-                            // The underlying head we just pulled.
-                            let keep = (self.f)(&i);
-                            proof {
-                                self.prophs.borrow_mut().resolve(self.idx@, keep);
-                                self.idx@ = self.idx@ + 1;
-                            }
-                            assert(self.seq_of_options() == h.seq_of_options().drop_first());
-                            proof {
-                                lemma_filter_step(h, *self, keep);
-                            }
-                            if keep {
-                                assert(old(self).spec_remaining() == seq![i] + self.spec_remaining());
-                                assert(old(self).spec_remaining().drop_first() =~= self.spec_remaining());
-                                assert(self.filter_iterator_type_inv());
-                                return Some(i);
-                            } else {
-                                assert(self.filter_iterator_type_inv());
-                            }
-                        }
-                    }
+                    if x % 4 == 0 { Some(x / 4) } else { None }
+                }
+            );
+            match v_result {
+                Some(r) => {
+                    // If `find_map` returned Some, it must have stopped at a valid element.
+                    let ghost idx = g.remaining().len() - it.remaining().len() - 1;
+                    // find_map stopped at a valid element.
+                    assert(0 <= idx < v.len());
+                    // That element produced the returned Some value.
+                    assert(v[idx] % 4 == 0);
+                    assert(r == v[idx] / 4);
+                    // Every previous element produced None.
+                    assert(forall |j| 0 <= j < idx ==> v[j] % 4 != 0);
+                }
+                None => {
+                    // If `find_map` returned None, every element mapped to None.
+                    assert(forall |j| 0 <= j < v.len() ==> v[j] % 4 != 0);
                 }
             }
         }
+    } => Ok(())
+}
 
-        impl<Iter, F> IteratorSpecImpl for FilterIterator<Iter, F>
-            where
-                Iter: Iterator,
-                F: FnMut(&Iter::Item) -> bool
+test_verify_one_file! {
+    #[test] map_works verus_code! {
+        use vstd::prelude::*;
+
+        fn double_it() {
+            let v = vec![1u32, 2, 3, 4];
+            let mut w = Vec::new();
+            for x in iter: v.iter().map(|x: &u32| -> (y: u32) requires *x < 10, ensures y == x * 2 { *x * 2 })
+                invariant
+                    w.len() == iter.index(),
+                    forall |i| 0 <= i < w.len() ==> w[i] == v[i] * 2,
+            {
+                w.push(x);
+            }
+            assert(w@ == seq![2u32, 4, 6, 8]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] map_next_back_with_diverging_callback verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::{IteratorSpec, map_iter};
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn diverge() -> u32
+            ensures false,
         {
+            loop {}
+        }
 
-            open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-                true
+        fn test() {
+            let input = vec![0u32, 1, 2];
+            let inner = input.into_iter().map(|x: u32| -> (out: u32)
+                ensures x > 0 && out == x,
+            { if x == 0 { diverge() } else { x } });
+            assert forall |i: int| 0 <= i < inner.remaining().len() && inner.produces()[i]
+                implies 0 < inner.remaining()[i] < 10 by {
+                assert(map_iter(inner).produces()[i]);
             }
+            assert(map_iter(inner).produces()[0]);
+            assert(!inner.produces()[0]);
 
-            #[verifier::prophetic]
-            closed spec fn remaining(&self) -> Seq<Self::Item> {
-                self.spec_remaining()
-            }
+            // The stuck slot need not satisfy this callback's precondition.
+            let mut iter = inner.map(|x: u32| -> (out: u32)
+                requires 0 < x < 10,
+                ensures out == x + 10,
+            { x + 10 });
+            let ghost initial = iter;
+            assert(!initial.produces()[0]);
+            let back = iter.next_back();
+            assert(initial.produces()[2]);
+            assert(map_iter(initial).produces()[2]);
+            assert(map_iter(inner).produces()[2]);
+            assert(back == Some(12));
+            assert(iter.produces() == initial.produces().drop_last());
+            let back = iter.next_back();
+            assert(initial.produces()[1]);
+            assert(map_iter(initial).produces()[1]);
+            assert(map_iter(inner).produces()[1]);
+            assert(back == Some(11));
+            assert(iter.remaining().len() == 1);
+            assert(iter.produces() =~= seq![false]);
+        }
+    } => Ok(())
+}
 
-            #[verifier::prophetic]
-            closed spec fn will_return_none(&self) -> bool {
-                self.spec_will_return_none()
-            }
+test_verify_one_file! {
+    #[test] mut_ref_forwarding verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
 
-            #[verifier::prophetic]
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-                &&& self.inner().initial_value_relation(&init.inner())
-            }
+        pub fn next_test<I: Iterator>(i: &mut I)
+            requires
+                i.obeys_prophetic_iter_laws(),
+                i.produces().all(|p: bool| p),
+            ensures
+                // TODO: The number of operators needed here is unfortunate
+                (&(*final(i))).obeys_prophetic_iter_laws(),
+                (&(*final(i))).produces().all(|p: bool| p),
+        {
+            i.next();
 
+        }
+    } => Ok(())
+}
 
-            closed spec fn decrease(&self) -> Option<nat> {
-                self.inner().decrease()
-            }
+test_verify_one_file! {
+    #[test] position_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
 
-
-            open spec fn peek(&self, index: int) -> Option<Self::Item> {
-                None
+        fn test(v: Vec<u32>) {
+            let v_result = v.into_iter().position(
+                |i| -> (ret: bool)
+                ensures ret == (i < 10),
+                {i < 10},
+            );
+            if let Some(index) = v_result {
+                assert(index < v.len());
+                assert(v@.contains(v[index as int]));
+                assert(v[index as int] < 10);
+                assert(forall |i: int| 0 <= i < index as int ==> v[i] >= 10);
+            } else {
+                assert(forall |i: int| 0 <= i < v.len() ==> v[i] >= 10);
             }
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] take_can_be_implemented verus_code! {
+    #[test] range_works verus_code! {
         use vstd::prelude::*;
-        use vstd::std_specs::iter::IteratorSpec;
 
-        struct MyTake<I> {
-            iter: I,
-            count_remaining: usize,
-        }
-
-        impl<I: IteratorSpec> MyTake<I> {
-            pub closed spec fn iter(self) -> I {
-                self.iter
-            }
-
-            pub closed spec fn count(self) -> usize {
-                self.count_remaining
-            }
-
-            //#[verifier::type_invariant] // fake this (via assert/assume below) due to limitations:
-            //  With this as a type invariantVerus won't let us call self.iter.next() unless it's marked no_unwind
-            #[verifier::prophetic]
-            pub closed spec fn take_inv(self) -> bool {
-                self.iter.obeys_prophetic_iter_laws()
-            }
-
-            closed spec fn my_take_new(iter: I, n: usize) -> (t: MyTake<I>) {
-                MyTake { iter, count_remaining: n }
-            }
-
-            #[verifier::when_used_as_spec(my_take_new)]
-            fn new(iter: I, n: usize) -> (t: MyTake<I>)
-                requires
-                    iter.obeys_prophetic_iter_laws(),
-                ensures
-                    t.remaining() == (if iter.remaining().len() < n { iter.remaining() } else { iter.remaining().take(n as int) }),
-                    t.will_return_none() <==> iter.will_return_none() || iter.remaining().len() >= n,
-                    t.obeys_prophetic_iter_laws(),
-                    // t.iter() == iter,
-                    // t.count() == n,
-                    t.decrease() is Some,
-                    t == Self::my_take_new(iter, n),
+        fn test()
+        {
+            let mut v = vec![];
+            for i in iter: 0..4
+            invariant
+                v.len() == iter.index(),
+                iter.index() <= 4,
             {
-                MyTake { iter, count_remaining: n }
+                assert(i < 4);
+                v.push(i);
             }
-        }
-
-
-        impl<I: Iterator> Iterator for MyTake<I> {
-            type Item = <I as Iterator>::Item;
-
-            fn next(&mut self) -> Option<<I as Iterator>::Item> {
-                assume(self.take_inv());
-                if self.count_remaining != 0 {
-                    self.count_remaining -= 1;
-                    let r = self.iter.next();
-                    assert(self.take_inv());
-                    r
-                } else {
-                    assert(self.take_inv());
-                    None
-                }
-            }
-        }
-
-        impl<I: Iterator> vstd::std_specs::iter::IteratorSpecImpl for MyTake<I> {
-            open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-                true
-            }
-
-            #[verifier::prophetic]
-            closed spec fn remaining(&self) -> Seq<Self::Item> {
-                if self.iter.remaining().len() < self.count_remaining { self.iter.remaining() } else { self.iter.remaining().take(self.count_remaining as int) }
-            }
-
-            #[verifier::prophetic]
-            closed spec fn will_return_none(&self) -> bool {
-                self.iter.will_return_none() || self.iter.remaining().len() >= self.count_remaining
-            }
-
-            #[verifier::prophetic]
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-                &&& self.iter() == init.iter()
-                &&& self.iter().initial_value_relation(&init.iter())
-                &&& IteratorSpec::remaining(self) == if self.iter().remaining().len() < self.count() { self.iter().remaining() } else { self.iter().remaining().take(self.count() as int) }
-            }
-
-            closed spec fn decrease(&self) -> Option<nat> {
-                Some(self.count() as nat)
-            }
-
-            open spec fn peek(&self, index: int) -> Option<Self::Item> {
-                self.iter().peek(index)
-            }
-
-        }
-
-        fn take_works() {
-            let v: Vec<u32> = vec![1, 2, 3, 4];
-            let w: Vec<u32> = MyTake::new(v.into_iter(), 2).collect();
-            assert(w@ == seq![1, 2]);
-
-            let v: Vec<u32> = vec![1, 2, 3, 4];
-            let mut w: Vec<u32> = Vec::new();
-            for x in it: MyTake::new(v.into_iter(), 3)
-                invariant
-                    w.len() == it.index(),
-                    forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],
-                    v@ == seq![1, 2, 3, 4],
-            {
-                assert(x < 4);
-                w.push(x);
-            }
-            assert(w@ == seq![1, 2, 3]);
+            assert(v.len() == 4);
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] skip_can_be_implemented verus_code! {
+    #[test] range_inclusive_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test()
+        {
+            let mut v = vec![];
+            for i in iter: 0..=4
+            invariant
+                v.len() == iter.index(),
+                i <= 5,
+            {
+                assert(i <= 4);
+                v.push(i);
+            }
+            assert(v.len() == 5);
+        }
+    } => Ok(())
+}
+
+const CUSTOM_STEP: &str = code_str! {
+    #![feature(step_trait)]
+    use vstd::prelude::*;
+
+    verus! {
+        #[derive(Clone, Copy, PartialEq, PartialOrd)]
+        pub struct S(pub u8);
+    }
+
+    // The executable implementation steps normally; its spec model below does not.
+    impl core::iter::Step for S {
+        fn steps_between(a: &S, b: &S) -> (usize, Option<usize>) {
+            if a.0 <= b.0 {
+                let n = (b.0 - a.0) as usize;
+                (n, Some(n))
+            } else {
+                (0, None)
+            }
+        }
+
+        fn forward_checked(a: S, n: usize) -> Option<S> {
+            a.0.checked_add(u8::try_from(n).ok()?).map(S)
+        }
+
+        fn backward_checked(a: S, n: usize) -> Option<S> {
+            a.0.checked_sub(u8::try_from(n).ok()?).map(S)
+        }
+
+        fn forward_overflowing(a: S, n: usize) -> (S, bool) {
+            (S(a.0.wrapping_add(n as u8)), Self::forward_checked(a, n).is_none())
+        }
+
+        fn backward_overflowing(a: S, n: usize) -> (S, bool) {
+            (S(a.0.wrapping_sub(n as u8)), Self::backward_checked(a, n).is_none())
+        }
+    }
+};
+
+test_verify_one_file_with_options! {
+    #[test] range_custom_step_model ["no-auto-import-verus_builtin"] =>
+    FEATURE_PRELUDE.to_string() + CUSTOM_STEP + verus_code_str! {
+        use vstd::std_specs::iter::StepSpecImpl;
+
+        // A StepSpecImpl does not prove anything about the executable Step methods.
+        impl StepSpecImpl for S {
+            open spec fn spec_is_lt(self, other: Self) -> bool { self.0 < other.0 }
+            open spec fn spec_steps_between(self, end: Self) -> Option<usize> { Some(1) }
+            open spec fn spec_steps_between_int(self, end: Self) -> int { 1 }
+            open spec fn spec_forward_checked(self, count: usize) -> Option<Self> { Some(S(7)) }
+            open spec fn spec_forward_checked_int(self, count: int) -> Option<Self> { Some(S(7)) }
+            open spec fn spec_backward_checked(self, count: usize) -> Option<Self> { None }
+            open spec fn spec_backward_checked_int(self, count: int) -> Option<Self> { None }
+        }
+
+        fn exclusive()
+            ensures false, // FAILS
+        {
+            let mut r = S(0)..S(1);
+            let _ = r.next();
+        }
+
+        fn inclusive()
+            ensures false, // FAILS
+        {
+            let mut r = S(0)..=S(1);
+            let _ = r.next();
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] range_custom_step_next_not_deterministic ["no-auto-import-verus_builtin"] =>
+    FEATURE_PRELUDE.to_string() + code_str! {
+        #![feature(step_trait)]
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use vstd::prelude::*;
+
+        static COUNTER: AtomicU64 = AtomicU64::new(100);
+
+        verus! {
+            #[derive(Clone, Copy, PartialEq, PartialOrd)]
+            pub struct S(pub u64);
+
+            // No StepSpecImpl: the uninterpreted spec_range_next must not imply
+            // that equal ranges produce equal results for an arbitrary Step type.
+            fn two() -> (r: (Option<S>, Option<S>))
+                ensures r.0 == r.1, // FAILS
+            {
+                let mut a = S(0)..S(u64::MAX);
+                let mut b = S(0)..S(u64::MAX);
+                let _ = a.next();
+                let _ = b.next();
+                (a.next(), b.next())
+            }
+        }
+
+        impl core::iter::Step for S {
+            fn steps_between(_: &S, _: &S) -> (usize, Option<usize>) { (0, None) }
+            fn forward_checked(_: S, _: usize) -> Option<S> {
+                Some(S(COUNTER.fetch_add(1, Ordering::SeqCst)))
+            }
+            fn backward_checked(_: S, _: usize) -> Option<S> { None }
+            fn forward_overflowing(a: S, n: usize) -> (S, bool) {
+                (Self::forward_checked(a, n).unwrap(), false)
+            }
+            fn backward_overflowing(a: S, _: usize) -> (S, bool) { (a, true) }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] range_primitive_step_specs code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
 
-        struct MySkip<I> {
-            iter: I,
-            n: usize,
-            init_n: usize,
-        }
+        macro_rules! check_ranges {
+            ($t:ty, $test:ident) => {
+                verus! {
+                    fn $test() {
+                        let mut r = (1 as $t)..(3 as $t);
+                        assert(r.obeys_prophetic_iter_laws());
+                        assert(r.remaining() =~= seq![1 as $t, 2 as $t]);
+                        assert(r.decrease() == Some(2nat));
+                        assert(r.peek(0) == Some(1 as $t));
+                        let x = r.next();
+                        assert(x == Some(1 as $t));
+                        assert(r.start == 2 && r.end == 3);
+                        let x = r.next();
+                        assert(x == Some(2 as $t));
+                        let x = r.next();
+                        assert(x == None::<$t>);
 
-        impl<I: IteratorSpec> MySkip<I> {
-            pub closed spec fn iter(self) -> I {
-                self.iter
-            }
-
-            pub closed spec fn init_n(self) -> usize {
-                self.init_n
-            }
-
-            //#[verifier::type_invariant] // fake this (via assert/assume below) due to limitations:
-            //  With this as a type invariantVerus won't let us call self.iter.next() unless it's marked no_unwind
-            #[verifier::prophetic]
-            pub closed spec fn skip_inv(self) -> bool {
-                self.iter.obeys_prophetic_iter_laws()
-            }
-
-            spec fn my_skip_new(iter: I, n: usize) -> (t: MySkip<I>) {
-                MySkip { iter, n, init_n: n }
-            }
-
-            #[verifier::when_used_as_spec(my_skip_new)]
-            fn new(iter: I, n: usize) -> (s: MySkip<I>)
-                requires
-                    iter.obeys_prophetic_iter_laws(),
-                ensures
-                    s.remaining() == (if iter.remaining().len() < n { seq![] } else { iter.remaining().skip(n as int) }),
-                    s.will_return_none() <==> iter.will_return_none(),
-                    s.obeys_prophetic_iter_laws(),
-                    s.decrease() is Some == iter.decrease() is Some,
-                    s == Self::my_skip_new(iter, n),
-            {
-                let s = MySkip { iter, n, init_n: n };
-                assert(s.skip_inv());
-                s
-            }
-        }
-
-
-        impl<I: Iterator> Iterator for MySkip<I> {
-            type Item = <I as Iterator>::Item;
-
-            fn next(&mut self) -> Option<<I as Iterator>::Item> {
-                assume(self.skip_inv());
-
-                let ghost snap = self.iter;
-                let ghost old_n = self.n as int;
-
-                if self.n > 0 {
-                    let mut i: usize = 0;
-                    while i < self.n
-                        invariant
-                            0 <= i <= self.n,
-                            self.n == old_n,
-                            self.iter.obeys_prophetic_iter_laws(),
-                            self.iter.will_return_none() == snap.will_return_none(),
-                            self.iter.decrease() is Some == snap.decrease() is Some,
-                            snap.decrease() is Some && snap.remaining().len() >= i
-                                ==> snap.decrease()->0 >= self.iter.decrease()->0,
-                            snap.remaining().len() >= i ==> self.iter.remaining() == snap.remaining().skip(i as int),
-                            snap.remaining().len() < i ==> self.iter.remaining().len() == 0,
-                        decreases self.n - i,
-                    {
-                        self.iter.next();
-                        i += 1;
+                        let mut r = (1 as $t)..=(2 as $t);
+                        assert(r.obeys_prophetic_iter_laws());
+                        assert(r.remaining() =~= seq![1 as $t, 2 as $t]);
+                        assert(r.decrease() == Some(2nat));
+                        assert(r.peek(0) == Some(1 as $t));
+                        let x = r.next();
+                        assert(x == Some(1 as $t));
+                        let x = r.next();
+                        assert(x == Some(2 as $t));
+                        assert(r.remaining() =~= Seq::<$t>::empty());
+                        let x = r.next();
+                        assert(x == None::<$t>);
                     }
-                    self.n = 0;
                 }
-
-                let r = self.iter.next();
-                assert(self.skip_inv());
-                r
-            }
+            };
         }
 
-        impl<I: Iterator> vstd::std_specs::iter::IteratorSpecImpl for MySkip<I> {
-            open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-                true
-            }
+        check_ranges!(u8, check_u8);
+        check_ranges!(u16, check_u16);
+        check_ranges!(u32, check_u32);
+        check_ranges!(u64, check_u64);
+        check_ranges!(u128, check_u128);
+        check_ranges!(usize, check_usize);
+        check_ranges!(i8, check_i8);
+        check_ranges!(i16, check_i16);
+        check_ranges!(i32, check_i32);
+        check_ranges!(i64, check_i64);
+        check_ranges!(i128, check_i128);
+        check_ranges!(isize, check_isize);
+    } => Ok(())
+}
 
-            #[verifier::prophetic]
-            closed spec fn remaining(&self) -> Seq<Self::Item> {
-                if self.iter.remaining().len() < self.n { seq![] } else { self.iter.remaining().skip(self.n as int) }
-            }
+test_verify_one_file! {
+    #[test] skip_works verus_code! {
+        use vstd::prelude::*;
 
-            #[verifier::prophetic]
-            closed spec fn will_return_none(&self) -> bool {
-                self.iter.will_return_none()
-            }
-
-            #[verifier::prophetic]
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-                &&& self.iter() == init.iter()
-                &&& self.init_n() == init.init_n()
-                &&& self.iter().initial_value_relation(&init.iter())
-            }
-
-            closed spec fn decrease(&self) -> Option<nat> {
-                self.iter().decrease()
-            }
-
-            open spec fn peek(&self, index: int) -> Option<Self::Item> {
-                self.iter().peek(self.init_n() + index)
-            }
-
-        }
-
-        fn skip_works() {
+        fn test() {
             let v: Vec<u32> = vec![1, 2, 3, 4];
-            let w: Vec<u32> = MySkip::new(v.into_iter(), 2).collect();
+            let w: Vec<u32> = v.into_iter().skip(2).collect();
             assert(w@ == seq![3, 4]);
 
 
             let v: Vec<u32> = vec![1, 2, 3, 4];
             let mut w: Vec<u32> = Vec::new();
-            for x in it: MySkip::new(v.into_iter(), 2)
+
+            for x in it: v.into_iter().skip(2)
                 invariant
                     w.len() == it.index(),
                     forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],
-                    v@ == seq![1, 2, 3, 4],
             {
-                assert(x > 2);
-                assert(x == v[2 + it.index()]);
                 w.push(x);
             }
             assert(w@ == seq![3, 4]);
 
-            for x in it: MySkip::new(0..4, 2)
-                invariant
-                    x == it.index() + 2,
-            {
-                assert(x == it.index() + 2);
-            }
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let w: Vec<u32> = v.into_iter().skip(2).rev().collect();
+            assert(w@ == seq![4u32, 3]);
         }
     } => Ok(())
 }
@@ -1208,35 +1484,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] skip_works verus_code! {
-        use vstd::prelude::*;
-
-        fn test() {
-            let v: Vec<u32> = vec![1, 2, 3, 4];
-            let w: Vec<u32> = v.into_iter().skip(2).collect();
-            assert(w@ == seq![3, 4]);
-
-
-            let v: Vec<u32> = vec![1, 2, 3, 4];
-            let mut w: Vec<u32> = Vec::new();
-
-            for x in it: v.into_iter().skip(2)
-                invariant
-                    w.len() == it.index(),
-                    forall |i| 0 <= i < w.len() ==> w[i] == it.seq()[i],
-            {
-                w.push(x);
-            }
-            assert(w@ == seq![3, 4]);
-
-            let v: Vec<u32> = vec![1, 2, 3, 4];
-            let w: Vec<u32> = v.into_iter().skip(2).rev().collect();
-            assert(w@ == seq![4u32, 3]);
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     #[test] take_skip verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
@@ -1256,169 +1503,244 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// TODO: Remove the eager split in favor of a ProphSeq of mutable references
 test_verify_one_file! {
-    #[test] iter_mut_can_be_implemented verus_code! {
+    #[test] vec_iter_mut_works verus_code! {
         use vstd::prelude::*;
-        use vstd::std_specs::iter::*;
-
-        // Eagerly split a mutable slice into the mutable references to each of its elements,
-        // returned in *reversed* order (so popping the `Vec` yields elements front-to-back).
-        fn split_all<'a, T>(s: &'a mut [T]) -> (refs: Vec<&'a mut T>)
-            ensures
-                refs@.len() == old(s)@.len(),
-                forall|i: int| #![trigger refs@[i]] 0 <= i < refs@.len() ==>
-                    *(refs@[i]) == old(s)@[refs@.len() - 1 - i],
-                final(s)@.len() == old(s)@.len(),
-                forall|i: int| #![trigger refs@[i]] 0 <= i < refs@.len() ==>
-                    *final(refs@[i]) == final(s)@[refs@.len() - 1 - i],
-        {
-            let ghost n0 = s@.len();
-            let ghost sf: Seq<T> = final(s)@;
-            let mut refs: Vec<&'a mut T> = Vec::new();
-            let mut rest: &'a mut [T] = s;
-            while rest.len() > 0
-                invariant
-                    rest@.len() + refs@.len() == n0,
-                    forall|i: int| #![trigger rest@[i]] 0 <= i < rest@.len() ==> rest@[i] == old(s)@[i],
-                    forall|i: int| #![trigger refs@[i]] 0 <= i < refs@.len() ==>
-                        *(refs@[i]) == old(s)@[n0 - 1 - i],
-                    sf == final(rest)@ + Seq::new(
-                        refs@.len() as nat,
-                        |j: int| *final(refs@[refs@.len() - 1 - j]),
-                    ),
-                decreases rest.len(),
-            {
-                let (head, tail) = rest.split_at_mut(rest.len() - 1);
-                let last = tail.first_mut().unwrap();
-                refs.push(last);
-                rest = head;
-            }
-            refs
-        }
-
-        // Mutable iterator over the elements of a `Vec`, modeling `slice::IterMut`.
-        // `refs` holds the element references in *reversed* order, so `next` is `pop`.
-        struct MyIterMut<'a, T> {
-            refs: Vec<&'a mut T>,
-        }
-
-        impl<'a, T> MyIterMut<'a, T> {
-            /// Non-prophetic count of references still to be returned
-            pub closed spec fn rem_len(&self) -> nat {
-                self.refs@.len()
-            }
-
-            /// Models `Vec::iter_mut`: borrows the `Vec` for `'a` and produces an iterator
-            /// that will hand out a `&'a mut T` for each element, in order.
-            pub fn new(v: &'a mut Vec<T>) -> (s: MyIterMut<'a, T>)
-                ensures
-                    IteratorSpec::remaining(&s).len() == old(v)@.len(),
-                    final(v)@.len() == old(v)@.len(),
-                    // Each yielded reference initially points at the corresponding element.
-                    forall|i: int| #![trigger IteratorSpec::remaining(&s)[i]]
-                        0 <= i < old(v)@.len() ==> *(IteratorSpec::remaining(&s)[i]) == old(v)@[i],
-                    // ...and its eventual value flows back to the corresponding `Vec` slot.
-                    forall|i: int| #![trigger IteratorSpec::remaining(&s)[i]]
-                        0 <= i < old(v)@.len() ==> *final(IteratorSpec::remaining(&s)[i]) == final(v)@[i],
-                    IteratorSpec::obeys_prophetic_iter_laws(&s),
-                    IteratorSpec::will_return_none(&s),
-                    IteratorSpec::decrease(&s) is Some,
-                    IteratorSpec::initial_value_relation(&s, &s),
-            {
-                let slice = v.as_mut_slice();
-                let refs = split_all(slice);
-                MyIterMut { refs }
-            }
-        }
-
-        impl<'a, T> Iterator for MyIterMut<'a, T> {
-            type Item = &'a mut T;
-
-            fn next(&mut self) -> (r: Option<&'a mut T>) {
-                self.refs.pop()
-            }
-        }
-
-        impl<'a, T> IteratorSpecImpl for MyIterMut<'a, T> {
-            open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-                true
-            }
-
-            #[verifier::prophetic]
-            closed spec fn remaining(&self) -> Seq<Self::Item> {
-                Seq::new(self.refs@.len(), |i: int| self.refs@[self.refs@.len() - 1 - i])
-            }
-
-            #[verifier::prophetic]
-            closed spec fn will_return_none(&self) -> bool {
-                true
-            }
-
-            #[verifier::prophetic]
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-            }
-
-            closed spec fn decrease(&self) -> Option<nat> {
-                Some(self.refs@.len() as nat)
-            }
-
-            open spec fn peek(&self, index: int) -> Option<Self::Item> {
-                None
-            }
-        }
-
-        /// Bridges the prophetic `remaining()` length to the non-prophetic `rem_len()`,
-        /// so loop clients can use `rem_len()` for `decreases` while reasoning about
-        /// `remaining()` for correctness.
-        broadcast proof fn lemma_rem_len<'a, T>(it: &MyIterMut<'a, T>)
-            ensures
-                #[trigger] IteratorSpec::remaining(it).len() == it.rem_len(),
-        {
-        }
-
-        fn client_set() {
-            let mut v: Vec<u32> = vec![10, 20];
-            let mut it = MyIterMut::new(&mut v);
-
-            let r0 = it.next().unwrap();
-            *r0 = 100;
-            let r1 = it.next().unwrap();
-            *r1 = 200;
-
-            assert(v@ == seq![100u32, 200]);
-        }
-
-        fn client_increment() {
-            let mut v: Vec<u32> = vec![1, 2, 3];
-            let mut it = MyIterMut::new(&mut v);
-
-            let r0 = it.next().unwrap();
-            *r0 = *r0 + 1;
-            let r1 = it.next().unwrap();
-            *r1 = *r1 + 1;
-            let r2 = it.next().unwrap();
-            *r2 = *r2 + 1;
-
-            assert(v@ == seq![2u32, 3, 4]);
-        }
 
         fn client_for_loop() {
             let mut v: Vec<u32> = vec![1, 2, 3, 4];
-            let mut iter = MyIterMut::new(&mut v);
-
-            for x in it: iter
+            for x in it: v.iter_mut()
                 invariant
-                    // TODO: Ideally we shouldn't need these first two invariants
-                    after_borrow(v)@.len() == it.seq().len(),
-                    forall |i: int| #![auto] 0 <= i < it.seq().len() ==> *final(it.seq()[i]) == after_borrow(v)@[i],
                     forall |i: int| #![auto] 0 <= i < it.index() ==> *final(it.seq()[i]) == 0,
             {
                 *x = 0;
             }
             assert(forall |i: int| 0 <= i < v.len() ==> v[i] == 0);
             assert(v@ == seq![0, 0, 0, 0]);
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] enumerate_works verus_code! {
+        use vstd::prelude::*;
+
+        fn collect_works() {
+            let v: Vec<u32> = vec![10, 20, 30];
+            let w: Vec<(usize, u32)> = v.into_iter().enumerate().collect();
+            assert(w@ == seq![(0usize, 10u32), (1, 20), (2, 30)]);
+        }
+
+        fn for_loop_works(v: &Vec<u32>) {
+            let mut w: Vec<usize> = Vec::new();
+            for (i, x) in it: v.iter().enumerate()
+                invariant
+                    w@.len() == it.index() <= v.len(),
+                    forall|k: int| 0 <= k < it.index() ==> w@[k] == k,
+            {
+                assert(i == it.index());
+                assert(*x == v@[i as int]);
+                w.push(i);
+            }
+            assert(w@.len() == v@.len());
+        }
+
+        fn loop_vars_in_invariant(v: &Vec<u32>) {
+            for (i, x) in it: v.iter().enumerate()
+                invariant
+                    it.index() < v.len() ==> i == it.index() && *x == v@[it.index()],
+            {
+            }
+        }
+
+        // Move-to-front reset
+        fn array_iter_mut_works() {
+            let mut a: [u8; 256] = [0; 256];
+            for (i, x) in it: a.iter_mut().enumerate()
+                invariant
+                    forall|k: int| #![auto] 0 <= k < it.index() ==> *final(it.seq()[k].1) == k as u8,
+            {
+                *x = i as u8;
+            }
+            assert(forall|k: int| 0 <= k < 256 ==> a@[k] == k as u8);
+        }
+
+        fn wrong_index_fails(v: &Vec<u32>) {
+            for (i, x) in it: v.iter().enumerate() {
+                assert(i == it.index() + 1); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // `Enumerate` counts the items it yields in a `usize`, so `enumerate` must know that
+    // at most `usize::MAX` items will be yielded; without the laws, `remaining()` bounds nothing.
+    #[test] enumerate_requires_bounded_len verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+        use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+
+        fn bounded<I: Iterator>(it: I)
+            requires
+                it.obeys_prophetic_iter_laws(),
+                it.remaining().len() <= usize::MAX,
+        {
+            let _ = it.enumerate();
+        }
+
+        // The bound is known for the usual slice and Vec iterators, whatever their length
+        fn common_sources(v: Vec<u32>, r: &Vec<u32>, s: &[u32], m: &mut Vec<u32>) {
+            let _ = r.iter().enumerate();
+            let _ = r.into_iter().enumerate();
+            let _ = s.iter().enumerate();
+            let _ = s.into_iter().enumerate();
+            let _ = m.iter_mut().enumerate();
+            let _ = v.into_iter().enumerate();
+        }
+
+        // ... and for the iterators over other (well-formed) collections, `str`, and slice chunks
+        fn other_sources(
+            hm: &HashMap<u32, u32>,
+            hs: &HashSet<u32>,
+            bm: &BTreeMap<u32, u32>,
+            bs: &BTreeSet<u32>,
+            vd: &VecDeque<u32>,
+            st: &str,
+            s: &[u32],
+        )
+            requires
+                vstd::std_specs::hash::hash_map_wf(hm),
+                vstd::std_specs::hash::hash_set_wf(hs),
+                vstd::std_specs::btree::btree_map_wf(bm),
+                vstd::std_specs::btree::btree_set_wf(bs),
+        {
+            let _ = hm.iter().enumerate();
+            let _ = hm.keys().enumerate();
+            let _ = hm.values().enumerate();
+            let _ = hs.iter().enumerate();
+            let _ = bm.iter().enumerate();
+            let _ = bm.keys().enumerate();
+            let _ = bm.values().enumerate();
+            let _ = bs.iter().enumerate();
+            let _ = vd.iter().enumerate();
+            let _ = st.chars().enumerate();
+            let _ = s.chunks(2).enumerate();
+        }
+
+        fn unbounded<I: Iterator>(it: I)
+            requires
+                it.obeys_prophetic_iter_laws(),
+        {
+            let _ = it.enumerate(); // FAILS
+        }
+
+        fn without_laws<I: Iterator>(it: I)
+            requires
+                it.remaining().len() <= usize::MAX,
+        {
+            let _ = it.enumerate(); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] zip_works verus_code! {
+        use vstd::prelude::*;
+
+        fn zip_works() {
+            let x1 = vec![1u32, 2, 3];
+            let x2 = vec![2u32, 4, 6];
+            let y1 = vec![2u32, 4, 6];
+            let y2 = vec![1u32, 2];
+            let z1 = vec![1u32, 2];
+            let z2 = vec![2u32, 4, 6, 8, 10];
+
+            let x: Vec<(u32, u32)> = x1.into_iter().zip(x2).collect();
+            assert(x@ == seq![(1u32,2u32), (2, 4), (3, 6)]);
+
+            let y: Vec<(u32, u32)> = y1.into_iter().zip(y2).collect();
+            assert(y@ == seq![(2u32,1u32), (4, 2)]);
+
+            let z: Vec<(u32, u32)> = z1.into_iter().zip(z2).collect();
+            assert(z@ == seq![(1u32,2u32), (2, 4)]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] rev_for_loop_in_trait_impl_regression_3020 verus_code! {
+        // https://github.com/verus-lang/verus/issues/3020
+        // The blanket impl for DoubleEndedIteratorSpec must be ordered before
+        // functions that rely on Range: DoubleEndedIterator, even inside trait impls
+        use vstd::prelude::*;
+
+        pub trait T { fn t(); }
+        pub struct S;
+        impl T for S {
+            fn t() {
+                for j in (0..3usize).rev() {}
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Adaptors over an iterator without the prophetic laws: the closure must accept every
+    // item, since `remaining()` need not describe what `next` yields. An impl that defines
+    // `remaining()` as empty while `next` yields 200 used to let `find` call a
+    // closure requiring `x < 4` on 200.
+    #[test] test_adaptor_requires_without_laws verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpecImpl;
+        pub struct It { n: u8 }
+        impl Iterator for It {
+            type Item = u8;
+            fn next(&mut self) -> Option<u8> {
+                if self.n == 0 { None } else { self.n = self.n - 1; Some(200) }
+            }
+        }
+        impl IteratorSpecImpl for It {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { false }
+            open spec fn remaining(&self) -> Seq<u8> { Seq::empty() }
+            #[verifier::prophetic]
+            open spec fn produces(&self) -> Seq<bool> { Seq::empty() }
+            open spec fn decrease(&self) -> Option<nat> { None }
+            open spec fn peek(&self, index: int) -> Option<u8> { None }
+        }
+        fn ok(it: It) -> Option<u8> {
+            let mut it = it;
+            it.find(|x: &u8| *x > 1)
+        }
+        fn bad(it: It) -> Option<u8> {
+            let arr = [0u8; 4];
+            let mut it = it;
+            it.find(|x: &u8| -> (b: bool) requires *x < 4 { arr[*x as usize] == 0 }) // FAILS
+        }
+        fn bad_find_map(it: It) -> Option<u8> {
+            let arr = [0u8; 4];
+            let mut it = it;
+            it.find_map(|x: u8| -> (r: Option<u8>) requires x < 4 { Some(arr[x as usize]) }) // FAILS
+        }
+        fn bad_position(it: It) -> Option<usize> {
+            let mut it = it;
+            it.position(|x: u8| x > 1) // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] range_iterator_impl_with_destruct_bound verus_code! {
+        // Since Rust 1.100, `impl Iterator for Range<A>` requires `A: [const] Destruct`
+        use vstd::prelude::*;
+
+        fn first<I: Iterator<Item = u8>>(mut i: I) -> Option<u8> {
+            i.next()
+        }
+
+        fn test() {
+            let x = first(0u8..3);
         }
     } => Ok(())
 }

@@ -3,6 +3,157 @@
 mod common;
 use common::*;
 
+test_verify_one_file! {
+    #[test] standard_try_operations_no_unwind verus_code! {
+        use vstd::prelude::*;
+        use core::convert::Infallible;
+        use core::ops::{ControlFlow, FromResidual, Try};
+
+        fn option_branch<T>(value: Option<T>) -> ControlFlow<Option<Infallible>, T>
+            no_unwind
+        {
+            value.branch()
+        }
+
+        fn result_branch<T, E>(value: Result<T, E>) -> ControlFlow<Result<Infallible, E>, T>
+            no_unwind
+        {
+            value.branch()
+        }
+
+        fn control_flow_branch<B, C>(value: ControlFlow<B, C>) ->
+            ControlFlow<ControlFlow<B, Infallible>, C>
+            no_unwind
+        {
+            value.branch()
+        }
+
+        fn option_from_residual<T>(residual: Option<Infallible>) -> Option<T>
+            no_unwind
+        {
+            Option::from_residual(residual)
+        }
+
+        fn control_flow_from_residual<B, C>(residual: ControlFlow<B, Infallible>) ->
+            ControlFlow<B, C>
+            no_unwind
+        {
+            ControlFlow::from_residual(residual)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] generic_try_operations_conditional_unwind verus_code! {
+        use vstd::prelude::*;
+        use core::ops::{ControlFlow, FromResidual, Try};
+        use vstd::std_specs::control_flow::{FromResidualSpec, TrySpec};
+
+        fn branch<T: Try>(value: T) -> ControlFlow<T::Residual, T::Output>
+            no_unwind when !value.may_unwind()
+        {
+            value.branch()
+        }
+
+        fn from_residual<T: FromResidual<R>, R>(residual: R) -> T
+            no_unwind when !<T as FromResidualSpec<R>>::may_unwind(&residual)
+        {
+            T::from_residual(residual)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] custom_try_operations_check_conditional_unwind verus_code! {
+        use vstd::prelude::*;
+        use core::convert::Infallible;
+        use core::ops::{ControlFlow, FromResidual, Try};
+        use vstd::std_specs::control_flow::{FromResidualSpecImpl, TrySpecImpl};
+
+        pub struct MyTry {
+            pub value: u32,
+            pub may_panic: bool,
+        }
+
+        // The default contract permits unwinding.
+        fn maybe_panic() {}
+
+        impl TrySpecImpl for MyTry {
+            open spec fn may_unwind(&self) -> bool { self.may_panic }
+            open spec fn branch_model_is_valid() -> bool { true }
+            open spec fn branch_model(self) -> ControlFlow<Option<Infallible>, u32> {
+                ControlFlow::Continue(self.value)
+            }
+        }
+
+        impl FromResidualSpecImpl<Option<Infallible>> for MyTry {
+            open spec fn may_unwind(residual: &Option<Infallible>) -> bool { false }
+        }
+
+        impl FromResidual<Option<Infallible>> for MyTry {
+            fn from_residual(residual: Option<Infallible>) -> Self {
+                maybe_panic(); // FAILS: this implementation promised not to unwind.
+                MyTry { value: 0, may_panic: false }
+            }
+        }
+
+        impl Try for MyTry {
+            type Output = u32;
+            type Residual = Option<Infallible>;
+
+            fn from_output(value: u32) -> Self {
+                MyTry { value, may_panic: false }
+            }
+
+            fn branch(self) -> ControlFlow<Option<Infallible>, u32> {
+                if self.may_panic {
+                    maybe_panic();
+                }
+                ControlFlow::Continue(self.value)
+            }
+        }
+
+        fn safe(value: u32) -> ControlFlow<Option<Infallible>, u32>
+            no_unwind
+        {
+            MyTry { value, may_panic: false }.branch()
+        }
+
+        fn unguarded(value: MyTry) -> ControlFlow<Option<Infallible>, u32>
+            no_unwind
+        {
+            value.branch() // FAILS: this value may permit unwinding.
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] try_operations_do_not_assume_no_unwind verus_code! {
+        use vstd::prelude::*;
+        use core::convert::Infallible;
+        use core::ops::{ControlFlow, FromResidual, Try};
+
+        fn branch<T: Try>(value: T) -> ControlFlow<T::Residual, T::Output>
+            no_unwind
+        {
+            value.branch() // FAILS: the implementation's flag is unknown.
+        }
+
+        fn from_residual<T: FromResidual<R>, R>(residual: R) -> T
+            no_unwind
+        {
+            T::from_residual(residual) // FAILS: the implementation's flag is unknown.
+        }
+
+        fn result_from_residual<T, E, F: From<E>>(residual: Result<Infallible, E>) ->
+            Result<T, F>
+            no_unwind
+        {
+            Result::from_residual(residual) // FAILS: error conversion may unwind.
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
 test_verify_one_file_with_options! {
     #[test] basic ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
@@ -379,7 +530,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare an unwind specification")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare an `unwind` specification")
 }
 
 test_verify_one_file! {
@@ -388,7 +539,7 @@ test_verify_one_file! {
             no_unwind
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "an 'unwind' specification can only be given on exec functions")
+    } => Err(err) => assert_vir_error_msg(err, "an `unwind` specification can only be given on exec functions")
 }
 
 test_verify_one_file! {
@@ -397,7 +548,7 @@ test_verify_one_file! {
             no_unwind
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "an 'unwind' specification can only be given on exec functions")
+    } => Err(err) => assert_vir_error_msg(err, "an `unwind` specification can only be given on exec functions")
 }
 
 test_verify_one_file! {
@@ -406,7 +557,7 @@ test_verify_one_file! {
             no_unwind when j >= 3
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "an 'unwind' specification can only be given on exec functions")
+    } => Err(err) => assert_vir_error_msg(err, "an `unwind` specification can only be given on exec functions")
 }
 
 test_verify_one_file! {
@@ -581,6 +732,79 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] vstd_checked_integer_operations_no_unwind verus_code! {
+        use vstd::prelude::*;
+
+        fn unsigned_operations(x: u64, y: u64, z: i64)
+            no_unwind
+        {
+            let _ = x.checked_add(y);
+            let _ = x.checked_add_signed(z);
+            let _ = x.checked_sub(y);
+            let _ = x.checked_mul(y);
+            let _ = x.checked_next_multiple_of(y);
+            let _ = x.checked_div(y);
+            let _ = x.checked_div_euclid(y);
+            let _ = x.checked_rem(y);
+            let _ = x.checked_rem_euclid(y);
+            let _ = x.saturating_add(y);
+            let _ = x.saturating_sub(y);
+            let _ = x.saturating_mul(y);
+            let _ = x.is_multiple_of(y);
+        }
+
+        fn signed_operations(x: i64, y: i64, z: u64)
+            no_unwind
+        {
+            let _ = x.checked_add(y);
+            let _ = x.checked_add_unsigned(z);
+            let _ = x.checked_sub(y);
+            let _ = x.checked_sub_unsigned(z);
+            let _ = x.checked_mul(y);
+            let _ = x.checked_div(y);
+            let _ = x.checked_div_euclid(y);
+            let _ = x.checked_rem(y);
+            let _ = x.checked_rem_euclid(y);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] vstd_len_and_view_accessors_no_unwind verus_code! {
+        use vstd::prelude::*;
+
+        fn slice_operations<T>(s: &[T], a: &[T; 4])
+            opens_invariants none
+            no_unwind
+        {
+            let _ = s.len();
+            let _ = s.is_empty();
+            let _ = a.as_slice();
+        }
+
+        fn str_operations(s: &str, t: &String)
+            opens_invariants none
+            no_unwind
+        {
+            let _ = s.len();
+            let _ = s.is_empty();
+            let _ = s.as_bytes();
+            let _ = t.as_str();
+            let _ = t.is_empty();
+        }
+
+        fn vec_operations<T>(v: &mut Vec<T>)
+            opens_invariants none
+            no_unwind
+        {
+            let _ = v.is_empty();
+            let _ = v.as_slice();
+            let _ = v.as_mut_slice();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] no_unwind_box_rc_arc_new verus_code! {
         use vstd::prelude::*;
         use std::rc::Rc;
@@ -604,4 +828,81 @@ test_verify_one_file! {
             let b = Arc::new(8); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] vstd_core_atomic_ordering_ok verus_code! {
+        use vstd::prelude::*;
+        use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
+        fn ok_ops(a: &AtomicU32, b: &AtomicBool)
+            no_unwind
+        {
+            let _ = a.load(Ordering::Acquire);
+            let _ = a.load(Ordering::SeqCst);
+            a.store(7, Ordering::Release);
+            a.store(8, Ordering::Relaxed);
+            let _ = a.swap(3, Ordering::AcqRel);
+            let _ = a.compare_exchange(1, 2, Ordering::AcqRel, Ordering::Acquire);
+            let _ = a.compare_exchange_weak(1, 2, Ordering::Release, Ordering::Relaxed);
+            let _ = a.fetch_add(1, Ordering::AcqRel);
+            let _ = a.fetch_max(5, Ordering::SeqCst);
+            let _ = b.load(Ordering::Acquire);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] vstd_core_atomic_ordering_fail verus_code! {
+        use vstd::prelude::*;
+        use core::sync::atomic::{AtomicU32, Ordering};
+
+        fn bad_load(a: &AtomicU32) {
+            let _ = a.load(Ordering::Release); // FAILS
+        }
+
+        fn bad_store(a: &AtomicU32) {
+            a.store(1, Ordering::Acquire); // FAILS
+        }
+
+        fn bad_cmpxchg(a: &AtomicU32) {
+            let _ = a.compare_exchange(1, 2, Ordering::SeqCst, Ordering::AcqRel); // FAILS
+        }
+
+        fn bad_cmpxchg_weak(a: &AtomicU32) {
+            let _ = a.compare_exchange_weak(1, 2, Ordering::SeqCst, Ordering::Release); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] option_from_residual_infallible_no_false verus_code! {
+        // Since Rust 1.100, `Infallible` is an alias for `!`
+        use vstd::prelude::*;
+        use core::convert::Infallible;
+        use core::ops::FromResidual;
+
+        fn test(residual: Option<Infallible>) -> Option<u8> {
+            let r = Option::from_residual(residual);
+            assert(false); // FAILS
+            r
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] header_after_statements_in_block verus_code! {
+        fn f(x: u8) -> (r: u8)
+            ensures
+                r == x,
+        {
+            {
+                if x == 0 {
+                    return 1;
+                }
+                verus_builtin::no_unwind();
+            }
+            x
+        }
+    } => Err(err) => assert_vir_error_msg(err, "invalid nested header block")
 }

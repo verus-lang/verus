@@ -30,7 +30,23 @@ test_verify_one_file_with_options! {
                 return 1 + a(i - 1);
             }
         }
-    } => Ok(err) => assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some())
+    } => Ok(err) => assert!(err.warnings.iter().find(|x| x.message.contains("if `exec_allows_no_decreases_clause` is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some())
+}
+
+test_verify_one_file_with_options! {
+    #[test] recursive_exec_function_with_decreases_clause_exec_allows_no_decreases_clause_no_warning ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::allow(decreases_when_exec_allows_no_decreases_clause)]
+        fn a(i: u64) -> (r: u64)
+            ensures r == i
+            decreases i
+        {
+            if i == 0 {
+                return 0;
+            } else {
+                return 1 + a(i - 1);
+            }
+        }
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -59,7 +75,7 @@ test_verify_one_file! {
                 return 1 + a(i - 1);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -76,7 +92,7 @@ test_verify_one_file! {
                 dec1(j - 1);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -89,7 +105,7 @@ test_verify_one_file! {
             extra_dependency(dec1b);
             unimplemented!();
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -106,8 +122,8 @@ test_verify_one_file! {
         assert_eq!(err.errors.len(), 2);
         assert!(err.errors[0].code.is_none());
         assert!(err.errors[1].code.is_none());
-        assert!(err.errors[0].message.contains("recursive function must have a decreases clause"));
-        assert!(err.errors[1].message.contains("recursive function must have a decreases clause"));
+        assert!(err.errors[0].message.contains("recursive function must have a `decreases` clause"));
+        assert!(err.errors[1].message.contains("recursive function must have a `decreases` clause"));
     }
 }
 
@@ -121,7 +137,7 @@ test_verify_one_file! {
                 i = i + 1;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "loop must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "loop must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -144,7 +160,7 @@ test_verify_one_file! {
                         }
                 }
         }
-    } => Err(err) => assert_vir_error_msg(err, "loop must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "loop must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -181,7 +197,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "loop must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "loop must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -331,7 +347,7 @@ test_verify_one_file! {
             #[verifier::exec_allows_no_decreases_clause]
             fn b();
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method declaration cannot declare exec_allows_no_decreases_clause")
+    } => Err(err) => assert_vir_error_msg(err, "trait method declaration cannot declare `exec_allows_no_decreases_clause`")
 }
 
 test_verify_one_file! {
@@ -380,7 +396,7 @@ test_verify_one_file! {
                 loop { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "loop must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "loop must have a `decreases` clause")
 }
 
 test_verify_one_file! {

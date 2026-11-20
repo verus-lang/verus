@@ -90,6 +90,8 @@ pub(crate) fn visit_item_enum_synthesize(
     }
 
     let mut direct_fields: HashMap<FieldName, (FieldInfo, Vec<Ident>)> = HashMap::new();
+    // emit the methods in declaration order, so the output is deterministic
+    let mut field_order: Vec<FieldName> = Vec::new();
     let mut all_fields: Vec<(Ident, FieldName, FieldInfo)> = Vec::new();
     let mut invalid_fields: Vec<Ident> = Vec::new();
     for variant in &enum_.variants {
@@ -110,6 +112,9 @@ pub(crate) fn visit_item_enum_synthesize(
                             }
                         }
                         Entry::Vacant(vac) => {
+                            if !field_order.contains(&name) {
+                                field_order.push(name.clone());
+                            }
                             vac.insert((info.clone(), vec![variant.ident.clone()]));
                         }
                     }
@@ -130,6 +135,9 @@ pub(crate) fn visit_item_enum_synthesize(
                             }
                         }
                         Entry::Vacant(vac) => {
+                            if !field_order.contains(&name) {
+                                field_order.push(name.clone());
+                            }
                             vac.insert((info.clone(), vec![variant.ident.clone()]));
                         }
                     }
@@ -144,7 +152,7 @@ pub(crate) fn visit_item_enum_synthesize(
     if !erase_ghost.erase() && !allow_inconsistent_fields {
         for invalid_field in invalid_fields {
             proc_macro::Diagnostic::spanned(enum_.span().unwrap(), proc_macro::Level::Warning, {
-                format!("field `{}` has inconsistent type or visibility in different variants\n->{} syntax will not be available for this field\nuse #[allow(inconsistent_fields)] on the struct to silence the warnign", &invalid_field, &invalid_field)
+                format!("field `{}` has inconsistent type or visibility in different variants\n->{} syntax will not be available for this field\nuse #[allow(inconsistent_fields)] on the struct to silence the warnign", invalid_field, invalid_field)
             }).emit();
         }
     }
@@ -152,8 +160,9 @@ pub(crate) fn visit_item_enum_synthesize(
     let enum_vis_pub = !matches!(enum_.vis, verus_syn::Visibility::Inherited);
     if direct_fields.len() != 0 || all_fields.len() != 0 {
         let enum_ident = &enum_.ident;
-        let methods_direct = direct_fields
+        let methods_direct = field_order
             .iter()
+            .filter_map(|name| direct_fields.get(name).map(|v| (name, v)))
             .map(|(name, (info, variants))| {
                 let method_ident = match name {
                     FieldName::Named(named) => quote::format_ident!("arrow_{}", named),
@@ -187,6 +196,7 @@ pub(crate) fn visit_item_enum_synthesize(
                         #[verifier::inline]
                         #publish
                         #vis fn #method_ident(self) -> #ty_ {
+                            #verus_builtin::recommends([#verus_builtin::is_variant(&self, #variant_ident)]);
                             #verus_builtin::get_variant_field(self, #variant_ident, #field_str)
                         }
                     }
@@ -200,7 +210,7 @@ pub(crate) fn visit_item_enum_synthesize(
                         #[verifier::external]
                         #publish
                         #vis fn #method_ident(self) -> #ty_ {
-                            unimplemented!()
+                            ::core::unimplemented!()
                         }
                     }
                 }
@@ -242,6 +252,7 @@ pub(crate) fn visit_item_enum_synthesize(
                     #[verifier::inline]
                     #publish
                     #vis fn #method_ident(self) -> #ty_ {
+                        #verus_builtin::recommends([#verus_builtin::is_variant(&self, #variant_ident)]);
                         #verus_builtin::get_variant_field(self, #variant_ident, #field_str)
                     }
                 }

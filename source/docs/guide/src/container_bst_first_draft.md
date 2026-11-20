@@ -100,16 +100,16 @@ During this traversal, we'll either find a node with the right key, in which cas
 the `value`, or we'll reach a leaf without ever finding the desired node, in which case we
 create a new node.
 
-(Aside: One slight snag has to do with a limitation of Verus's handing of mutable references.
-Specifically, Verus doesn't yet support an easy way to get a
-`&mut T` out of a `&mut Option<T>`. To get around this, we use [`Option::take`](https://doc.rust-lang.org/std/option/enum.Option.html#method.take) to get ownership of the node.)
+(Aside: Rather than borrowing a `&mut T` out of the `&mut Option<T>`, this code uses
+[`Option::take`](https://doc.rust-lang.org/std/option/enum.Option.html#method.take) to get ownership of the node.
+We'll see mutable references into the tree [below](#implementing-get_mut).)
 
 ```rust
 {{#include ../../../../examples/guide/bst_map.rs:insert}}
 ```
 
 Observe that the specification of `TreeMap::insert` is given in terms of
-[`Map::insert`](https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html#method.remove).
+[`Map::insert`](https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html#method.insert).
 
 ### Implementing `delete`
 
@@ -149,9 +149,9 @@ specifications.
 Recall [how functions returning mutable borrows are specified](./mutable-references.md#returning-mutable-borrows). In general, the following pattern works well:
 
  * The initial value of the output reference (`*ret.unwrap()`) should be a function of
-   the initial value input reference (`*old(self)`).
+   the initial value of the input reference (`*old(self)`).
  * The final value of the input reference (`*final(self)`) should be a function of the
-   the final value of the output reference (`*final(ret.unwrap())`).
+   final value of the output reference (`*final(ret.unwrap())`).
 
 Of course, `*ret.unwrap()` will just be an index into the map (like with `get`)
 while `*final(self)` will be a map update based on the new value.

@@ -52,6 +52,7 @@ verus! {
 /// Trait used to specify an _invariant predicate_ for
 /// [`LocalInvariant`] and [`AtomicInvariant`].
 pub trait InvariantPredicate<K, V> {
+    #[verifier::prophetic]
     spec fn inv(k: K, v: V) -> bool;
 }
 
@@ -170,7 +171,7 @@ pub struct LocalInvariant<K, V, Pred> {
 impl<K, V, Pred> !Sync for LocalInvariant<K, V, Pred> {}
 
 macro_rules! declare_invariant_impl {
-    ($invariant:ident) => {
+    ($invariant:ident => $selfid:ident => $($into_inner_clause:tt)*) => {
         // note the path names of `inv` and `namespace` are harcoded into the VIR crate.
 
         verus!{
@@ -194,6 +195,7 @@ macro_rules! declare_invariant_impl {
             /// This is equivalent to `Pred::inv(self.constant(), v)`.
 
             #[rustc_diagnostic_item = concat!("verus::vstd::invariant::", stringify!($invariant), "::inv")]
+            #[verifier::prophetic]
             pub open spec fn inv(&self, v: V) -> bool {
                 Pred::inv(self.constant(), v)
             }
@@ -210,23 +212,65 @@ macro_rules! declare_invariant_impl {
                     i.constant() == k,
                     i.namespace() == ns;
 
-            // TODO: the opens_invariants condition can be removed for LocalInvariant
+            // Q. Why does AtomicInvariant::into_inner have an opens_invariant clause
+            // while LocalInvariant::into_inner doesn't?
+            //
+            // A. It has to do with the way we prevent double-opening via into_inner,
+            // i.e., how we prevent the user from calling into_inner on an already-open
+            // invariant:
+            //
+            // open_{atomic|local}_invariant!(&inv => i => {
+            //     inv.into_inner(); // this should error
+            // }
+            //
+            // There are two broad approaches:
+            // 1. Use the mask-checking, treating into_inner the same as an invariant-open
+            // 2. Use lifetimes, ensuring the borrow used to open the block extends through
+            //    the entire block.
+            //
+            // Approach (1) is easier to use, but (1) is not sound for LocalInvariants.
+            // Thus, we use approach (1) for AtomicInvariants and (2) for LocalInvariants.
+            //
+            // Q. Why is approach (1) easier for AtomicInvariants?
+            //
+            // A. This makes it easier to perform an atomic operation that relinquishes
+            //    the permission to access the same atomic.
+            //
+            // Q. Why is approach (1) unsound for LocalInvariants?
+            //
+            // A. Because into_inner is not the only problem. We want to implement
+            // the bound `impl<T: Send> => LocalInvariant<T>: Send`.
+            // Furthermore, moving a local invariant to another thread basically means moving
+            // the invariant from one thread's invariant pool to another, which basically
+            // needs the same restrictions as `into_inner`.
+            //
+            // open_{atomic|local}_invariant!(&inv => i => {
+            //     send_to_another_thread(inv); // this must be disallowed, too
+            // }
+            //
+            // However, we cannot (easily) put a mask bound on the send operation.
+            //
+            // Q. How are the lifetime restrictions implemented for LocalInvariant?
+            // The short answer is that we use the lifetime argument of the InvariantBlockGuard
+            // and force it to remain alive for the duration of the open_local_invariant! block.
+            // However, this requires special support from Verus in the lifetime-erasure system.
+            // See rustc_mir_build_additional_files/verus_builder.rs for more information.
 
             /// Destroys the `
             #[doc = stringify!($invariant)]
             ///`, returning the tracked value contained within.
 
-            pub axiom fn into_inner(#[verifier::proof] self) -> (tracked v: V)
-                ensures self.inv(v),
-                opens_invariants [ self.namespace() ];
+            pub axiom fn into_inner(tracked $selfid) -> (tracked v: V)
+                ensures $selfid.inv(v),
+                $($into_inner_clause)* ;
         }
 
         }
     };
 }
 
-declare_invariant_impl!(AtomicInvariant);
-declare_invariant_impl!(LocalInvariant);
+declare_invariant_impl!(AtomicInvariant => self => opens_invariants [ self.namespace() ] );
+declare_invariant_impl!(LocalInvariant => self => );
 
 #[doc(hidden)]
 #[cfg_attr(verus_keep_ghost, verifier::proof)]
@@ -265,44 +309,38 @@ pub struct InvariantBlockGuard<'a>(core::marker::PhantomData<&'a ()>);
 
 verus! {
 
-#[doc(hidden)]
 #[cfg_attr(verus_keep_ghost, verifier::proof)]
 #[verifier::external_body]
-pub struct OpenInvariantCredit {}
+#[non_exhaustive]
+pub struct OpenInvariantCredit;
 
-// It's intentional that `create_open_invariant_credit` uses `exec` mode. This prevents
-// creation of an infinite number of credits to open invariants infinitely often.
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::invariant::create_open_invariant_credit")]
-#[verifier::external_body]
-#[inline(always)]
-pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
-    opens_invariants none
-    no_unwind
-{
-    Tracked::<OpenInvariantCredit>::assume_new()
-}
-
+/// Create a new `OpenInvariantCredit`.
+///
+/// Verus enforces certain restrictions to ensure that the number of credits is always
+/// bounded in terms of the number of _executable_ steps that have passed.
+/// This means a credit can be created in the middle of an executable function:
+///
+/// ```
+/// fn example() {
+///     let tracked credit1 = create_open_invariant_credit();
+///     let tracked credit2 = create_open_invariant_credit();
+///     let tracked credit3 = create_open_invariant_credit();
+/// }
+/// ```
+///
+/// But not in a `proof` function:
+///
+/// ```
+/// proof fn example() {
+///     let tracked credit = create_open_invariant_credit();
+///                       // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///                       // error: creating an invariant credit in potentially-unbounded ghost code
+/// }
+/// ```
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit_in_proof"]
-#[doc(hidden)]
-#[inline(always)]
-pub proof fn spend_open_invariant_credit_in_proof(tracked credit: OpenInvariantCredit) {
-}
-
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit")]
-#[doc(hidden)]
-#[inline(always)]
-pub fn spend_open_invariant_credit(
-    #[allow(unused_variables)]
-    credit: Tracked<OpenInvariantCredit>,
-)
-    opens_invariants none
-    no_unwind
-{
-    proof {
-        spend_open_invariant_credit_in_proof(credit.get());
-    }
-}
+#[rustc_diagnostic_item = "verus::vstd::invariant::create_open_invariant_credit"]
+#[verifier::create_open_invariant_credit]
+pub axiom fn create_open_invariant_credit() -> (tracked c: OpenInvariantCredit);
 
 } // verus!
 // NOTE: These 3 methods are removed in the conversion to VIR; they are only used
@@ -319,11 +357,16 @@ pub fn spend_open_invariant_credit(
 //   });
 //
 //  where `inner` will have type `X`.
+//
+// Why does this use the 'static type param for the InvariantBlockGuard? This is because
+// AtomicInvariant doesn't need the lifetime-checking like LocalInvariant does. See the explanation
+// over `into_inner`.
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::vstd::invariant::open_atomic_invariant_begin"]
 #[doc(hidden)]
 #[verifier::external] /* vattr */
 pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
+    _credit: OpenInvariantCredit,
     _inv: &'a AtomicInvariant<K, V, Pred>,
 ) -> (InvariantBlockGuard<'static>, V) {
     unimplemented!();
@@ -334,6 +377,7 @@ pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
 #[doc(hidden)]
 #[verifier::external] /* vattr */
 pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
+    _credit: OpenInvariantCredit,
     _inv: &'a LocalInvariant<K, V, Pred>,
 ) -> (InvariantBlockGuard<'a>, V) {
     unimplemented!();
@@ -420,10 +464,8 @@ macro_rules! open_atomic_invariant_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::vstd::invariant::spend_open_invariant_credit($credit_expr);
-            #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) =
-                $crate::vstd::invariant::open_atomic_invariant_begin($eexpr);
+                $crate::vstd::invariant::open_atomic_invariant_begin($credit_expr, $eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
             $crate::vstd::invariant::open_invariant_end(guard, $iident);
@@ -436,10 +478,8 @@ macro_rules! open_atomic_invariant_in_proof_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::vstd::invariant::spend_open_invariant_credit_in_proof($credit_expr);
-            #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) =
-                $crate::vstd::invariant::open_atomic_invariant_begin($eexpr);
+                $crate::vstd::invariant::open_atomic_invariant_begin($credit_expr, $eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
             $crate::vstd::invariant::open_invariant_end(guard, $iident);
@@ -552,10 +592,8 @@ macro_rules! open_local_invariant {
     [$($tail:tt)*] => {
         #[allow(unexpected_cfgs)] // make sure client crates don't see "unexpected `cfg` condition name: `verus_...`"
         {
-            #[cfg(verus_keep_ghost_body)]
-            let credit = $crate::vstd::invariant::create_open_invariant_credit();
             $crate::vstd::prelude::verus_exec_inv_macro_exprs!(
-                $crate::vstd::invariant::open_local_invariant_internal!(credit => $($tail)*))
+                $crate::vstd::invariant::open_local_invariant_internal!($crate::vstd::invariant::create_open_invariant_credit() => $($tail)*))
         }
     };
 }
@@ -572,9 +610,7 @@ macro_rules! open_local_invariant_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::vstd::invariant::spend_open_invariant_credit($credit_expr);
-            #[cfg(verus_keep_ghost_body)]
-            #[allow(unused_mut)] let (guard, mut $iident) = $crate::vstd::invariant::open_local_invariant_begin($eexpr);
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::vstd::invariant::open_local_invariant_begin($credit_expr, $eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
             $crate::vstd::invariant::open_invariant_end(guard, $iident);
@@ -587,9 +623,7 @@ macro_rules! open_local_invariant_in_proof_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::vstd::invariant::spend_open_invariant_credit_in_proof($credit_expr);
-            #[cfg(verus_keep_ghost_body)]
-            #[allow(unused_mut)] let (guard, mut $iident) = $crate::vstd::invariant::open_local_invariant_begin($eexpr);
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::vstd::invariant::open_local_invariant_begin($credit_expr, $eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
             $crate::vstd::invariant::open_invariant_end(guard, $iident);

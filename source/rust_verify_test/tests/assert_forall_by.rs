@@ -291,3 +291,18 @@ test_verify_one_file! {
         assert!(warns.next().is_none());
     }
 }
+
+test_verify_one_file! {
+    #[test] test_forallstmt_implies_no_warning verus_code! {
+        uninterp spec fn f(x: int) -> bool;
+        uninterp spec fn g(x: int) -> bool;
+
+        #[verifier::allow(assert_forall_implication)]
+        proof fn x()
+            requires forall |x: int| f(x) ==> g(x)
+        {
+            assert forall |x: int| f(x) ==> g(x) by {
+            }
+        }
+    } => Ok(())
+}

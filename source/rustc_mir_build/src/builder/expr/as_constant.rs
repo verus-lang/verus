@@ -2,7 +2,9 @@
 
 use rustc_abi::Size;
 use rustc_ast as ast;
-use rustc_hir::LangItem;
+use rustc_hir::attrs::lang_items::LangItem;
+use rustc_hir::def::DefKind;
+use rustc_middle::mir;
 use rustc_middle::mir::interpret::{CTFE_ALLOC_SALT, Scalar};
 use rustc_middle::mir::*;
 use rustc_middle::thir::*;
@@ -10,7 +12,7 @@ use rustc_middle::ty::{
     self, CanonicalUserType, CanonicalUserTypeAnnotation, LitToConstInput, Ty, TyCtxt,
     TypeVisitableExt as _, UserTypeAnnotationIndex,
 };
-use rustc_middle::{bug, mir, span_bug};
+use rustc_span::{bug, span_bug};
 use tracing::{instrument, trace};
 
 use crate::builder::{Builder, parse_float_into_constval};
@@ -50,7 +52,8 @@ pub(crate) fn as_constant_inner<'tcx>(
 
     match *kind {
         ExprKind::Literal { lit, neg } => {
-            let const_ = lit_to_mir_constant(tcx, LitToConstInput { lit: lit.node, ty, neg });
+            let const_ =
+                lit_to_mir_constant(tcx, LitToConstInput { lit: lit.node, ty: Some(ty), neg });
 
             ConstOperand { span, user_ty: None, const_ }
         }
@@ -70,17 +73,50 @@ pub(crate) fn as_constant_inner<'tcx>(
         }
         ExprKind::NamedConst { def_id, args, ref user_ty } => {
             let user_ty = user_ty.as_ref().and_then(push_cuta);
-            if tcx.is_type_const(def_id) {
-                let uneval = ty::UnevaluatedConst::new(def_id, args);
-                let ct = ty::Const::new_unevaluated(tcx, uneval);
 
+            let get_kind = |def_id, def_kind| match def_kind {
+                DefKind::AssocConst => {
+                    if let DefKind::Impl { of_trait: false } = tcx.def_kind(tcx.parent(def_id)) {
+                        ty::AliasConstKind::InherentImpl { def_id }
+                    } else {
+                        ty::AliasConstKind::Projection { def_id }
+                    }
+                }
+                DefKind::Const => ty::AliasConstKind::Free { def_id },
+                kind => bug!("unexpected DefKind in THIR ExprKind::NamedConst: {kind:?}"),
+            };
+
+            let could_be_direct_const = |def_id| {
+                let def_kind = tcx.def_kind(def_id);
+                let (DefKind::Const | DefKind::AssocConst) = def_kind else {
+                    return None;
+                };
+                if tcx.is_direct_const(def_id) {
+                    return Some(get_kind(def_id, def_kind));
+                }
+                // Under gca_const_items, `def_id` might be a regular const declared in a trait,
+                // but is `impl`d as a directly represented const. We do not know whether it is
+                // here, so we must use type system normalization for all const projections.
+                // FIXME(gca_const_items): there's a lot to consider here! `Const::Ty` uses
+                // valtrees and `Const::Unevaluated` does not, we should revisit this before
+                // stabilization.
+                if tcx.features().gca_const_items()
+                    && let kind @ ty::AliasConstKind::Projection { .. } = get_kind(def_id, def_kind)
+                {
+                    return Some(kind);
+                }
+                None
+            };
+
+            if let Some(kind) = could_be_direct_const(def_id) {
+                let alias = ty::AliasConst::new(tcx, kind, args);
+                let ct = ty::Const::new_alias(tcx, ty::IsRigid::No, alias);
                 let const_ = Const::Ty(ty, ct);
                 return ConstOperand { span, user_ty, const_ };
             }
 
             let uneval = mir::UnevaluatedConst::new(def_id, args);
             let const_ = Const::Unevaluated(uneval, ty);
-
             ConstOperand { user_ty, span, const_ }
         }
         ExprKind::ConstParam { param, def_id: _ } => {
@@ -108,6 +144,8 @@ pub(crate) fn as_constant_inner<'tcx>(
 #[instrument(skip(tcx, lit_input))]
 fn lit_to_mir_constant<'tcx>(tcx: TyCtxt<'tcx>, lit_input: LitToConstInput<'tcx>) -> Const<'tcx> {
     let LitToConstInput { lit, ty, neg } = lit_input;
+
+    let ty = ty.expect("type of literal must be known at this point");
 
     if let Err(guar) = ty.error_reported() {
         return Const::Ty(Ty::new_error(tcx, guar), ty::Const::new_error(tcx, guar));

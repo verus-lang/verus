@@ -11,6 +11,7 @@
 //!   (View::V (Vec A)) == (Seq (View::V A))
 
 use crate::ast::{AssocTypeImpl, AssocTypeImplX, Trait};
+use crate::ast_util::path_as_friendly_rust_name;
 use crate::context::Ctx;
 use crate::def::QID_ASSOC_TYPE_IMPL;
 use crate::sst_to_air::typ_to_ids;
@@ -50,7 +51,7 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
     for assoc in assocs {
         let AssocTypeImplX {
             name,
-            impl_path: _,
+            impl_path,
             typ_params,
             typ_bounds,
             trait_path,
@@ -86,7 +87,13 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
             let projection = ident_apply(&projector, &args);
             let typ_id = typ_to_ids(ctx, &typ)[index].clone();
             let eq = mk_eq(&projection, &typ_id);
-            let qname = format!("{}_{}_{}", projector, QID_ASSOC_TYPE_IMPL, decoration);
+            let qname = format!(
+                "{}_{}_{}_{}",
+                projector,
+                path_as_friendly_rust_name(impl_path),
+                QID_ASSOC_TYPE_IMPL,
+                decoration
+            );
             let mut trigs = vec![projection];
             for extra_trigger_term in extra_trigger_terms.iter() {
                 trigs.push(crate::sst_to_air::typ_to_id(ctx, extra_trigger_term));

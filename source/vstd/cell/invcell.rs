@@ -6,8 +6,8 @@ use super::super::prelude::*;
 use super::CellId;
 use super::pcell::*;
 
-use verus as verus_;
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 /** Verus's closest analogue of [`Cell`](std::cell::Cell).
 

@@ -1,0 +1,145 @@
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: Git ref or SHA to build
+        required: true
+        type: string
+      is_rolling:
+        description: Whether this is a Rolling Release build
+        required: true
+        type: boolean
+    outputs:
+      version:
+        description: Version derived from the built Linux artifact
+        value: ${{ jobs.metadata.outputs.version }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.repository == 'verus-lang/verus'
+
+    strategy:
+      matrix:
+        build: [macos, macos-x86_64, linux, linux-arm64, windows, windows-arm64]
+        include:
+          - build: macos
+            os: macos-15
+            release_name: verus-arm64-macos
+          - build: macos-x86_64
+            os: macos-15-intel
+            release_name: verus-x86-macos
+          - build: linux
+            os: ubuntu-24.04
+            release_name: verus-x86-linux
+          - build: linux-arm64
+            os: ubuntu-24.04-arm
+            release_name: verus-arm64-linux
+          - build: windows
+            os: windows-2022
+            release_name: verus-x86-win
+          - build: windows-arm64
+            os: windows-11-arm
+            release_name: verus-arm64-win
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+
+      - name: get z3
+        working-directory: ./source
+        run: |
+          ./tools/get-z3.sh
+          echo "z3 version $(./z3 --version)"
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.100.0
+
+      - name: create temporary toolchain manifest
+        working-directory: ./source
+        # Note that the purpose of creating a manifest file here is to include it in the build.
+        # This flow is *not* responsible for committing the new manifest file.
+        run: |
+          MAYBE_ROLLING_FLAG="${{ inputs.is_rolling && '--rolling' || '' }}"
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- $MAYBE_ROLLING_FLAG --write-to-dir cargo-verus/toolchain-manifests
+
+      - name: build
+        working-directory: ./source
+        run: |
+          cargo clean
+          cargo build --release
+          cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
+
+      - name: stage external dependencies
+        working-directory: ./source
+        run: |
+          if [[ -f ./z3.exe ]]; then
+            z3=./z3.exe
+          else
+            z3=./z3
+          fi
+
+          test -f "$z3"
+          "$z3" --version
+
+      - name: stage release artifacts
+        working-directory: ./source
+        run: |
+          if [[ "${{ matrix.build }}" == "macos" || "${{ matrix.build }}" == "macos-x86_64" ]]; then
+            FOR_MAC="--for-macos"
+          else
+            FOR_MAC=""
+          fi
+
+          cargo run --release -p cargo-verus-toolchains --bin create-release -- $FOR_MAC --output-dir "../${{ matrix.release_name }}"
+
+      - name: create archive
+        working-directory: .
+        run: |
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            7z a "${{ matrix.release_name }}.zip" "./${{ matrix.release_name }}"
+          else
+            zip -r "${{ matrix.release_name }}.zip" "./${{ matrix.release_name }}"
+          fi
+
+      - name: upload release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.release_name }}
+          path: ${{ matrix.release_name }}.zip
+
+  metadata:
+    needs: [build]
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.read_version.outputs.version }}
+    steps:
+      - name: download linux artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: verus-x86-linux
+          path: verus-x86-linux
+
+      - name: read version
+        id: read_version
+        shell: bash
+        run: |
+          cd verus-x86-linux
+          unzip verus-x86-linux.zip
+          version="$(jq -er '.verus.version' ./verus-x86-linux/version.json)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "${version}"

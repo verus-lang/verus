@@ -1,10 +1,9 @@
 [package]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-05-31-0205"
+version = "0.0.0-2026-11-15-0327"
 edition = "2018"
 license = "MIT"
 description = "Verus State-Machine Macros: Various macros used by Verus to define and reason about atomic and sharded state machines"
-homepage = "https://github.com/verus-lang/verus"
 repository = "https://github.com/verus-lang/verus"
 documentation = "https://verus-lang.github.io/verus/state_machines/"
 readme = "../../README.md"
@@ -14,10 +13,10 @@ categories = ["development-tools"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-verus_syn = { version= "=0.0.0-2026-05-31-0205", path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
-quote = "1.0"
-proc-macro2 = "1.0"
-indexmap = { version = "1" }
+verus_syn = { workspace = true }
+quote = { workspace = true }
+proc-macro2 = { workspace = true }
+indexmap = { workspace = true }
 
 [lib]
 proc-macro = true

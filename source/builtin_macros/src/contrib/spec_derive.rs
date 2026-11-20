@@ -32,16 +32,9 @@ use syn::{
 /// }
 /// ```
 pub fn make_spec_type(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let excluded_fields: HashSet<String> = if attr.is_empty() {
-        HashSet::new()
-    } else {
-        match syn::parse(attr) {
-            Ok(meta) => match parse_excluded_fields(meta) {
-                Ok(fields) => fields,
-                Err(err) => return err.to_compile_error().into(),
-            },
-            Err(err) => return err.to_compile_error().into(),
-        }
+    let (excluded_fields, closed) = match parse_make_spec_type_attr(attr) {
+        Ok(parsed) => parsed,
+        Err(err) => return err.to_compile_error().into(),
     };
 
     let input: DeriveInput = match syn::parse(item) {
@@ -54,7 +47,7 @@ pub fn make_spec_type(attr: TokenStream, item: TokenStream) -> TokenStream {
         return err.to_compile_error().into();
     }
 
-    match make_spec_type_impl(input, excluded_fields) {
+    match make_spec_type_impl(input, excluded_fields, closed) {
         Ok(tokens) => tokens,
         Err(err) => err.to_compile_error().into(),
     }
@@ -63,6 +56,7 @@ pub fn make_spec_type(attr: TokenStream, item: TokenStream) -> TokenStream {
 fn make_spec_type_impl(
     input: DeriveInput,
     excluded_fields: HashSet<String>,
+    closed: bool,
 ) -> Result<TokenStream, Error> {
     // Validate that excluded fields exist
     if !excluded_fields.is_empty() {
@@ -79,6 +73,7 @@ fn make_spec_type_impl(
             &spec_name,
             data_struct,
             &excluded_fields,
+            closed,
             impl_generics,
             ty_generics,
             where_clause,
@@ -88,6 +83,7 @@ fn make_spec_type_impl(
             &spec_name,
             data_enum,
             &excluded_fields,
+            closed,
             impl_generics,
             ty_generics,
             where_clause,
@@ -108,21 +104,50 @@ fn make_spec_type_impl(
     Ok(output.into())
 }
 
-fn parse_excluded_fields(meta: Meta) -> Result<HashSet<String>, Error> {
-    match meta {
-        Meta::List(meta_list) if meta_list.path.is_ident("exclude") => Ok(meta_list
-            .parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
-            .map(|nested| nested.into_iter().map(|ident| ident.to_string()).collect())
-            .unwrap_or_default()),
-        Meta::Path(path) if path.is_ident("exclude") => Err(Error::new_spanned(
-            path,
-            "exclude attribute requires parameters: exclude(field1, field2, ...)",
-        )),
-        _ => Err(Error::new_spanned(
-            meta,
-            "make_spec_type only accepts 'exclude' attribute or no parameters",
-        )),
+/// Parse the `make_spec_type` attribute arguments. Accepts a comma-separated list of:
+/// - `exclude(field1, field2, ...)` — struct fields to omit from the spec type, and
+/// - `closed` — generate `closed spec fn` views (visible only in the defining module), so the
+///   macro can be applied to types with `pub(crate)`/private fields without leaking them via an
+///   `open spec` body. The generated spec *type*'s fields stay `pub`, so callers can still project
+///   the view (`x@.0`); only the *computation* of the view is hidden.
+fn parse_make_spec_type_attr(attr: TokenStream) -> Result<(HashSet<String>, bool), Error> {
+    if attr.is_empty() {
+        return Ok((HashSet::new(), false));
     }
+
+    let metas: Punctuated<Meta, Token![,]> =
+        syn::parse::Parser::parse(Punctuated::<Meta, Token![,]>::parse_terminated, attr)?;
+
+    let mut excluded_fields = HashSet::new();
+    let mut closed = false;
+
+    for meta in metas {
+        match meta {
+            Meta::List(meta_list) if meta_list.path.is_ident("exclude") => {
+                let fields = meta_list
+                    .parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
+                    .map(|nested| nested.into_iter().map(|ident| ident.to_string()))?;
+                excluded_fields.extend(fields);
+            }
+            Meta::Path(path) if path.is_ident("exclude") => {
+                return Err(Error::new_spanned(
+                    path,
+                    "exclude attribute requires parameters: exclude(field1, field2, ...)",
+                ));
+            }
+            Meta::Path(path) if path.is_ident("closed") => {
+                closed = true;
+            }
+            other => {
+                return Err(Error::new_spanned(
+                    other,
+                    "make_spec_type only accepts 'exclude(...)' and/or 'closed'",
+                ));
+            }
+        }
+    }
+
+    Ok((excluded_fields, closed))
 }
 
 fn validate_excluded_fields(data: &Data, excluded_fields: &HashSet<String>) -> Result<(), Error> {
@@ -192,10 +217,19 @@ fn generate_spec_field_type(ty: &Type) -> proc_macro2::TokenStream {
 }
 
 fn generate_field_access(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
+    generate_field_access_expr(quote! { self.#field_name }, ty)
+}
+
+/// `deep_view()` of an arbitrary field-access expression (e.g. `self.field` or `self.0`),
+/// dereferencing first when the field is a reference type.
+fn generate_field_access_expr(
+    access: proc_macro2::TokenStream,
+    ty: &Type,
+) -> proc_macro2::TokenStream {
     if matches!(ty, Type::Reference(_)) {
-        quote! { (*self.#field_name).deep_view() }
+        quote! { (*#access).deep_view() }
     } else {
-        quote! { self.#field_name.deep_view() }
+        quote! { #access.deep_view() }
     }
 }
 
@@ -204,48 +238,79 @@ fn generate_struct_impls(
     spec_name: &Ident,
     data_struct: &syn::DataStruct,
     excluded_fields: &HashSet<String>,
+    closed: bool,
     impl_generics: syn::ImplGenerics,
     ty_generics: syn::TypeGenerics,
     where_clause: Option<&syn::WhereClause>,
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
-    let spec_fields = data_struct.fields.iter().filter_map(|f| {
-        if is_field_excluded(&f.ident, excluded_fields) {
-            None
-        } else {
-            let fname = &f.ident;
-            let field_type = generate_spec_field_type(&f.ty);
-            Some(quote! { pub #fname : #field_type })
+    let (spec_data, deep_view_body) = match &data_struct.fields {
+        // Named-field struct: `XSpec { field: <T as DeepView>::V, ... }`.
+        Fields::Named(_) => {
+            let spec_fields = data_struct.fields.iter().filter_map(|f| {
+                if is_field_excluded(&f.ident, excluded_fields) {
+                    None
+                } else {
+                    let fname = &f.ident;
+                    let field_type = generate_spec_field_type(&f.ty);
+                    Some(quote! { pub #fname : #field_type })
+                }
+            });
+            let impl_fields = data_struct.fields.iter().filter_map(|f| {
+                if is_field_excluded(&f.ident, excluded_fields) {
+                    None
+                } else {
+                    let fname = f.ident.as_ref().unwrap();
+                    let field_access = generate_field_access(fname, &f.ty);
+                    Some(quote! { #fname: #field_access })
+                }
+            });
+            (
+                quote! {
+                    #[cfg(verus_keep_ghost)]
+                    pub ghost struct #spec_name {
+                        #(#spec_fields),*
+                    }
+                },
+                quote! { #spec_name { #(#impl_fields),* } },
+            )
         }
-    });
-
-    let impl_fields = data_struct.fields.iter().filter_map(|f| {
-        if is_field_excluded(&f.ident, excluded_fields) {
-            None
-        } else {
-            let fname = f.ident.as_ref().unwrap();
-            let field_access = generate_field_access(fname, &f.ty);
-            Some(quote! { #fname: #field_access })
+        // Tuple struct: `XSpec(<T0 as DeepView>::V, ...)`. Field exclusion is named-only, so it
+        // does not apply here (consistent with tuple enum variants).
+        Fields::Unnamed(fields_unnamed) => {
+            let spec_fields = fields_unnamed.unnamed.iter().map(|f| {
+                let field_type = generate_spec_field_type(&f.ty);
+                quote! { pub #field_type }
+            });
+            let impl_fields = fields_unnamed.unnamed.iter().enumerate().map(|(i, f)| {
+                let idx = syn::Index::from(i);
+                generate_field_access_expr(quote! { self.#idx }, &f.ty)
+            });
+            (
+                quote! {
+                    #[cfg(verus_keep_ghost)]
+                    pub ghost struct #spec_name ( #(#spec_fields),* );
+                },
+                quote! { #spec_name ( #(#impl_fields),* ) },
+            )
         }
-    });
-
-    let spec_data = quote! {
-        #[cfg(verus_keep_ghost)]
-        pub ghost struct #spec_name {
-            #(#spec_fields),*
-        }
+        // Unit struct: the spec type is also a unit struct.
+        Fields::Unit => (
+            quote! {
+                #[cfg(verus_keep_ghost)]
+                pub ghost struct #spec_name;
+            },
+            quote! { #spec_name },
+        ),
     };
 
     let deep_view_impl = generate_trait_impls(
         name,
         spec_name,
+        closed,
         impl_generics,
         ty_generics,
         where_clause,
-        quote! {
-            #spec_name {
-                #(#impl_fields),*
-            }
-        },
+        deep_view_body,
     );
 
     (spec_data, deep_view_impl)
@@ -256,6 +321,7 @@ fn generate_enum_impls(
     spec_name: &Ident,
     data_enum: &syn::DataEnum,
     excluded_fields: &HashSet<String>,
+    closed: bool,
     impl_generics: syn::ImplGenerics,
     ty_generics: syn::TypeGenerics,
     where_clause: Option<&syn::WhereClause>,
@@ -280,6 +346,7 @@ fn generate_enum_impls(
     let deep_view_impl = generate_trait_impls(
         name,
         spec_name,
+        closed,
         impl_generics,
         ty_generics,
         where_clause,
@@ -352,17 +419,26 @@ fn generate_match_arm(
 fn generate_trait_impls(
     name: &Ident,
     spec_name: &Ident,
+    closed: bool,
     impl_generics: syn::ImplGenerics,
     ty_generics: syn::TypeGenerics,
     where_clause: Option<&syn::WhereClause>,
     deep_view_body: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
+    // `closed` views can read `pub(crate)`/private fields without leaking them (the body is only
+    // visible in the defining module); `open` views require fully-`pub` fields. `View::view`
+    // simply forwards to `deep_view`, so it can stay `open` regardless.
+    let deep_view_vis = if closed {
+        quote! { closed }
+    } else {
+        quote! { open }
+    };
     quote! {
         #[cfg(verus_keep_ghost)]
         impl #impl_generics DeepView for #name #ty_generics #where_clause {
             type V = #spec_name;
 
-            open spec fn deep_view(&self) -> Self::V {
+            #deep_view_vis spec fn deep_view(&self) -> Self::V {
                 #deep_view_body
             }
         }

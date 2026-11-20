@@ -234,7 +234,7 @@ test_verify_one_bv_file! {
         proof fn test_int(x: X, y: X) {
             assert(x == y) by (bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle type `test_crate::X`")
+    } => Err(err) => assert_vir_error_msg(err, "`bit_vector` prover cannot handle type `test_crate::X`")
 }
 
 test_verify_one_bv_file! {
@@ -243,6 +243,32 @@ test_verify_one_bv_file! {
             assert(0int == 0int) by (bit_vector);
         }
     } => Ok(())
+}
+
+test_verify_one_bv_file! {
+    #[test] strslice_len_not_supported_in_by_bit_vector verus_code! {
+        proof fn test() {
+            use verus_builtin::*;
+            assert(strslice_len::<u64>(7u64) == 0int) by(bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "string slice length not supported in `bit_vector` assert")
+}
+
+test_verify_one_bv_file! {
+    #[test] float_to_bits_not_supported_in_by_bit_vector verus_code! {
+        proof fn test() {
+            use verus_builtin::*;
+            assert(f32_to_bits(0.0f32) == 0u32) by(bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "float-to-bits coercion not supported in `bit_vector` assert")
+}
+
+test_verify_one_bv_file! {
+    #[test] real_to_int_not_supported_in_by_bit_vector verus_code! {
+        proof fn test() {
+            assert(1.0real.floor() == 1int) by(bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "real-to-int coercion not supported in `bit_vector` assert")
 }
 
 test_verify_one_bv_file! {
@@ -708,7 +734,7 @@ test_verify_one_bv_file! {
         fn test_shl_neg(x: i32, y: i32) {
             assert(x << y == x) by(bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "not supported: bit-shift with possibly negative shift")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support bit-shift with possibly negative shift")
 }
 
 test_verify_one_bv_file! {
@@ -716,7 +742,7 @@ test_verify_one_bv_file! {
         fn test_shl_neg(x: i32, y: i32) {
             assert(x >> y == x) by(bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "not supported: bit-shift with possibly negative shift")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support bit-shift with possibly negative shift")
 }
 
 test_verify_one_bv_file! {
@@ -1071,6 +1097,22 @@ test_verify_one_bv_file! {
     } => Err(err) => assert_fails(err, 2)
 }
 
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3081
+    #[test] bitnot_signed_without_bit_vector verus_code! {
+        proof fn in_a_local(x: i8) {
+            let y: i8 = !x;
+            assert(-128 <= y <= 127);
+            assert(y == -x - 1);
+        }
+
+        fn exec_i64(x: i64) {
+            let y = !x;
+            assert(y == -x - 1);
+        }
+    } => Ok(())
+}
+
 // test_by_equating:
 // test `x op y` for all combinations of
 //    - (x, y) are (8 bits, 8 bits); (8 bits, 9 bits); (9 bits, 8 bits)
@@ -1336,6 +1378,29 @@ test_verify_one_bv_file! {
 }
 
 test_verify_one_bv_file! {
+    #[test] issue_2778_unique_temporary_ids verus_code! {
+        proof fn lemma_bv_crash(v: i32) {
+            let lsb: i32 = if v % 2 == 1 { 1i32 } else { 0i32 };
+            let mut v_shifted: i32 = (v / 2) as i32;
+
+            if v < 0 {
+                v_shifted = (v + 1) as i32;
+                v_shifted = (-v_shifted) as i32;
+                v_shifted = (v_shifted / 2) as i32;
+                v_shifted = (v_shifted + 1) as i32;
+                v_shifted = (-v_shifted) as i32;
+            }
+
+            assert(true) by (bit_vector)
+                requires
+                    v_shifted == if v >= 0 { v / 2 } else { -((-v - 1) / 2) - 1 },
+                    lsb == if v % 2 == 1 { 1i32 } else { 0i32 },
+                ;
+        }
+    } => Ok(())
+}
+
+test_verify_one_bv_file! {
     #[test] test_normal_solver verus_code! {
         fn test_unsigned(x: u16, y: u16) {
             assert((x | y) == (x as u32) | (y as u32));
@@ -1523,7 +1588,7 @@ test_verify_one_file_with_options! {
         {
             assert(*x == *y ==> x == y) by(bit_vector)
         }
-    } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle type `&mut u64`")
+    } => Err(err) => assert_vir_error_msg(err, "`bit_vector` prover cannot handle type `&mut u64`")
 }
 
 test_verify_one_file_with_options! {
@@ -1532,7 +1597,7 @@ test_verify_one_file_with_options! {
         {
             assert(*final(x) == *x) by(bit_vector)
         }
-    } => Err(err) => assert_vir_error_msg(err, "unsupported for bitvector: this mutable reference operator")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support this mutable reference operator")
 }
 
 test_verify_one_file_with_options! {
@@ -1544,4 +1609,17 @@ test_verify_one_file_with_options! {
             assert(*x == 0 && *old(x) == 5) by(bit_vector);
         }
     } => Err(err) => assert_vir_error_msg(err, "`old` is not supported in `bit_vector` assert")
+}
+
+test_verify_one_file! {
+    #[test] bad_assign_in_assert_by_bitvector_issue3035 verus_code! {
+        proof fn bad_assign()
+            ensures false
+        {
+            let ghost mut g: int = 0;
+            assert(g == 1) by(bit_vector) {
+                g = 1;  // only visible to the inner query
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment is not allowed in `assert ... by` statement")
 }

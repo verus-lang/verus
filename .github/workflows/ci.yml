@@ -13,7 +13,7 @@ on:
 # How:
 #   - This creates a concurrency group for workflow runs;
 #   - When the workflow runs, it cancels in-progress runs if the concurrency group is the same
-#   - The group names are ci-refs/pull/<PR #>/merge (in the case of PRs) and 
+#   - The group names are ci-refs/pull/<PR #>/merge (in the case of PRs) and
 #     ci-refs/heads/gh-readonly-queue/main/pr-<N>-<sha> for merge queue executions
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -25,7 +25,7 @@ permissions:
 jobs:
   # check if formatting is correct
   fmt:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
         uses: actions/checkout@v6
@@ -33,16 +33,22 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.100.0
 
       - name: setup verusfmt
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
 
+      - name: check formatting of `dependencies`
+        working-directory: ./dependencies
+        run: |
+          cargo fmt --check --manifest-path prettyplease/Cargo.toml
+          cargo fmt --check --manifest-path syn/Cargo.toml
+
       - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
-          . ../tools/activate
-          vargo fmt -- --check
+          cargo run -p cargo-verus -- fmt --check
+          cargo run -p cargo-verus -- fmt --check --manifest-path vstd/Cargo.toml
 
       - name: check cargo fmt for vargo
         working-directory: ./tools/vargo
@@ -50,7 +56,7 @@ jobs:
 
   # run linter (clippy)
   clippy:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
         uses: actions/checkout@v6
@@ -58,22 +64,38 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.100.0
           components: clippy
 
       - name: clippy check codebase
         working-directory: ./source
-        run: |
-          . ../tools/activate
-          vargo clippy -- -D warnings
+        run: cargo clippy -- -D warnings
 
       - name: clippy check vargo
         working-directory: ./tools/vargo
         run: cargo clippy -- -D warnings
 
+  # smoke test toolchain manifest creation
+  create-manifest-smoke-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+
+      - name: smoke test create-manifest
+        working-directory: ./source
+        run: |
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --write-to-dir cargo-verus/toolchain-manifests
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
+
   # detect whether subprojects (e.g. cargo-verus) changed
   change_filter:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       cargo_verus: ${{ steps.filter.outputs.cargo_verus }}
     steps:
@@ -89,11 +111,12 @@ jobs:
           filters: |
             cargo_verus:
               - 'source/cargo-verus/**'
+              - 'source/cargo-verus-toolchains/**'
 
-  # run cargo-verus tests
+  # run cargo-verus (and -toolchains) tests
   cargo-verus-test:
     needs: [fmt, clippy, change_filter]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: check for cargo-verus changes
         if: needs.change_filter.outputs.cargo_verus != 'true'
@@ -107,17 +130,42 @@ jobs:
         if: needs.change_filter.outputs.cargo_verus == 'true'
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.100.0
 
       - name: cargo-verus tests
         if: needs.change_filter.outputs.cargo_verus == 'true'
         working-directory: ./source
-        run: cargo test -p cargo-verus
+        run: |
+          cargo test -p cargo-verus
+          cargo test -p cargo-verus-toolchains
 
-  # check if it builds and runs on macos, running the full test suite
+  # run line_count tests
+  line-count-test:
+    needs: [fmt, clippy]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.100.0
+
+      - name: setup nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: line_count tests
+        working-directory: ./source/tools/line_count
+        run: cargo nextest run
+
+  # check if it builds and runs on linux, running the full test suite
   # (in release mode because it makes a huge difference)
   full-test:
-    runs-on: macos-14
+    runs-on: ubuntu-24.04
+
+    env:
+      CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
 
     defaults:
       run:
@@ -142,7 +190,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.100.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -150,22 +198,24 @@ jobs:
       - name: build
         working-directory: ./source
         run: |
-          . ../tools/activate
-          vargo clean
-          RUSTFLAGS="-C debug-assertions" vargo build --release
+          cargo clean
+          # --bin rather than -p, which would rebuild with different features
+          cargo run --release --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
+          cargo build --release
+          cargo run --release --bin cargo-verus -- build --release --manifest-path vstd/Cargo.toml
 
       - name: full tests
         working-directory: ./source
         run: |
-          . ../tools/activate
-          RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air
-          RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
           # check cvc5
-          vargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
-
-      - name: build line-count tool
-        working-directory: ./source/tools/line_count
-        run: cargo build
+          cargo run --release --bin rust_verify -- -V cvc5 ../examples/assorted_demo.rs
+          cargo nextest run --release -p air
+          cargo nextest run --release -p rust_verify_test
+          # cvc5: multi-error reporting reads the failing assertion labels out of the model;
+          # cvc5 returns total models, so these tests exercise label confirmation (run
+          # at low parallelism: cvc5's rlimit is sensitive to CPU contention)
+          VERUS_EXTRA_ARGS="-V cvc5" cargo nextest run --release -p rust_verify_test \
+            --test mut_refs_slices_arrays -j 4
 
   # check if it builds and that basic tests pass on our main supported platforms
   basic-test:
@@ -176,7 +226,7 @@ jobs:
           - build: macos-x86_64
             os: macos-15-intel
           - build: linux
-            os: ubuntu-22.04
+            os: ubuntu-24.04
           - build: windows
             os: windows-2022
 
@@ -199,7 +249,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.100.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -207,19 +257,14 @@ jobs:
       - name: build
         working-directory: ./source
         run: |
-          . ../tools/activate
-          vargo clean
-          vargo build
+          cargo clean
+          cargo build
+          cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml
 
       - name: basic tests
         working-directory: ./source
         run: |
-          . ../tools/activate
-          VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --test basic
-
-      - name: build line-count tool
-        working-directory: ./source/tools/line_count
-        run: cargo build
+          cargo nextest run -p rust_verify_test --test basic
 
   # check if esoteric conficurations build
   smoke-test:
@@ -227,7 +272,7 @@ jobs:
       matrix:
         features: [record-history, no-std, no-alloc, singular]
 
-    runs-on: macos-14
+    runs-on: ubuntu-24.04
 
     defaults:
       run:
@@ -246,57 +291,57 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.100.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
 
-      - name: download singular
+      - name: install singular
         if: matrix.features == 'singular'
-        run: curl -fLO https://github.com/verus-lang/verus/releases/download/dependency/singular-4.3.2/Singular-4-3-2_M1.dmg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y singular
+          echo "VERUS_SINGULAR_PATH=$(command -v Singular)" >> "$GITHUB_ENV"
 
       - name: build
         working-directory: ./source
         run: |
-          . ../tools/activate
-          vargo clean
+          cargo clean
 
           case "${{ matrix.features }}" in
             "singular")
-              hdiutil attach ../Singular-4-3-2_M1.dmg
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo build --features singular
+              cargo build --features singular
+              cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml
               ;;
             "record-history")
-              vargo build --features record-history
+              cargo build --features record-history
+              cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml
               ;;
             "no-std")
-              vargo build --vstd-no-std
-              cd vstd
-              unset -f cargo
-              cargo build --no-default-features --features alloc
+              cargo build
+              cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --no-default-features --features alloc
+              cd .. # important to disable the source/.cargo/config.toml
+              cargo build --manifest-path source/vstd/Cargo.toml --no-default-features --features alloc
               ;;
             "no-alloc")
-              vargo build --vstd-no-std --vstd-no-alloc
-              cd vstd
-              unset -f cargo
-              cargo build --no-default-features
+              cargo build
+              cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --no-default-features
+              cd .. # important to disable the source/.cargo/config.toml
+              cargo build --manifest-path source/vstd/Cargo.toml --no-default-features
               ;;
           esac
 
       - name: smoke test
         working-directory: ./source
         run: |
-          . ../tools/activate
-
           case "${{ matrix.features }}" in
             "singular")
-              hdiutil attach ../Singular-4-3-2_M1.dmg
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p air --features singular
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features singular --test integer_ring
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features singular --test examples -- examples_integer_ring
+              cargo nextest run -p air --features singular
+              cargo nextest run -p rust_verify_test --features singular --test integer_ring
+              cargo nextest run -p rust_verify_test --features singular --test examples -- examples_integer_ring
               ;;
             "record-history")
-              VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features record-history --test basic
+              cargo nextest run -p rust_verify_test --features record-history --test basic
               ;;
           esac
 
@@ -304,7 +349,7 @@ jobs:
   # will complain if there are warnings
   build-docs:
     needs: [fmt, clippy]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
         uses: actions/checkout@v6
@@ -312,11 +357,31 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.100.0
 
       - name: build docs
         working-directory: ./source
         run: |
-          . ../tools/activate
           ./tools/get-z3.sh
           ./tools/docs.sh --strict # strict will complain if there are warnings
+
+      - name: setup mdbook and lychee
+        env:
+          MDBOOK_VERSION: 0.5.2
+          MDBOOK_SHA256: 084e4342ba564db270108763e404a7d1f309d932651a22484e93c0dc1a071f6d
+          LYCHEE_VERSION: 0.24.2
+          LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+        run: |
+          curl -sSfL -o mdbook.tar.gz "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSfL -o lychee.tar.gz "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${MDBOOK_SHA256}  mdbook.tar.gz" | sha256sum -c
+          echo "${LYCHEE_SHA256}  lychee.tar.gz" | sha256sum -c
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf mdbook.tar.gz -C "$HOME/.local/bin"
+          tar -xzf lychee.tar.gz --strip-components=1 -C "$HOME/.local/bin" lychee-x86_64-unknown-linux-gnu/lychee
+          rm mdbook.tar.gz lychee.tar.gz
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: check doc links
+        working-directory: ./source
+        run: ./tools/check-doc-links.sh

@@ -945,6 +945,7 @@ pub(crate) mod parsing {
                     loop {
                         if input.is_empty()
                             || input.peek(token::Brace)
+                            || input.peek(Token![atomically])
                             || input.peek(Token![requires])
                             || input.peek(Token![recommends])
                             || input.peek(Token![ensures])

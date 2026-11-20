@@ -1,18 +1,19 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use proc_macro::TokenStream;
 use proc_macro2::{Group, Span, TokenStream as TokenStream2, TokenTree};
-use quote::{quote, quote_spanned};
+use quote::{format_ident, quote, quote_spanned};
 use verus_syn::parse::{Parse, ParseStream};
 use verus_syn::spanned::Spanned;
 use verus_syn::token::Comma;
 use verus_syn::{
-    Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary, ExprClosure, ExprMatches,
-    ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index, Item, ItemEnum, ItemFn,
-    ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat, PatType, Path,
-    PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility, parse_macro_input,
+    Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary, ExprClosure, ExprIs,
+    ExprIsNot, ExprMatches, ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, ImplItem,
+    Index, Item, ItemEnum, ItemFn, ItemImpl, ItemStruct, Lit, MatchesOpExpr, MatchesOpToken,
+    Member, Meta, Pat, PatType, Path, PathArguments, PathSegment, ReturnType, Signature, Stmt,
+    Type, UnOp, Visibility, parse_macro_input,
 };
 
 /// Checks if the given path is of the form
@@ -135,6 +136,13 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                         TypeKind::Owned => Ok(quote_spanned! { span => ExecMultiset<#param> }),
                         TypeKind::Ref => Ok(quote_spanned! { span => &ExecMultiset<#param> }),
                     };
+                } else if type_path.path.segments[0].ident.to_string() == "MemContents" {
+                    let type_arg = get_seg_type_arg(&type_path.path.segments[0], 0)?;
+                    let param = compile_type(type_arg, TypeKind::Owned)?;
+                    return match ctx {
+                        TypeKind::Owned => Ok(quote_spanned! { span => ExecMemContents<#param> }),
+                        TypeKind::Ref => Ok(quote_spanned! { span => &ExecMemContents<#param> }),
+                    };
                 } else if type_path.path.segments[0].ident.to_string() == "Map" {
                     // todo:
                     // impl ExecSpecType for Map to avoid this special case
@@ -168,6 +176,19 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                         TypeKind::Owned => Ok(quote_spanned! { span => Option<#param> }),
                         TypeKind::Ref => Ok(quote_spanned! { span => &Option<#param> }),
                     };
+                } else if type_path.path.segments[0].ident.to_string() == "Result" {
+                    // TODO: implement ExecSpecType for Result<T, E> so that
+                    // we don't need this special case
+                    let t_arg = get_seg_type_arg(&type_path.path.segments[0], 0)?;
+                    let e_arg = get_seg_type_arg(&type_path.path.segments[0], 1)?;
+                    let t_param = compile_type(t_arg, TypeKind::Owned)?;
+                    let e_param = compile_type(e_arg, TypeKind::Owned)?;
+                    return match ctx {
+                        TypeKind::Owned => {
+                            Ok(quote_spanned! { span => Result<#t_param, #e_param> })
+                        }
+                        TypeKind::Ref => Ok(quote_spanned! { span => &Result<#t_param, #e_param> }),
+                    };
                 // Special cases for common types to throw more informative errors
                 } else if type_path.path.segments[0].ident.to_string() == "Vec"
                     || type_path.path.segments[0].ident.to_string() == "HashMap"
@@ -177,6 +198,7 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                     || type_path.path.segments[0].ident.to_string() == "str"
                     || type_path.path.segments[0].ident.to_string() == "nat"
                     || type_path.path.segments[0].ident.to_string() == "int"
+                    || type_path.path.segments[0].ident.to_string() == "real"
                 {
                     return Err(Error::new_spanned(
                         &typ,
@@ -215,9 +237,81 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
     })
 }
 
+// Rejects `tracked` items
+fn reject_tracked_data_mode(mode: &verus_syn::DataMode) -> Result<(), Error> {
+    if let verus_syn::DataMode::Tracked(mode_tracked) = mode {
+        return Err(Error::new_spanned(
+            &mode_tracked.tracked_token,
+            "`tracked` datatypes are not supported in exec_spec: a permission type has \
+             no executable mirror, as its fields are ghost state.",
+        ));
+    }
+    Ok(())
+}
+
+/// Rejects explicit `tracked`/`ghost` markers on individual fields, which
+/// `compile_struct`/`compile_enum` would otherwise silently mirror into
+/// the `Exec*` type.
+fn reject_field_mode_markers<'a>(
+    fields: impl IntoIterator<Item = &'a verus_syn::Field>,
+) -> Result<(), Error> {
+    for field in fields {
+        match &field.mode {
+            verus_syn::DataMode::Tracked(mode_tracked) => {
+                return Err(Error::new_spanned(
+                    &mode_tracked.tracked_token,
+                    "`tracked` fields are not supported in exec_spec: permission-typed \
+                     state has no executable mirror.",
+                ));
+            }
+            verus_syn::DataMode::Ghost(mode_ghost) => {
+                return Err(Error::new_spanned(
+                    &mode_ghost.ghost_token,
+                    "explicit `ghost` field markers are not supported in exec_spec.",
+                ));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Generates a verified `PartialEq`, `PartialEqSpecImpl`, and `ObeysDeepEq` impls for an exec type.
+fn compile_partial_eq(exec_name: &Ident, eq_body: TokenStream2) -> TokenStream2 {
+    let span = exec_name.span();
+    quote_spanned! { span =>
+        impl ::core::cmp::PartialEq for #exec_name {
+            #[allow(unreachable_patterns)] // false branch may be unreachable if enum has only one variant
+            fn eq(&self, other: &Self) -> bool {
+                let this = self;
+                #eq_body
+            }
+        }
+
+        #[cfg(verus_keep_ghost)]
+        impl vstd::std_specs::cmp::PartialEqSpecImpl for #exec_name {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Self) -> bool {
+                self.deep_view() == other.deep_view()
+            }
+        }
+
+        impl vstd::contrib::exec_spec::ObeysDeepEq for #exec_name {
+            proof fn lemma_obeys_deep_eq() {
+                reveal(vstd::laws_eq::obeys_deep_eq);
+            }
+        }
+    }
+}
+
 /// Compiles a struct item.
 fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
-    // note: types of struct fields are effectively constrained to those whose compiled types impl DeepView, DeepViewClone, and ExecSpecEq.
+    // note: types of struct fields are effectively constrained to those whose compiled types impl DeepView, DeepViewClone, and ObeysDeepEq.
+    reject_tracked_data_mode(&item_struct.mode)?;
+    reject_field_mode_markers(item_struct.fields.iter())?;
     if !item_struct.generics.params.is_empty() {
         return Err(Error::new_spanned(&item_struct.generics, "generics not supported"));
     }
@@ -320,7 +414,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         }
     };
 
-    // Generate body of the ExecSpecEq impl
+    // Generate body of the PartialEq impl
     let eq_body = match &item_struct.fields {
         Fields::Named(fields_named) => {
             let span = fields_named.span();
@@ -328,7 +422,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
                 let field_name = &field.ident;
                 let field_type = compile_type(&field.ty, TypeKind::Ref)?;
                 let span = field.span();
-                Ok(quote_spanned! { span => <#field_type>::exec_eq(this.#field_name.get_ref(), other.#field_name.get_ref()) })
+                Ok(quote_spanned! { span => vstd::contrib::exec_spec::deep_eq::<#field_type>(this.#field_name.get_ref(), other.#field_name.get_ref()) })
             }).collect::<Result<Vec<_>, Error>>()?;
 
             quote_spanned! { span => #(#field_eq)&&* }
@@ -339,7 +433,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
                 let i = Index::from(i);
                 let field_type = compile_type(&field.ty, TypeKind::Ref)?;
                 let span = field.span();
-                Ok(quote_spanned! { span => <#field_type>::exec_eq(this.#i.get_ref(), other.#i.get_ref()) })
+                Ok(quote_spanned! { span => vstd::contrib::exec_spec::deep_eq::<#field_type>(this.#i.get_ref(), other.#i.get_ref()) })
             }).collect::<Result<Vec<_>, Error>>()?;
 
             quote_spanned! { span => #(#field_eq)&&* }
@@ -368,12 +462,14 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         quote_spanned! { span => closed }
     };
 
+    let partial_eq = compile_partial_eq(&exec_name, eq_body);
+
     let span = item_struct.span();
     Ok(quote_spanned! { span =>
         #[verifier::ext_equal]
         #item_struct
 
-        #[derive(Eq, Hash, PartialEq)]
+        #[derive(Eq, Hash)]
         #vis struct #exec_name #exec_fields
 
         impl vstd::contrib::exec_spec::ExecSpecType for #spec_name {
@@ -408,18 +504,14 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
             }
         }
 
-        impl<'a> vstd::contrib::exec_spec::ExecSpecEq<'a> for &'a #exec_name {
-            type Other = &'a #exec_name;
-
-            fn exec_eq(this: Self, other: Self::Other) -> bool {
-                #eq_body
-            }
-        }
+        #partial_eq
     })
 }
 
 /// Compiles an enum item.
 fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
+    reject_tracked_data_mode(&item_enum.mode)?;
+    reject_field_mode_markers(item_enum.variants.iter().flat_map(|v| v.fields.iter()))?;
     if !item_enum.generics.params.is_empty() {
         return Err(Error::new_spanned(&item_enum.generics, "generics not supported"));
     }
@@ -433,6 +525,10 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
         .iter()
         .map(|variant| {
             let name = &variant.ident;
+
+            // Keep explicit discriminants so that `e as T` agrees
+            // between the spec enum and the exec enum
+            let discriminant = variant.discriminant.as_ref().map(|(eq, expr)| quote! { #eq #expr });
 
             Ok(match &variant.fields {
                 Fields::Named(fields_named) => {
@@ -451,7 +547,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                     quote_spanned! { span =>
                         #name {
                             #(#fields,)*
-                        }
+                        } #discriminant
                     }
                 }
                 Fields::Unnamed(fields_unnamed) => {
@@ -462,16 +558,19 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                         .collect::<Result<Vec<_>, Error>>()?;
                     let span = fields_unnamed.span();
                     quote_spanned! { span =>
-                        #name(#(#fields,)*)
+                        #name(#(#fields,)*) #discriminant
                     }
                 }
                 Fields::Unit => {
                     let span = variant.span();
-                    quote_spanned! { span => #name }
+                    quote_spanned! { span => #name #discriminant }
                 }
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;
+
+    // The representation determines the discriminant type, so it must match too
+    let repr_attrs = item_enum.attrs.iter().filter(|attr| attr.path().is_ident("repr"));
 
     // Match arms in the DeepView implementation
     let deep_view_variant_arms = item_enum.variants.iter()
@@ -557,7 +656,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
             }
         });
 
-    // Match arms in the ExecSpecEq implementation
+    // Match arms in the PartialEq implementation
     let eq_variant_arms = item_enum.variants.iter()
         .map(|variant| {
             let variant_name = &variant.ident;
@@ -579,7 +678,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                         let field_name_other = &field_names_other[i];
                         let field_type = compile_type(&field.ty, TypeKind::Ref)?;
                         let span = field.span();
-                        Ok(quote_spanned! { span => <#field_type>::exec_eq(#field_name_this.get_ref(), #field_name_other.get_ref()) })
+                        Ok(quote_spanned! { span => vstd::contrib::exec_spec::deep_eq::<#field_type>(#field_name_this.get_ref(), #field_name_other.get_ref()) })
                     }).collect::<Result<Vec<_>, Error>>()?;
 
                     let field_matches_this = fields_named.named.iter().enumerate().map(|(i, field)| {
@@ -612,7 +711,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                         let field_name_other = &field_names_other[i];
                         let field_type = compile_type(&field.ty, TypeKind::Ref)?;
                         let span = field.span();
-                        Ok(quote_spanned! { span => <#field_type>::exec_eq(#field_name_this.get_ref(), #field_name_other.get_ref()) })
+                        Ok(quote_spanned! { span => vstd::contrib::exec_spec::deep_eq::<#field_type>(#field_name_this.get_ref(), #field_name_other.get_ref()) })
                     }).collect::<Result<Vec<_>, Error>>()?;
 
                     Ok(quote_spanned! { span => (#exec_name::#variant_name ( #(#field_names_this,)* ), #exec_name::#variant_name ( #(#field_names_other,)* )) => #(#field_eqs)&&* })
@@ -628,6 +727,111 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
 
     let vis = &item_enum.vis;
 
+    // Generate `exec_is_<Variant>(&self) -> bool` predicates on the Exec
+    // enum, used to compile the `e is Variant` spec pattern.
+    let is_variant_methods = item_enum
+        .variants
+        .iter()
+        .map(|variant| {
+            let variant_name = &variant.ident;
+            let method_name = Ident::new(&format!("exec_is_{}", variant_name), variant_name.span());
+            // create an exec match statement between named fields
+            let pat = match &variant.fields {
+                Fields::Named(_) => quote! { #exec_name::#variant_name { .. } },
+                Fields::Unnamed(_) => quote! { #exec_name::#variant_name (..) },
+                Fields::Unit => quote! { #exec_name::#variant_name },
+            };
+            let span = variant.span();
+
+            // each method's visibility tracks the enum's visibility, ensuring
+            // the method is not any more visible than the spec enum itself
+            quote_spanned! { span =>
+                #[allow(unreachable_patterns)]
+                #[allow(non_snake_case)]
+                #vis fn #method_name(&self) -> (res: bool)
+                    ensures res == matches!(self.deep_view(), #spec_name::#variant_name { .. })
+                {
+                    match self {
+                        # pat => true,
+                        _ => false,
+                    }
+                }
+            }
+        })
+        .collect::<Vec<_>>();
+
+    // collect all arrow fields
+    let mut arrow_fields: Vec<(&Ident, String, TokenStream2, &verus_syn::Field)> = Vec::new();
+    for variant in &item_enum.variants {
+        let variant_name = &variant.ident;
+        match &variant.fields {
+            // struct-style variant fields (e.g., `Variant { x, .. }`)
+            Fields::Named(fields_named) => {
+                for field in &fields_named.named {
+                    let field_name = field.ident.as_ref().unwrap();
+                    let pat = quote! { #exec_name::#variant_name { #field_name: __v, .. } };
+                    arrow_fields.push((variant_name, field_name.to_string(), pat, field));
+                }
+            }
+            // Tuple-style variant fields (e.g., `Variant(_, x, ..)`)
+            Fields::Unnamed(fields_unnamed) => {
+                for (i, field) in fields_unnamed.unnamed.iter().enumerate() {
+                    let wild = (0..i).map(|_| quote! { _ });
+                    let pat = quote! { #exec_name::#variant_name(#(#wild,)* __v, ..) };
+                    arrow_fields.push((variant_name, i.to_string(), pat, field));
+                }
+            }
+            Fields::Unit => {}
+        }
+    }
+
+    let arrow_method = |member: String,
+                        field: &verus_syn::Field,
+                        cases: Vec<(&Ident, &TokenStream2)>|
+     -> Result<TokenStream2, Error> {
+        let method_name = Ident::new(&format!("exec_arrow_{}", member), field.span());
+        let spec_method = Ident::new(&format!("arrow_{}", member), field.span());
+        let typ = compile_type(&field.ty, TypeKind::Owned)?;
+        let variant_names = cases.iter().map(|(v, _)| *v);
+        let pats = cases.iter().map(|(_, p)| *p);
+        let span = field.span();
+        Ok(quote_spanned! { span =>
+            #[allow(unreachable_patterns)]
+            #[allow(non_snake_case)]
+            #vis fn #method_name(&self) -> (res: &#typ)
+                requires #(matches!(self.deep_view(), #spec_name::#variant_names { .. }))||*
+                ensures res.deep_view() == self.deep_view().#spec_method()
+            {
+                match self {
+                    #(#pats)|* => __v,
+                    _ => vstd::pervasive::unreached(),
+                }
+            }
+        })
+    };
+
+    // collect all arrow methods
+    let mut arrow_methods = Vec::new();
+    for (variant_name, member, pat, field) in &arrow_fields {
+        arrow_methods.push(arrow_method(
+            format!("{}_{}", variant_name, member),
+            field,
+            vec![(*variant_name, pat)],
+        )?);
+    }
+    let mut direct_members: Vec<&String> = Vec::new();
+    for (_, member, _, _) in &arrow_fields {
+        if !direct_members.contains(&member) {
+            direct_members.push(member);
+        }
+    }
+    for member in direct_members {
+        let cases: Vec<_> = arrow_fields.iter().filter(|(_, m, _, _)| m == member).collect();
+        if let [(variant_name, _, pat, field)] = cases[..] {
+            arrow_methods.push(arrow_method(member.clone(), field, vec![(*variant_name, pat)])?);
+        }
+    }
+
     let span = item_enum.vis.span();
     let open_or_close = if let Visibility::Public(..) = item_enum.vis {
         quote_spanned! { span => open }
@@ -635,12 +839,23 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
         quote_spanned! { span => closed }
     };
 
+    let partial_eq = compile_partial_eq(
+        &exec_name,
+        quote! {
+            match (this, other) {
+                #(#eq_variant_arms,)*
+                (_, _) => false
+            }
+        },
+    );
+
     let span = item_enum.span();
     Ok(quote_spanned! { span =>
         #[verifier::ext_equal]
         #item_enum
 
-        #[derive(Eq, Hash, PartialEq)]
+        #[derive(Eq, Hash)]
+        #(#repr_attrs)*
         #vis enum #exec_name {
             #(#exec_variants,)*
         }
@@ -681,30 +896,107 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
             }
         }
 
-        #[allow(unreachable_patterns)] // false branch may be unreachable if enum has only one variant
-        impl<'a> vstd::contrib::exec_spec::ExecSpecEq<'a> for &'a #exec_name {
-            type Other = &'a #exec_name;
-
-            fn exec_eq(this: Self, other: Self::Other) -> bool {
-                match (this, other) {
-                    #(#eq_variant_arms,)*
-                    (_, _) => false
-                }
-            }
+        impl #exec_name {
+            #(#is_variant_methods)*
+            #(#arrow_methods)*
         }
+
+        #partial_eq
     })
+}
+
+/// Token-level rewrite of `self` to a non-Rust keyword in spec-mode clause expressions.
+///
+/// `replace_self_tokens` exists to allow `compile_sig` to support specs with
+/// the self type. `compile_sig` emits deep-view snapshot at the top of the emitted exec
+/// function's body:
+///
+/// ```ignore
+/// let __exec_spec_self_view: <SelfTy> = self.deep_view();
+/// ```
+///
+/// then runs every clause expression through this function with
+/// `replacement = __exec_spec_self_view`.
+fn replace_self_tokens(ts: TokenStream2, replacement: &Ident) -> TokenStream2 {
+    replace_ident_tokens(ts, "self", replacement)
+}
+
+/// Replaces every identifier token `target` (recursively) with `replacement`.
+fn replace_ident_tokens(ts: TokenStream2, target: &str, replacement: &Ident) -> TokenStream2 {
+    ts.into_iter()
+        .map(|tt| match tt {
+            TokenTree::Ident(ident) if ident == target => {
+                TokenTree::Ident(Ident::new(&replacement.to_string(), ident.span()))
+            }
+            TokenTree::Group(g) => {
+                let mut new_g = Group::new(
+                    g.delimiter(),
+                    replace_ident_tokens(g.stream(), target, replacement),
+                );
+                new_g.set_span(g.span());
+                TokenTree::Group(new_g)
+            }
+            other => other,
+        })
+        .collect()
 }
 
 /// Compiles a spec fn to the exec fn signature.
 fn compile_sig(
     ctx: &mut LocalCtx,
-    item_fn: &ItemFn,
+    sig: &Signature,
+    vis: &Visibility,
+    self_ty: Option<&Ident>,
     unverified: bool,
 ) -> Result<TokenStream2, Error> {
-    let spec_params = item_fn
-        .sig
+    // Does this function have a receiver, e.g. `receiver.function_call()` ?
+    let mut has_receiver = false;
+    let receiver_param = if let Some(self_ty_ident) = self_ty {
+        if let Some(verus_syn::FnArg { kind: FnArgKind::Receiver(receiver), .. }) =
+            sig.inputs.first()
+        {
+            // Only `&self` is supported for now
+            if receiver.reference.is_none() {
+                return Err(Error::new_spanned(
+                    receiver,
+                    "only `&self` is supported in exec_spec impl methods",
+                ));
+            }
+            if receiver.mutability.is_some() {
+                return Err(Error::new_spanned(
+                    receiver,
+                    "`&mut self` is not supported in exec_spec impl methods",
+                ));
+            }
+
+            has_receiver = true;
+            let exec_spec = Ident::new(&format!("Exec{}", self_ty_ident), self_ty_ident.span());
+            ctx.add(Ident::new("self", receiver.self_token.span), VarMode::Ref);
+            let span = receiver.span();
+            Some(quote_spanned! { span => self: &#exec_spec })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    for param in &sig.inputs {
+        if let Some(tracked_token) = &param.tracked {
+            return Err(Error::new_spanned(
+                tracked_token,
+                "`tracked` parameters are not supported in exec_spec: permissions have \
+                 no executable mirror. Spec fns should take the permission's *view* \
+                 (e.g. `MemContents<T>`) instead",
+            ));
+        }
+    }
+
+    let spec_params = sig
         .inputs
         .iter()
+        // only compile typed parameters, dropping any receiver
+        .filter(|p| matches!(p.kind, FnArgKind::Typed(_)))
         .map(|param| {
             if let FnArgKind::Typed(pat_type) = &param.kind {
                 let name = &pat_type.pat;
@@ -728,8 +1020,8 @@ fn compile_sig(
         .collect::<Result<Vec<_>, Error>>()?;
 
     // Compile return type
-    let span = item_fn.sig.output.span();
-    let ret_type = match &item_fn.sig.output {
+    let span = sig.output.span();
+    let ret_type = match &sig.output {
         ReturnType::Default => quote_spanned! { span => () },
         ReturnType::Type(_, _, _, ty) => {
             let typ = compile_type(ty, TypeKind::Owned)?;
@@ -737,17 +1029,28 @@ fn compile_sig(
         }
     };
 
-    let vis = &item_fn.vis;
-    let spec_name = &item_fn.sig.ident;
+    let spec_name = &sig.ident;
     let exec_name = Ident::new(&format!("exec_{spec_name}"), spec_name.span());
 
     // Generate a specification stating that
     //   requires <recommends clause of spec_f>
     //   ensures result.deep_view() =~~= spec_f(x1.deep_view(), ..., xn.deep_view())
+    //      (or T::spec_f(&self.deep_view(), ...) / T::spec_f(...) for impl items)
     //   decreases <decreases clause of spec_f>
 
+    // For impl methods: bind `__exec_spec_self_view` to the spec view of self,
+    // and substitute occurences of `self` in user clauses with this name
+    // (since `self` is a keyword and cannot be shadowed by `let self = ...`).
+    let self_view_ident = Ident::new("__exec_spec_self_view", Span::call_site());
+    let self_binding = if has_receiver {
+        let self_ty_ident = self_ty.unwrap();
+        quote! { let #self_view_ident: #self_ty_ident = self.deep_view(); }
+    } else {
+        quote! {}
+    };
+
     // Substitute each spec var with <exec_var>.deep_view()
-    let bindings = spec_params
+    let param_bindings = spec_params
         .iter()
         .map(|(name, typ)| {
             let span = name.span();
@@ -757,12 +1060,25 @@ fn compile_sig(
         })
         .collect::<Vec<_>>();
 
-    let span = item_fn.sig.spec.span();
-    let mut requires = if let Some(recommends) = &item_fn.sig.spec.recommends {
+    let rewrite_clause = |expr: &Expr| -> TokenStream2 {
+        let raw = quote! { #expr };
+        // replace `&self` with `__exec_spec_self_view` throughout the entire expression
+        let raw = if has_receiver { replace_self_tokens(raw, &self_view_ident) } else { raw };
+        // The clauses are emitted inside `impl ExecT { ... }`, where `Self` means `ExecT`;
+        // in the original spec method, `Self` means `T`, so replace it explicitly.
+        match self_ty {
+            Some(self_ty_ident) => replace_ident_tokens(raw, "Self", self_ty_ident),
+            None => raw,
+        }
+    };
+
+    let span = sig.spec.span();
+    let mut requires = if let Some(recommends) = &sig.spec.recommends {
         let requires = recommends.exprs.exprs.iter().map(|expr| {
             let span = expr.span();
+            let body = rewrite_clause(expr);
             quote_spanned! { span =>
-                ({ #(#bindings)* #expr })
+                ({ #self_binding #(#param_bindings)* #body })
             }
         });
 
@@ -773,11 +1089,12 @@ fn compile_sig(
         quote_spanned! { span => true }
     };
 
-    let decreases = if let Some(decreases) = &item_fn.sig.spec.decreases {
+    let decreases = if let Some(decreases) = &sig.spec.decreases {
         let decrease_exprs = decreases.decreases.exprs.exprs.iter().map(|expr| {
             let span = expr.span();
+            let body = rewrite_clause(expr);
             quote_spanned! { span =>
-                ({ #(#bindings)* #expr })
+                ({ #self_binding #(#param_bindings)* #body })
             }
         });
 
@@ -785,8 +1102,9 @@ fn compile_sig(
         // since it is only supported in spec mode
         if let Some((_, when_expr)) = &decreases.when {
             let span = when_expr.span();
+            let body = rewrite_clause(when_expr);
             requires = quote_spanned! { span =>
-                ({ #(#bindings)* #when_expr }), #requires
+                ({ #self_binding #(#param_bindings)* #body }), #requires
             };
         }
 
@@ -808,17 +1126,34 @@ fn compile_sig(
 
     let ext_eq = BinOp::ExtDeepEq(Default::default());
 
-    let span = item_fn.sig.span();
+    // The postcondition must name exactly the spec function being compiled.
+    // For impl items, use a qualified path `T::f(...)`: a bare `f(...)` would resolve
+    // to a module-level function `f` (if any) instead of the associated function `T::f`,
+    // and method-call syntax could pick up a different method (e.g. a by-value trait
+    // method `f(self)` takes precedence over the inherent `f(&self)`).
+    let post_call = match self_ty {
+        Some(self_ty_ident) => {
+            let self_arg = if has_receiver { Some(quote! { &self.deep_view() }) } else { None };
+            let all_args = self_arg.into_iter().chain(args_deep_view);
+            quote! { #self_ty_ident::#spec_name(#(#all_args),*) }
+        }
+        None => quote! { #spec_name(#(#args_deep_view),*) },
+    };
+
+    // build the full parameter list (receiver first if present)
+    let all_params: Vec<TokenStream2> = receiver_param.into_iter().chain(params).collect();
+
+    let span = sig.span();
     let sig_common = quote! {
         #vis fn #exec_name(
-            #(#params,)*
+            #(#all_params,)*
         ) -> (res: #ret_type)
             requires #requires
-            ensures res.deep_view() #ext_eq #spec_name(#(#args_deep_view),*)
+            ensures res.deep_view() #ext_eq #post_call
             #decreases
     };
 
-    let sig = if unverified {
+    let sig_tokens = if unverified {
         quote_spanned! { span =>
             #[verifier::external_body]
             #sig_common
@@ -832,7 +1167,7 @@ fn compile_sig(
     // Set token's span to the original signature's span
     // e.g. this will forward all "failed post-condition"
     // errors to the signature
-    Ok(respan(sig, item_fn.sig.span()))
+    Ok(respan(sig_tokens, sig.span()))
 }
 
 /// Each variable is marked with a mode indicating
@@ -853,7 +1188,7 @@ struct LocalCtx {
     vars: HashMap<Ident, VarMode>,
     /// A global counter for generating fresh trigger
     /// function names (unique per function).
-    trigger_fns: Rc<RefCell<HashMap<Ident, Type>>>,
+    trigger_fns: Rc<RefCell<Vec<(Ident, Type)>>>,
 }
 
 impl LocalCtx {
@@ -861,7 +1196,7 @@ impl LocalCtx {
         LocalCtx {
             cur_fn: cur_fn.clone(),
             vars: HashMap::new(),
-            trigger_fns: Rc::new(RefCell::new(HashMap::new())),
+            trigger_fns: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -873,7 +1208,7 @@ impl LocalCtx {
     fn gen_fresh_trigger_fn(&self, typ: &Type) -> Ident {
         let idx = self.trigger_fns.borrow().len();
         let name = Ident::new(&format!("trigger_{}_{}", self.cur_fn, idx), Span::call_site());
-        self.trigger_fns.borrow_mut().insert(name.clone(), typ.clone());
+        self.trigger_fns.borrow_mut().push((name.clone(), typ.clone()));
         name
     }
 }
@@ -889,6 +1224,11 @@ fn compile_pat_path(path: &Path) -> Result<Path, Error> {
             || is_path_eq(path, &["Ok"])
             || is_path_eq(path, &["Err"])
         {
+            return Ok(path.clone());
+        }
+
+        // Self::Variant - leave Self alone since we are inside `impl ExecT { ... }`)
+        if path.segments[0].ident == "Self" {
             return Ok(path.clone());
         }
 
@@ -992,6 +1332,27 @@ fn compile_expr_path(
         return Ok((path.clone(), ExprPathKind::StructOrEnum));
     }
 
+    // For self-prefixed paths inside `impl ExecT { ... }`, `Self` already
+    // resolves to `ExecT`. So:
+    //   - `Self::Variant` (variant constructor): leave as-is
+    //   - `Self::method` (associated fn call): rewrite last segment to
+    //     `exec_method`, but keep the leading `Self`.
+    if path.segments.len() == 1 && path.segments[0].ident == "Self" {
+        return Ok((path.clone(), ExprPathKind::StructOrEnum));
+    } else if path.segments.len() == 2 && path.segments[0].ident == "Self" {
+        let last_ident = &path.segments[1].ident;
+        let last_str = last_ident.to_string();
+        let starts_upper = last_str.chars().next().is_some_and(|c| c.is_uppercase());
+        if starts_upper {
+            // Variants constructor: Self::Variant
+            return Ok((path.clone(), ExprPathKind::StructOrEnum));
+        } else {
+            // Associated method: Self::method -> Self::exec_method
+            let new_path = prefix_nth_segment(path, "exec_", path.segments.len() - 1)?;
+            return Ok((new_path, ExprPathKind::FnName));
+        }
+    }
+
     // Special case: convert Seq and other vstd types to their exec type
     // this part is quite brittle, only seems to work with return type of StructOrEnum
     if path.segments.len() >= 1 && path.segments[0].ident == "Seq" {
@@ -1072,7 +1433,7 @@ fn compile_expr_path(
 fn compile_pattern(
     ctx: &mut LocalCtx,
     pat: &Pat,
-    new_locals: &mut HashSet<Ident>,
+    new_locals: &mut Vec<Ident>,
 ) -> Result<TokenStream2, Error> {
     match pat {
         Pat::Ident(pat_ident) => {
@@ -1086,7 +1447,9 @@ fn compile_pattern(
             // we will explicitly convert them to borrowed types
             // as opposed to owned types
             ctx.add(pat_ident.ident.clone(), VarMode::Ref);
-            new_locals.insert(pat_ident.ident.clone());
+            if !new_locals.contains(&pat_ident.ident) {
+                new_locals.push(pat_ident.ident.clone());
+            }
             Ok(quote! { #pat })
         }
 
@@ -1169,21 +1532,32 @@ fn compile_pattern(
 /// Compiles a match arm.
 fn compile_match_arm(ctx: &LocalCtx, arm: &Arm, unverified: bool) -> Result<TokenStream2, Error> {
     let mut ctx = ctx.clone();
-    let mut new_locals = HashSet::new();
+    let mut new_locals = Vec::new();
 
     let pat = compile_pattern(&mut ctx, &arm.pat, &mut new_locals)?;
 
     // New locals needs to be converted into the canonical borrowed types (e.g. from &String => &str)
-    let local_converts = new_locals.iter().map(|ident| {
-        quote! {
-            let #ident = #ident.get_ref();
+    let local_converts = new_locals
+        .iter()
+        .map(|ident| {
+            quote! {
+                let #ident = #ident.get_ref();
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let guard = match &arm.guard {
+        Some((_, guard)) => {
+            let guard = compile_expr(&ctx, guard, VarMode::Owned, unverified)?;
+            quote! { if { #(#local_converts)* #guard } }
         }
-    });
+        None => quote! {},
+    };
 
     let body = compile_expr(&ctx, &arm.body, VarMode::Owned, unverified)?;
 
     Ok(quote! {
-        #pat => {
+        #pat #guard => {
             #(#local_converts)*
             #body
         }
@@ -1245,7 +1619,7 @@ Where <guard> is one of:
 
 const UNTRUSTED_UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type.
 
-Within the exec_spec_verified! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize. Note: int and nat are not allowed.";
+Within the exec_spec_verified! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize. Note: int, nat, and real are not allowed.";
 
 /// Extracts a single guard expression
 fn get_single_guard(
@@ -1516,9 +1890,10 @@ fn compile_guarded_quant_verified(
 
     // Since #body and #expr will be used as spec code in exec mode
     // we have to convert all variables in the context to their spec versions via deep_view
-    let local_view: Vec<TokenStream2> = ctx
-        .vars
-        .keys()
+    let mut var_names: Vec<&Ident> = ctx.vars.keys().collect();
+    var_names.sort_by_key(|name| name.to_string());
+    let local_view: Vec<TokenStream2> = var_names
+        .into_iter()
         .map(|name| {
             quote! { let #name = #name.deep_view(); }
         })
@@ -2063,13 +2438,13 @@ fn compile_expr(
             BinOp::Eq(..) => {
                 let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
                 let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
-                quote! { vstd::contrib::exec_spec::ExecSpecEq::exec_eq(#left, #right) }
+                quote! { vstd::contrib::exec_spec::deep_eq(#left, #right) }
             }
 
             BinOp::Ne(..) => {
                 let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
                 let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
-                quote! { !vstd::contrib::exec_spec::ExecSpecEq::exec_eq(#left, #right) }
+                quote! { !vstd::contrib::exec_spec::deep_eq(#left, #right) }
             }
 
             // TODO
@@ -2124,7 +2499,27 @@ fn compile_expr(
             BinOp::Equiv(..) => {
                 let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
                 let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
-                quote! { vstd::contrib::exec_spec::ExecSpecEq::exec_eq(#left, #right) }
+                quote! { vstd::contrib::exec_spec::deep_eq(#left, #right) }
+            }
+
+            // Spec-level equality forms, lowered to `deep_eq`
+            //
+            //   `===`   BigEq      -- non-extensional spec eq
+            //   `=~=`   ExtEq      -- extensional eq (e.g. slice deep view)
+            //   `=~~=`  ExtDeepEq  -- deep extensional eq
+            //   `!==`   BigNe
+            //   `!~=`   ExtNe
+            //   `!~~=`  ExtDeepNe
+            BinOp::BigEq(..) | BinOp::ExtEq(..) | BinOp::ExtDeepEq(..) => {
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
+                quote! { vstd::contrib::exec_spec::deep_eq(#left, #right) }
+            }
+
+            BinOp::BigNe(..) | BinOp::ExtNe(..) | BinOp::ExtDeepNe(..) => {
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, unverified)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, unverified)?;
+                quote! { !vstd::contrib::exec_spec::deep_eq(#left, #right) }
             }
 
             // No plan to support
@@ -2226,6 +2621,15 @@ fn compile_expr(
                 let expr = compile_expr(ctx, &expr_unary.expr, VarMode::Ref, unverified)?;
                 quote! { #op #expr }
             }
+            UnOp::Deref(..) => {
+                // compile the inner expression in owned mode, then re-borrow with
+                // `get_ref()` if the caller wants a ref
+                let inner = compile_expr(ctx, &expr_unary.expr, VarMode::Owned, unverified)?;
+                match mode {
+                    VarMode::Owned => quote! { #inner },
+                    VarMode::Ref => quote! { #inner.get_ref() },
+                }
+            }
             UnOp::Forall(..) | UnOp::Exists(..) => {
                 // todo - should support all features in both modes
                 if unverified {
@@ -2279,6 +2683,47 @@ fn compile_expr(
             let Expr::Path(fn_path) = expr_call.func.as_ref() else {
                 return Err(Error::new_spanned(expr_call, "unsupported callee"));
             };
+
+            // Handling verus's `is_variant(<x>, "Variant")` builtin.
+            // It has no exec companion, so the default rename to
+            // `exec_is_variant` produces an unresolved-fn error.
+            // Hence, we lower itt he same way as `x is Variant`
+            if fn_path.path.segments.len() == 1
+                && fn_path.path.segments[0].ident == "is_variant"
+                && expr_call.args.len() == 2
+            {
+                let variant_name: Option<String> = match expr_call.args.iter().nth(1) {
+                    Some(Expr::Lit(lit)) => {
+                        if let verus_syn::Lit::Str(s) = &lit.lit {
+                            Some(s.value())
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(vname) = variant_name {
+                    let recv_expr = expr_call.args.iter().next().unwrap();
+                    // Compile the receiver as a Ref (it's typically
+                    // `&Option<T>` etc. in spec form).
+                    let recv = compile_expr(ctx, recv_expr, VarMode::Ref, unverified)?;
+                    let owned = match vname.as_str() {
+                        "Some" => quote! { ::core::matches!(#recv, Some(_)) },
+                        "None" => quote! { ::core::matches!(#recv, None) },
+                        "Ok" => quote! { ::core::matches!(#recv, Ok(_)) },
+                        "Err" => quote! { ::core::matches!(#recv, Err(_)) },
+                        _ => {
+                            let method = format_ident!("exec_is_{}", vname);
+                            quote! { #recv.#method() }
+                        }
+                    };
+                    let result = match mode {
+                        VarMode::Ref => quote! { #owned.get_ref() },
+                        VarMode::Owned => owned,
+                    };
+                    return Ok(result);
+                }
+            }
 
             let (exec_fn_path, kind) = compile_expr_path(ctx, &fn_path.path, None)?;
 
@@ -2770,7 +3215,36 @@ fn compile_expr(
                 }
             }
 
-            _ => return Err(Error::new_spanned(expr_method_call, "unsupported method call")),
+            other => {
+                // Fallthrough: unrecognized methods are rewritten from `recv.foo(args)`
+                // to `recv.exec_foo(args)`, with `recv` and each arg compiled in `VarMode::Ref`
+                // and the result adapted to the caller's mode.
+                //
+                // This matches the naming convention of what `compile_impl` emits for user-defined
+                // spec methods on types compiled within the same `exec_spec` invocation, so this
+                // resolves correctly when `foo` is one such method.
+                //
+                // If `foo` is genuinely unknown, rustc will report `no method named exec_foo`
+                // at the original call site. The only soundness risk is a collision, where the
+                // receiver's type is literally `exec_foo`.
+
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
+                let exec_method =
+                    Ident::new(&format!("exec_{}", other), expr_method_call.method.span());
+                let args = expr_method_call
+                    .args
+                    .iter()
+                    .map(|arg| compile_expr(ctx, arg, VarMode::Ref, unverified))
+                    .collect::<Result<Vec<_>, Error>>()?;
+
+                let owned = quote! { #receiver.#exec_method(#(#args),*) };
+
+                match mode {
+                    VarMode::Ref => quote! { #owned.get_ref() },
+                    VarMode::Owned => owned,
+                }
+            }
         },
 
         Expr::Match(expr_match) => {
@@ -2847,7 +3321,7 @@ fn compile_expr(
         // 3. `lhs matches pat` to `match lhs { pat => true, _ => false }`
         Expr::Matches(ExprMatches { lhs, pat, op_expr, .. }) => {
             let mut ctx = ctx.clone();
-            let mut new_locals = HashSet::new();
+            let mut new_locals = Vec::new();
             let pat = compile_pattern(&mut ctx, pat, &mut new_locals)?;
 
             let lhs = compile_expr(&ctx, lhs, VarMode::Ref, unverified)?;
@@ -2881,16 +3355,88 @@ fn compile_expr(
             }
         }
 
+        // `expr is Variant`: dispatched to a generated `exec_is_<Variant>` method
+        // on the Exec enum.
+        Expr::Is(ExprIs { base, variant_ident, .. }) => {
+            let base_compiled = compile_expr(ctx, base, VarMode::Ref, unverified)?;
+            let owned = match variant_ident.to_string().as_str() {
+                "Some" => quote_spanned! {variant_ident.span() =>
+                    matches!(#base_compiled, Some(_))
+                },
+                "None" => quote_spanned! { variant_ident.span() =>
+                    matches!(#base_compiled, None)
+                },
+                "Ok" => quote_spanned! { variant_ident.span() =>
+                    matches!(#base_compiled, Ok(_))
+                },
+                "Err" => quote_spanned! { variant_ident.span() =>
+                    matches!(#base_compiled, Err(_))
+                },
+                _ => {
+                    let method =
+                        Ident::new(&format!("exec_is_{}", variant_ident), variant_ident.span());
+                    quote_spanned! { variant_ident.span() =>
+                        #base_compiled.#method()
+                    }
+                }
+            };
+            match mode {
+                VarMode::Ref => quote! { (#owned).get_ref() },
+                VarMode::Owned => owned,
+            }
+        }
+
+        // `expr isnt Variant`: negation of `Expr::Is`
+        Expr::IsNot(ExprIsNot { base, variant_ident, .. }) => {
+            let base_compiled = compile_expr(ctx, base, VarMode::Ref, unverified)?;
+            let owned = match variant_ident.to_string().as_str() {
+                "Some" => quote_spanned! {variant_ident.span() =>
+                    !matches!(#base_compiled, Some(_))
+                },
+                "None" => quote_spanned! { variant_ident.span() =>
+                    !matches!(#base_compiled, None)
+                },
+                "Ok" => quote_spanned! { variant_ident.span() =>
+                    !matches!(#base_compiled, Ok(_))
+                },
+                "Err" => quote_spanned! { variant_ident.span() =>
+                    !matches!(#base_compiled, Err(_))
+                },
+                _ => {
+                    let method =
+                        Ident::new(&format!("exec_is_{}", variant_ident), variant_ident.span());
+                    quote_spanned! { variant_ident.span() =>
+                        !#base_compiled.#method()
+                    }
+                }
+            };
+            match mode {
+                VarMode::Ref => quote! { (#owned).get_ref() },
+                VarMode::Owned => owned,
+            }
+        }
+
+        // `expr->member` is dispatched to `exec_arrow_<member>`
+        Expr::GetField(verus_syn::ExprGetField { base, member, .. }) => {
+            let base_compiled = compile_expr(ctx, base, VarMode::Ref, unverified)?;
+            let member_str = match member {
+                verus_syn::Member::Named(id) => id.to_string(),
+                verus_syn::Member::Unnamed(idx) => idx.index.to_string(),
+            };
+            let method = Ident::new(&format!("exec_arrow_{}", member_str), member.span());
+            match mode {
+                VarMode::Ref => quote! { #base_compiled.#method().get_ref() },
+                VarMode::Owned => quote! { #base_compiled.#method().get_ref().get_owned() },
+            }
+        }
+
         // TODOs:
         // Expr::Let(expr_let) => todo!(),
-        // Expr::Is(expr_is) => todo!(),
-        // Expr::IsNot(expr_is_not) => todo!(),
 
         // Maybe TODOs:
         // Expr::Verbatim(token_stream) => todo!(),
         // Expr::Has(expr_has) => todo!(),
         // Expr::HasNot(expr_has_not) => todo!(),
-        // Expr::GetField(expr_get_field) => todo!(),
 
         // No plan to support:
         // Expr::Array(expr_array) => todo!(),
@@ -2944,6 +3490,23 @@ fn compile_block(ctx: &LocalCtx, block: &Block, unverified: bool) -> Result<Toke
         match stmt {
             // A local binding
             Stmt::Local(binding) => {
+                // Reject `let tracked` / `let ghost` markers instead of
+                // silently ignoring them.
+                if let Some(tracked_token) = &binding.tracked {
+                    return Err(Error::new_spanned(
+                        tracked_token,
+                        "`let tracked` is not supported by exec_spec: \
+                         tracked bindings are proof-mode artifacts with no executable \
+                         counterpart",
+                    ));
+                }
+                if let Some(ghost_token) = &binding.ghost {
+                    return Err(Error::new_spanned(
+                        ghost_token,
+                        "`let ghost` is not supported in exec_spec",
+                    ));
+                }
+
                 let (var, typ) = get_simple_pat(&binding.pat)?;
 
                 if typ.is_some() {
@@ -3009,7 +3572,7 @@ fn compile_spec_fn(item_fn: &ItemFn, unverified: bool) -> Result<TokenStream2, E
 
     let mut ctx = LocalCtx::new(&item_fn.sig.ident);
 
-    let sig = compile_sig(&mut ctx, item_fn, unverified)?;
+    let sig = compile_sig(&mut ctx, &item_fn.sig, &item_fn.vis, None, unverified)?;
     let body = compile_block(&ctx, &item_fn.block, unverified)?;
 
     // Generate all promised trigger functions
@@ -3037,13 +3600,131 @@ fn compile_spec_fn(item_fn: &ItemFn, unverified: bool) -> Result<TokenStream2, E
     })
 }
 
-/// Compiles a fn/struct/enum item.
+/// Compiles an impl block. Each spec method becomes an exec method on the corresponding
+/// `Exec<T>` type. The original impl block is preserved verbatim so verification still
+/// sees the original spec methods.
+fn compile_impl(item_impl: &ItemImpl, unverified: bool) -> Result<TokenStream2, Error> {
+    if !item_impl.generics.params.is_empty() {
+        return Err(Error::new_spanned(&item_impl.generics, "generics not supported"));
+    }
+    if item_impl.trait_.is_some() {
+        return Err(Error::new_spanned(
+            &item_impl.impl_token,
+            "trait impls not supported in exec_spec",
+        ));
+    }
+
+    // Self type must be a single-segment path naming a user-defined struct/enum.
+    let self_ty_ident = match item_impl.self_ty.as_ref() {
+        Type::Path(type_path)
+            if type_path.qself.is_none() && type_path.path.segments.len() == 1 =>
+        {
+            type_path.path.segments[0].ident.clone()
+        }
+        _ => {
+            return Err(Error::new_spanned(
+                &item_impl.self_ty,
+                "exec_spec impl Self type must be a single named type",
+            ));
+        }
+    };
+    let exec_self_ty = Ident::new(&format!("Exec{}", self_ty_ident), self_ty_ident.span());
+
+    let mut exec_methods = Vec::new();
+    for impl_item in &item_impl.items {
+        match impl_item {
+            ImplItem::Fn(impl_fn) => {
+                if !matches!(impl_fn.sig.mode, FnMode::Spec(..)) {
+                    return Err(Error::new_spanned(
+                        impl_fn,
+                        if unverified {
+                            "The exec_spec_unverified! macro only supports spec methods in impl blocks"
+                        } else {
+                            "The exec_spec_verified! macro only supports spec methods in impl blocks"
+                        },
+                    ));
+                }
+
+                let mut ctx = LocalCtx::new(&impl_fn.sig.ident);
+                let sig = compile_sig(
+                    &mut ctx,
+                    &impl_fn.sig,
+                    &impl_fn.vis,
+                    Some(&self_ty_ident),
+                    unverified,
+                )?;
+                let body = compile_block(&ctx, &impl_fn.block, unverified)?;
+
+                let trigger_fns = ctx
+                    .trigger_fns
+                    .borrow()
+                    .iter()
+                    .map(|(name, typ)| {
+                        quote! {
+                            uninterp spec fn #name(x: #typ);
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                let span = impl_fn.span();
+                exec_methods.push(quote_spanned! { span =>
+                    #(#trigger_fns)*
+
+                    #[allow(unused_parens)]
+                    #[allow(non_shorthand_field_patterns)]
+                    #[verifier::loop_isolation(false)]
+                    #sig #body
+                });
+            }
+            _ => {
+                return Err(Error::new_spanned(
+                    impl_item,
+                    "only spec method items are supported in exec_spec impl blocks",
+                ));
+            }
+        }
+    }
+
+    let span = item_impl.span();
+    Ok(quote_spanned! { span =>
+        #item_impl
+
+        impl #exec_self_ty {
+            #(#exec_methods)*
+        }
+    })
+}
+
+/// Compiles a fn/struct/enum/impl item.
 fn compile_item(item: Item, unverified: bool) -> Result<TokenStream2, Error> {
     match item {
         Item::Fn(item_fn) => compile_spec_fn(&item_fn, unverified),
         Item::Struct(item_struct) => compile_struct(&item_struct),
         Item::Enum(item_enum) => compile_enum(&item_enum),
+        Item::Impl(item_impl) => compile_impl(&item_impl, unverified),
         _ => Err(Error::new_spanned(item, "unsupported item")),
+    }
+}
+
+struct ExecSpecTypeInput {
+    is_ref: bool,
+    typ: Type,
+}
+
+impl Parse for ExecSpecTypeInput {
+    fn parse(input: ParseStream) -> verus_syn::parse::Result<ExecSpecTypeInput> {
+        let is_ref = input.parse::<Option<verus_syn::Token![ref]>>()?.is_some();
+        let typ = input.parse()?;
+        Ok(ExecSpecTypeInput { is_ref, typ })
+    }
+}
+
+pub fn exec_spec_type(input: TokenStream) -> TokenStream {
+    let ExecSpecTypeInput { is_ref, typ } = parse_macro_input!(input as ExecSpecTypeInput);
+    let ctx = if is_ref { TypeKind::Ref } else { TypeKind::Owned };
+    match compile_type(&typ, ctx) {
+        Ok(ts) => ts.into(),
+        Err(err) => err.to_compile_error().into(),
     }
 }
 

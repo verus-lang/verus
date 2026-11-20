@@ -21,6 +21,12 @@ pub enum VerusSubcommand {
     /// Create a new Verus project
     New(NewCommand),
 
+    /// Format Verus and Rust source files
+    Fmt(FmtCommand),
+
+    /// Manage Verus toolchains
+    Toolchain(ToolchainCommand),
+
     /// Verify the current crate with 'cargo build'
     Verify(VerifyCommand),
 
@@ -35,8 +41,31 @@ pub enum VerusSubcommand {
 }
 
 #[derive(Clone, Debug, Args)]
-#[group(required = true, multiple = false)]
+pub struct ToolchainCommand {
+    #[command(subcommand)]
+    pub command: ToolchainSubcommand,
+}
+
+#[derive(Clone, Debug, Subcommand)]
+pub enum ToolchainSubcommand {
+    /// List known toolchains
+    List,
+}
+
+#[derive(Clone, Debug, Args)]
+#[group(skip)]
 pub struct NewCommand {
+    #[command(flatten)]
+    pub project_kind: NewProjectKind,
+
+    /// Override the version reported by `verus --version`
+    #[arg(long)]
+    pub override_verus_version: Option<String>,
+}
+
+#[derive(Clone, Debug, Args)]
+#[group(required = true, multiple = false)]
+pub struct NewProjectKind {
     /// Create a binary
     #[arg(short, long)]
     pub bin: Option<String>,
@@ -47,6 +76,31 @@ pub struct NewCommand {
 }
 
 #[derive(Clone, Debug, Args)]
+pub struct FmtCommand {
+    /// Check whether formatting is needed without modifying files
+    #[arg(long)]
+    pub check: bool,
+
+    /// Increase verbosity (use -vv for more output)
+    #[arg(short, long, action = ArgAction::Count)]
+    pub verbosity: u8,
+
+    #[command(flatten)]
+    pub manifest: clap_cargo::Manifest,
+
+    /// Specify packages to format
+    #[arg(short, long, value_name = "PACKAGE")]
+    pub package: Vec<String>,
+
+    /// Format all workspace packages
+    #[arg(long)]
+    pub all: bool,
+
+    #[arg(last = true, num_args = 0.., allow_hyphen_values = true)]
+    pub verusfmt_args: Vec<String>,
+}
+
+#[derive(Clone, Debug, Args)]
 pub struct VerifyCommand {
     #[command(flatten)]
     pub cargo_opts: CargoOptions,
@@ -54,6 +108,18 @@ pub struct VerifyCommand {
     /// Increase verbosity (use -vv for more output)
     #[arg(short, long, action = ArgAction::Count)]
     pub verbosity: u8,
+
+    /// Force verification of `trusted_crates`.
+    #[arg(long)]
+    pub verify_trusted: bool,
+
+    /// Override the version reported by `verus --version`
+    #[arg(long)]
+    pub override_verus_version: Option<String>,
+
+    /// Check toolchain components, e.g. version compatibility of verus and vstd.
+    #[arg(long)]
+    pub check_toolchain: bool,
 
     /// Crates to receive forwarded Verus args
     #[arg(
@@ -107,6 +173,9 @@ pub struct CargoOptions {
     pub offline: bool,
 
     #[arg(long)]
+    pub release: bool,
+
+    #[arg(long)]
     pub target_dir: Option<PathBuf>,
 
     #[arg(long, value_name = "CONFIG", action = ArgAction::Append)]
@@ -157,6 +226,7 @@ fn has_late_verus_arg(opts: &CargoOptions) -> bool {
             || arg == "--frozen"
             || arg == "--locked"
             || arg == "--offline"
+            || arg == "--release"
             || arg == "--target-dir"
             || arg.starts_with("--target-dir=")
             || arg == "--config"
@@ -184,6 +254,16 @@ impl CargoVerusCli {
             return Err(anyhow!("Args forwarded to Cargo must precede args forwarded to Verus"));
         }
 
+        if let partial_selectors = parsed_cli.filter_partial_verification_selectors()
+            && !partial_selectors.is_empty()
+            && !matches!(parsed_cli.command, VerusSubcommand::Focus(_))
+        {
+            for arg in partial_selectors {
+                eprintln!("partial verification selector: `{arg}`");
+            }
+            return Err(anyhow!("Partial verification must use `cargo verus focus`"));
+        }
+
         parsed_cli.set_fwd_verus_args_to_default();
 
         Ok(parsed_cli)
@@ -191,7 +271,7 @@ impl CargoVerusCli {
 
     fn set_fwd_verus_args_to_default(&mut self) {
         match &mut self.command {
-            VerusSubcommand::New(_) => {}
+            VerusSubcommand::New(_) | VerusSubcommand::Fmt(_) | VerusSubcommand::Toolchain(_) => {}
             VerusSubcommand::Verify(cmd)
             | VerusSubcommand::Build(cmd)
             | VerusSubcommand::Check(cmd) => {
@@ -209,36 +289,66 @@ impl CargoVerusCli {
 
     fn clap_trailing_args_hotfix(mut self) -> Self {
         // NOTE: For context see this issue: https://github.com/clap-rs/clap/issues/6200
-        match &mut self.command {
-            VerusSubcommand::Verify(cmd)
-            | VerusSubcommand::Focus(cmd)
-            | VerusSubcommand::Build(cmd)
-            | VerusSubcommand::Check(cmd) => {
-                let arg_split_pos = cmd.cargo_opts.cargo_args.iter().position(|arg| arg == "--");
-                if let Some(index) = arg_split_pos {
-                    let (cargo_args, verus_args) = cmd.cargo_opts.cargo_args.split_at(index);
-                    let cargo_args = cargo_args.to_owned();
-                    let verus_args = verus_args[1..].to_owned();
-                    cmd.cargo_opts.cargo_args = cargo_args;
-                    cmd.verus_args = verus_args;
-                }
-            }
-            VerusSubcommand::New(_) => {}
+        let Some(cmd) = self.get_verify_cmd_mut() else { return self };
+        let arg_split_pos = cmd.cargo_opts.cargo_args.iter().position(|arg| arg == "--");
+        if let Some(index) = arg_split_pos {
+            let (cargo_args, verus_args) = cmd.cargo_opts.cargo_args.split_at(index);
+            let cargo_args = cargo_args.to_owned();
+            let verus_args = verus_args[1..].to_owned();
+            cmd.cargo_opts.cargo_args = cargo_args;
+            cmd.verus_args = verus_args;
         }
         self
     }
 
     fn has_inadvisable_verus_arg(&self) -> bool {
+        let Some(cmd) = self.get_verify_cmd() else { return false };
+        has_flag_arg_without_space(&cmd.cargo_opts) || has_late_verus_arg(&cmd.cargo_opts)
+    }
+
+    fn filter_partial_verification_selectors(&self) -> Vec<&str> {
+        let Some(cmd) = self.get_verify_cmd() else {
+            return vec![];
+        };
+        cmd.verus_args
+            .iter()
+            .map(String::as_str)
+            .filter(|arg| is_partial_verification_selector(arg))
+            .collect()
+    }
+
+    fn get_verify_cmd(&self) -> Option<&VerifyCommand> {
         match &self.command {
             VerusSubcommand::Verify(cmd)
             | VerusSubcommand::Focus(cmd)
             | VerusSubcommand::Build(cmd)
-            | VerusSubcommand::Check(cmd) => {
-                has_flag_arg_without_space(&cmd.cargo_opts) || has_late_verus_arg(&cmd.cargo_opts)
+            | VerusSubcommand::Check(cmd) => Some(cmd),
+            VerusSubcommand::New(_) | VerusSubcommand::Fmt(_) | VerusSubcommand::Toolchain(_) => {
+                None
             }
-            VerusSubcommand::New(_) => false,
         }
     }
+
+    fn get_verify_cmd_mut(&mut self) -> Option<&mut VerifyCommand> {
+        match &mut self.command {
+            VerusSubcommand::Verify(cmd)
+            | VerusSubcommand::Focus(cmd)
+            | VerusSubcommand::Build(cmd)
+            | VerusSubcommand::Check(cmd) => Some(cmd),
+            VerusSubcommand::New(_) | VerusSubcommand::Fmt(_) | VerusSubcommand::Toolchain(_) => {
+                None
+            }
+        }
+    }
+}
+
+fn is_partial_verification_selector(arg: &str) -> bool {
+    matches!(
+        arg,
+        "--verify-function" | "--verify-module" | "--verify-only-module" | "--verify-root"
+    ) || arg.starts_with("--verify-function=")
+        || arg.starts_with("--verify-module=")
+        || arg.starts_with("--verify-only-module=")
 }
 
 fn normalize_args<'a>(args: impl Iterator<Item = &'a str>) -> impl Iterator<Item = &'a str> {

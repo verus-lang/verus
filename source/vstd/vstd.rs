@@ -7,9 +7,13 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 #![allow(unused_attributes)]
+#![allow(unused_features)] // silences spurious warnings for features that cause errors when omitted
+#![cfg_attr(verus_keep_ghost, allow(duplicate_features))] // Verus also enables try_trait_v2
 #![allow(rustdoc::invalid_rust_codeblocks)]
+#![cfg_attr(verus_keep_ghost, feature(atomic_internals))]
+#![cfg_attr(verus_keep_ghost, feature(generic_atomic))]
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
-#![cfg_attr(any(verus_keep_ghost, feature = "allocator"), feature(allocator_api))]
+#![cfg_attr(any(verus_keep_ghost, feature = "allocator"), feature(allocator_ext))]
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
 #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
@@ -18,7 +22,17 @@
 #![cfg_attr(verus_keep_ghost, feature(derive_eq_internals))]
 #![cfg_attr(verus_keep_ghost, feature(slice_index_methods))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
-#![cfg_attr(verus_keep_ghost, feature(new_range_api))]
+#![cfg_attr(verus_keep_ghost, feature(nonzero_internals))]
+#![cfg_attr(verus_keep_ghost, feature(iter_advance_by))]
+#![cfg_attr(verus_keep_ghost, feature(try_trait_v2))]
+#![cfg_attr(verus_keep_ghost, feature(try_trait_v2_residual))]
+#![cfg_attr(verus_keep_ghost, feature(hint_must_use))]
+#![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
+#![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]
+#![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(btree_cursors))]
+#![cfg_attr(verus_keep_ghost, feature(panic_internals))]
+#![cfg_attr(verus_keep_ghost, feature(maybe_uninit_array_assume_init))]
+#![cfg_attr(verus_keep_ghost, feature(trivial_clone))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -42,7 +56,11 @@ pub mod future;
 pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_set;
+pub mod imap;
+pub mod imap_lib;
 pub mod invariant;
+pub mod iset;
+pub mod iset_lib;
 #[cfg(verus_keep_ghost)]
 pub mod laws_cmp;
 #[cfg(verus_keep_ghost)]
@@ -55,6 +73,8 @@ pub mod math;
 pub mod modes;
 pub mod multiset;
 pub mod multiset_lib;
+#[cfg(verus_keep_ghost)]
+pub mod mut_ref;
 pub mod pervasive;
 pub mod predicate;
 pub mod proph;
@@ -99,10 +119,12 @@ pub broadcast group group_vstd_default {
     //
     // basic Verus math, types, and features
     //
-    seq::group_seq_axioms,
+    seq::group_seq_lemmas,
     seq_lib::group_seq_lib_default,
-    map::group_map_axioms,
-    set::group_set_axioms,
+    map::group_map_lemmas,
+    set::group_set_lemmas,
+    imap::group_imap_lemmas,
+    iset::group_iset_lemmas,
     set_lib::group_set_lib_default,
     multiset::group_multiset_axioms,
     compute::all_spec_ensures,
@@ -119,18 +141,22 @@ pub broadcast group group_vstd_default {
     raw_ptr::group_raw_ptr_axioms,
     raw_ptr::group_points_to_lemmas,
     layout::group_layout_axioms,
+    mut_ref::group_mut_ref_axioms,
     //
     // core std_specs
     //
     std_specs::range::group_range_axioms,
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
-    std_specs::slice::group_slice_axioms,
+    std_specs::fmt::group_fmt_axioms,
     std_specs::manually_drop::group_manually_drop_axioms,
     std_specs::iter::group_iter_axioms,
+    std_specs::nonzero::group_nonzero_axioms,
     //
     // std_specs for alloc (with or without std)
     //
+    #[cfg(feature = "alloc")]
+    std_specs::borrow::group_borrow_axioms,
     #[cfg(feature = "alloc")]
     std_specs::vec::group_vec_axioms,
     #[cfg(feature = "alloc")]

@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::def::user_local_name;
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -10,8 +11,69 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
+impl Segment {
+    /// The Rust name of the segment, for segments in the value or type namespace
+    pub fn name(&self) -> Option<&Ident> {
+        match self {
+            Segment::V(name, _) | Segment::T(name, _) => Some(name),
+            _ => None,
+        }
+    }
+
+    pub fn is_name(&self, s: &str) -> bool {
+        self.name().is_some_and(|name| **name == s)
+    }
+
+    /// Apply f to the name of a V or T segment, keeping the namespace and disambiguator.
+    /// Panics on other kinds of segments.
+    pub fn map_name(&self, f: impl FnOnce(&str) -> String) -> Segment {
+        match self {
+            Segment::V(name, d) => Segment::V(Arc::new(f(name)), *d),
+            Segment::T(name, d) => Segment::T(Arc::new(f(name)), *d),
+            _ => panic!("map name expects segment with a name"),
+        }
+    }
+
+    pub fn is_foreign_mod(&self) -> bool {
+        matches!(self, Segment::ForeignMod(_))
+    }
+
+    /// Name without any namespace or disambiguator annotations (for diagnostics)
+    pub fn friendly_name(&self) -> String {
+        match self {
+            Segment::V(name, _) | Segment::T(name, _) => name.to_string(),
+            _ => self.to_string(),
+        }
+    }
+}
+
+impl fmt::Display for Segment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use crate::def::*;
+        match self {
+            Segment::V(name, 0) => write!(f, "{}", name),
+            Segment::V(name, d) => write!(f, "{}{}%{}", RUST_DEF_VALUE_NS_DISAMBIGUATED, d, name),
+            Segment::T(name, 0) => write!(f, "{}{}", RUST_DEF_TYPE_NS, name),
+            Segment::T(name, d) => write!(f, "{}{}%{}", RUST_DEF_TYPE_NS_DISAMBIGUATED, d, name),
+            Segment::Ctor(0) => write!(f, "{}", RUST_DEF_CTOR),
+            Segment::Ctor(d) => write!(f, "{}{}", RUST_DEF_CTOR, d),
+            Segment::Impl(d) => write!(f, "{}", impl_ident(*d)),
+            Segment::ForeignMod(d) => write!(f, "{}{}", RUST_DEF_FOREIGN_MOD, d),
+            Segment::OpaqueTy(d) => write!(f, "{}{}", RUST_DEF_OPAQUE_TYPE, d),
+            Segment::Closure(d) => write!(f, "{}{}", RUST_DEF_CLOSURE, d),
+            Segment::AnonConst(d) => write!(f, "{}{}", RUST_DEF_ANON_CONST, d),
+        }
+    }
+}
+
+impl fmt::Debug for Segment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.to_string())
+    }
+}
+
 impl PathX {
-    pub fn last_segment(&self) -> Ident {
+    pub fn last_segment(&self) -> Segment {
         self.segments[self.segments.len() - 1].clone()
     }
 
@@ -21,21 +83,21 @@ impl PathX {
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
-    pub fn push_segment(&self, ident: Ident) -> Path {
+    pub fn push_segment(&self, segment: Segment) -> Path {
         let mut segments = (*self.segments).clone();
-        segments.push(ident);
+        segments.push(segment);
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
-    pub fn replace_last(&self, ident: Ident) -> Path {
+    pub fn replace_last(&self, segment: Segment) -> Path {
         let mut segments = (*self.segments).clone();
-        segments[self.segments.len() - 1] = ident;
+        segments[self.segments.len() - 1] = segment;
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
-    pub fn push_segments(&self, idents: Vec<Ident>) -> Path {
+    pub fn push_segments(&self, new_segments: Vec<Segment>) -> Path {
         let mut segments = (*self.segments).clone();
-        segments.extend(idents);
+        segments.extend(new_segments);
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
@@ -60,14 +122,14 @@ impl PathX {
     }
 }
 
-pub fn path_segments_match_prefix(target: &Idents, prefix: &Idents) -> bool {
+pub fn path_segments_match_prefix(target: &Segments, prefix: &Segments) -> bool {
     prefix.len() <= target.len() && prefix[..] == target[..prefix.len()]
 }
 
-pub fn parse_path_segments_from_user_str(s: &str) -> Result<Idents, crate::ast::VirErr> {
-    let mut arg_segments: Vec<Ident> =
-        s.split("::").map(|s| Arc::new(s.to_string())).collect::<Vec<_>>();
-    if arg_segments.first().map(|x| **x == "") == Some(true) {
+pub fn parse_path_segments_from_user_str(s: &str) -> Result<Segments, crate::ast::VirErr> {
+    let mut arg_segments: Vec<Segment> =
+        s.split("::").map(|s| Segment::T(Arc::new(s.to_string()), 0)).collect::<Vec<_>>();
+    if arg_segments.first().map(|x| x.is_name("")) == Some(true) {
         arg_segments.remove(0);
     }
     if arg_segments.is_empty() {
@@ -96,7 +158,7 @@ impl fmt::Debug for CrateId {
 
 impl fmt::Debug for PathX {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Path({:?}, [", &self.krate)?;
+        write!(f, "Path({:?}, [", self.krate)?;
         for (i, s) in self.segments.iter().enumerate() {
             if i == 0 {
                 write!(f, "{:?}", s)?;
@@ -136,6 +198,18 @@ pub fn type_is_bool(typ: &Typ) -> bool {
 
 pub fn bool_typ() -> Typ {
     Arc::new(TypX::Bool)
+}
+
+pub fn int_typ() -> Typ {
+    Arc::new(TypX::Int(IntRange::Int))
+}
+
+pub fn typ_contains_opaque(typ: &Typ) -> bool {
+    crate::ast_visitor::typ_visitor_check(typ, &mut |typ| match &**typ {
+        TypX::Opaque { .. } => Err(()),
+        _ => Ok(()),
+    })
+    .is_err()
 }
 
 // ImplPaths is ignored in types_equal
@@ -398,7 +472,9 @@ pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
     let krate = crate::def::krate_to_string_ignore_stable_id(&path.krate);
     let mut strings: Vec<String> = vec![krate];
     for segment in path.segments.iter() {
-        strings.push(segment.to_string());
+        if !segment.is_foreign_mod() {
+            strings.push(segment.friendly_name());
+        }
     }
     strings.join("::")
 }
@@ -566,6 +642,12 @@ impl<X> SpannedTyped<X> {
     }
 }
 
+impl<X: Clone> SpannedTyped<X> {
+    pub fn new_typ(&self, typ: &Typ) -> Arc<Self> {
+        Arc::new(SpannedTyped { span: self.span.clone(), typ: typ.clone(), x: self.x.clone() })
+    }
+}
+
 /// Unit type
 pub fn unit_typ() -> Typ {
     let name = Dt::Tuple(0);
@@ -591,7 +673,7 @@ pub fn mk_implies(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
     SpannedTyped::new(
         span,
         &Arc::new(TypX::Bool),
-        ExprX::Binary(BinaryOp::Implies, e1.clone(), e2.clone()),
+        ExprX::Logical(LogicalOp::Implies, e1.clone(), e2.clone()),
     )
 }
 
@@ -611,14 +693,14 @@ pub fn mk_ineq(span: &Span, e1: &Expr, e2: &Expr, op: InequalityOp) -> Expr {
     )
 }
 
-pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -> Expr {
+pub fn chain_logical(span: &Span, op: LogicalOp, init: &Expr, exprs: &Vec<Expr>) -> Expr {
     if exprs.len() == 0 {
         return init.clone();
     }
 
     let mut expr = exprs[0].clone();
     for e in exprs.iter().skip(1) {
-        expr = SpannedTyped::new(span, &init.typ, ExprX::Binary(op, expr, e.clone()));
+        expr = SpannedTyped::new(span, &init.typ, ExprX::Logical(op, expr, e.clone()));
     }
     expr
 }
@@ -629,6 +711,14 @@ pub fn mk_assume(span: &Span, e1: &Expr) -> Expr {
         &unit_typ(),
         ExprX::AssertAssume { is_assume: true, expr: e1.clone(), msg: None },
     )
+}
+
+pub fn mk_int_lit_from_usize(span: &Span, u: usize) -> Expr {
+    SpannedTyped::new(span, &int_typ(), ExprX::Const(const_int_from_usize(u)))
+}
+
+pub fn const_int_from_usize(u: usize) -> Constant {
+    Constant::Int(BigInt::from(u))
 }
 
 pub fn const_int_from_u128(u: u128) -> Constant {
@@ -644,11 +734,11 @@ pub fn const_int_from_string(s: String) -> Constant {
 }
 
 pub fn conjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
-    chain_binary(span, BinaryOp::And, &mk_bool(span, true), exprs)
+    chain_logical(span, LogicalOp::And, &mk_bool(span, true), exprs)
 }
 
 pub fn disjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
-    chain_binary(span, BinaryOp::Or, &mk_bool(span, false), exprs)
+    chain_logical(span, LogicalOp::Or, &mk_bool(span, false), exprs)
 }
 
 pub fn mk_block(span: &Span, stmts: Vec<Stmt>, expr: Option<Expr>) -> Expr {
@@ -708,7 +798,7 @@ impl crate::ast::CallTargetKind {
 
 impl FunctionX {
     pub fn is_main(&self) -> bool {
-        **self.name.path.segments.last().expect("last segment") == "main"
+        self.name.path.segments.last().expect("last segment").is_name("main")
     }
 
     pub fn mask_spec_or_default(&self, span: &Span) -> MaskSpec {
@@ -768,14 +858,14 @@ pub(crate) fn call_no_unwind(call_target: &CallTarget, funs: &HashMap<Fun, Funct
 pub fn get_variant<'a>(variants: &'a Variants, variant: &Ident) -> &'a Variant {
     match variants.iter().find(|v| v.name == *variant) {
         Some(variant) => variant,
-        None => panic!("internal error: missing variant {}", &variant),
+        None => panic!("internal error: missing variant {}", variant),
     }
 }
 
 pub fn get_field<'a, A: Clone>(variant: &'a Binders<A>, field: &Ident) -> &'a Binder<A> {
     match variant.iter().find(|f| f.name == *field) {
         Some(field) => field,
-        None => panic!("internal error: missing field {}", &field),
+        None => panic!("internal error: missing field {}", field),
     }
 }
 
@@ -951,6 +1041,13 @@ pub fn int_range_to_type_string(range: &IntRange) -> String {
     }
 }
 
+pub fn bitwidth_to_signed_type_string(bw: &IntegerTypeBitwidth) -> String {
+    match bw {
+        IntegerTypeBitwidth::Width(w) => format!("i{:}", w),
+        IntegerTypeBitwidth::ArchWordSize => format!("isize"),
+    }
+}
+
 pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
     fn typs_to_comma_separated_str(typs: &[Arc<TypX>]) -> String {
         typs.iter().map(|t| typ_to_diagnostic_str(t)).collect::<Vec<_>>().join(", ")
@@ -974,12 +1071,12 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Primitive(prim, typs) => match prim {
             crate::ast::Primitive::Array => format!(
                 "[{:}; {:}]",
-                &typ_to_diagnostic_str(&typs[0]),
-                &typ_to_diagnostic_str(&typs[1])
+                typ_to_diagnostic_str(&typs[0]),
+                typ_to_diagnostic_str(&typs[1])
             ),
-            crate::ast::Primitive::Slice => format!("[{:}]", &typ_to_diagnostic_str(&typs[0])),
+            crate::ast::Primitive::Slice => format!("[{:}]", typ_to_diagnostic_str(&typs[0])),
             crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
-            crate::ast::Primitive::Ptr => format!("*mut {:}", &typ_to_diagnostic_str(&typs[0])),
+            crate::ast::Primitive::Ptr => format!("*mut {:}", typ_to_diagnostic_str(&typs[0])),
             crate::ast::Primitive::Global => format!("Global"),
             crate::ast::Primitive::ShadowData => format!("ShadowData"),
         },
@@ -1141,6 +1238,15 @@ impl FunctionKind {
             }
         }
     }
+
+    pub(crate) fn has_default(&self) -> bool {
+        match self {
+            FunctionKind::Static
+            | FunctionKind::TraitMethodImpl { .. }
+            | FunctionKind::ForeignTraitMethodImpl { .. } => false,
+            FunctionKind::TraitMethodDecl { has_default, .. } => *has_default,
+        }
+    }
 }
 
 // Return a non-TraitMethodImpl for f
@@ -1244,6 +1350,9 @@ impl MaskSpec {
     }
 }
 
+// TODO: remove this inconsistency by properly using the type namespace for verus items
+
+/// Path for any non-function item.
 #[macro_export]
 macro_rules! path {
     [ $krate:expr => $( $segment:literal ),* ] => {
@@ -1252,7 +1361,7 @@ macro_rules! path {
             segments: ::std::sync::Arc::new(
                 ::std::vec![
                     $(
-                        ::std::sync::Arc::new($segment.into())
+                        $crate::ast::Segment::T(::std::sync::Arc::new($segment.into()), 0)
                     ),*
                 ],
             ),
@@ -1260,10 +1369,23 @@ macro_rules! path {
     };
 }
 
+/// Path for a function item.
 #[macro_export]
 macro_rules! fun {
-    [ $krate:expr => $( $segment:literal ),* ] => {
-        Arc::new($crate::ast::FunX { path: $crate::path!($krate => $($segment),*) })
+    [ $krate:expr => $( $segment:literal ),* ; $name:literal ] => {
+        ::std::sync::Arc::new($crate::ast::FunX {
+            path: ::std::sync::Arc::new($crate::ast::PathX {
+                krate: $krate,
+                segments: ::std::sync::Arc::new(
+                    ::std::vec![
+                        $(
+                            $crate::ast::Segment::T(::std::sync::Arc::new($segment.into()), 0),
+                        )*
+                        $crate::ast::Segment::V(::std::sync::Arc::new($name.into()), 0)
+                    ],
+                ),
+            }),
+        })
     };
 }
 
@@ -1290,18 +1412,17 @@ impl HeaderExprX {
             | HeaderExprX::Recommends(_)
             | HeaderExprX::DecreasesWhen(_)
             | HeaderExprX::DecreasesBy(_)
-            | HeaderExprX::InvariantOpens(_, _)
-            | HeaderExprX::InvariantOpensExcept(_, _)
-            | HeaderExprX::InvariantOpensSet(_)
+            | HeaderExprX::OpensInvariantMask(_)
+            | HeaderExprX::AtomicSpec(_)
             | HeaderExprX::Hide(_)
             | HeaderExprX::ExtraDependency(_)
             | HeaderExprX::OpenVisibilityQualifier(_)
             | HeaderExprX::NoUnwind
             | HeaderExprX::NoUnwindWhen(_) => "beginning of the function body",
 
-            HeaderExprX::InvariantExceptBreak(_) | HeaderExprX::Invariant(_) => {
-                "beginning of a loop body"
-            }
+            HeaderExprX::InvariantExceptBreak(_)
+            | HeaderExprX::Invariant(_)
+            | HeaderExprX::AtomicCallLoop => "beginning of a loop body",
 
             HeaderExprX::Ensures(..) | HeaderExprX::Decreases(_) => {
                 "beginning of the function body or a loop body"
@@ -1413,6 +1534,43 @@ pub fn place_has_deref_mut(p: &Place) -> bool {
     }
 }
 
+pub fn place_to_friendly_string(p: &Place) -> String {
+    place_to_friendly_string_rec(p, false)
+}
+
+fn place_to_friendly_string_rec(p: &Place, has_suffix: bool) -> String {
+    let mut stars = "".to_string();
+    let mut inner_star = false;
+
+    let mut typ = &p.typ;
+    while let TypX::Decorate(TypDecoration::Ref | TypDecoration::Box, _, t) = &**typ {
+        typ = t;
+        stars += "*";
+    }
+
+    let inner: String = match &p.x {
+        PlaceX::Local(x) => user_local_name(x).to_string(),
+        PlaceX::Temporary(..) => format!("(unnamed temporary)"),
+        PlaceX::Field(opr, p) => {
+            format!("{:}.{:}", place_to_friendly_string_rec(p, true), opr.field)
+        }
+        PlaceX::Index(p, ..) => {
+            format!("{:}[_]", place_to_friendly_string_rec(p, true))
+        }
+        PlaceX::DerefMut(p) | PlaceX::ModeUnwrap(p, _) => {
+            inner_star = true;
+            format!("*{:}", place_to_friendly_string_rec(p, false))
+        }
+        PlaceX::WithExpr(_, p) | PlaceX::UserDefinedTypInvariantObligation(p, _) => {
+            place_to_friendly_string_rec(p, has_suffix)
+        }
+    };
+
+    let has_stars = stars.len() > 0 || inner_star;
+    let res = stars + &inner;
+    if has_suffix && has_stars { "(".to_string() + &res + ")" } else { res }
+}
+
 impl PatternX {
     /// Returns a Pattern Var that is valid post-simplification.
     pub(crate) fn simple_var(name: VarIdent, span: &Span, typ: &Typ) -> Pattern {
@@ -1425,6 +1583,7 @@ impl PatternX {
                 by_ref: ByRef::No,
                 typ: typ.clone(),
                 copy: false,
+                move_exec_to_proof_okay: MoveExecToProofOkay::Yes,
             }),
         )
     }
@@ -1475,25 +1634,6 @@ impl ArmX {
     }
 }
 
-impl BinaryOp {
-    pub fn short_circuits(&self) -> bool {
-        match self {
-            BinaryOp::And | BinaryOp::Or | BinaryOp::Implies => true,
-            BinaryOp::Xor
-            | BinaryOp::HeightCompare { .. }
-            | BinaryOp::Eq(_)
-            | BinaryOp::Ne
-            | BinaryOp::Inequality(_)
-            | BinaryOp::Arith(_)
-            | BinaryOp::RealArith(_)
-            | BinaryOp::Bitwise(..)
-            | BinaryOp::IeeeFloat(_)
-            | BinaryOp::StrGetChar
-            | BinaryOp::Index(..) => false,
-        }
-    }
-}
-
 impl fmt::Display for ClosureKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -1519,6 +1659,55 @@ impl AssertQueryMode {
         match self {
             AssertQueryMode::NonLinear => "nonlinear_arith",
             AssertQueryMode::BitVector => "bit_vector",
+        }
+    }
+}
+
+pub(crate) fn array_kind_of_typ(t: &Typ) -> (ArrayKind, Typ) {
+    match &*undecorate_typ(t) {
+        TypX::Primitive(Primitive::Array, ts) => (ArrayKind::Array, ts[0].clone()),
+        TypX::Primitive(Primitive::Slice, ts) => (ArrayKind::Slice, ts[0].clone()),
+        _ => panic!("expected type to be slice or array"),
+    }
+}
+
+pub(crate) fn const_usize_of_expr(e: &Expr) -> Option<usize> {
+    match &e.x {
+        ExprX::Const(Constant::Int(bignum)) => bignum.try_into().ok(),
+        _ => None,
+    }
+}
+
+pub fn function_to_stub(f: &Function) -> crate::ast::FunctionStub {
+    crate::def::Spanned::new(
+        f.span.clone(),
+        FunctionStubX {
+            name: f.x.name.clone(),
+            proxy: f.x.proxy.clone(),
+            kind: f.x.kind.clone(),
+            visibility: f.x.visibility.clone(),
+            body_visibility: f.x.body_visibility.clone(),
+            opaqueness: f.x.opaqueness.clone(),
+            owning_module: f.x.owning_module.clone(),
+            mode: f.x.mode.clone(),
+            typ_params: f.x.typ_params.clone(),
+            typ_bounds: f.x.typ_bounds.clone(),
+            params: f.x.params.clone(),
+            outer_ret: f.x.outer_ret.clone(),
+            item_kind: f.x.item_kind.clone(),
+            attrs: f.x.attrs.clone(),
+
+            returns: f.x.returns.is_some(),
+            decreases_len: f.x.decrease.len(),
+        },
+    )
+}
+
+impl fmt::Display for LoopSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LoopSource::Loop => write!(f, "loop"),
+            LoopSource::BreakableBlock => write!(f, "breakable block"),
         }
     }
 }

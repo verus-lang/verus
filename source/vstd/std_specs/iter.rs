@@ -1,13 +1,51 @@
 use super::super::prelude::*;
 use super::super::seq::{
-    axiom_seq_empty, axiom_seq_subrange_index, axiom_seq_subrange_len, group_seq_axioms,
+    group_seq_lemmas, lemma_seq_empty, lemma_seq_subrange_index, lemma_seq_subrange_len,
 };
+use super::control_flow::{TrySpec, try_laws};
+use core::iter::{Enumerate, Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
+use core::num::NonZero;
+use core::ops::{ControlFlow, Try};
 
-use verus as verus_;
+// Reduce the boilerplate in the definitions below.  We have to use a macro,
+// since inside of ExIterator, we don't yet know that `self` is an Iterator.
+// We use two macros so that we can convert arguments to Rust-friendly terms
+// (e.g., by translating `final(.)` in to `verus_builtin::final_(.)` in `iter_state_preserved`
+// before doing the real work in `iter_state_preserved_internal`
+#[doc(hidden)]
+#[macro_export]
+macro_rules! iter_state_preserved_internal {
+    ($before:expr, $after:expr $(,)?) => {
+        // Dereference explicitly so method resolution uses the underlying
+        // iterator, and `final` is consumed through a dereference.
+        $crate::vstd::prelude::verus_proof_expr! {{
+            &&& (*($after)).obeys_prophetic_iter_laws() == (*($before)).obeys_prophetic_iter_laws()
+            &&& (*($before)).obeys_prophetic_iter_laws() ==>
+                (*($before)).produces().len() == (*($before)).remaining().len()
+            &&& (*($before)).obeys_prophetic_iter_laws() ==>
+                ((*($after)).decrease() is Some <==> (*($before)).decrease() is Some)
+        }}
+    };
+}
 
-use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
+#[macro_export]
+macro_rules! iter_state_preserved {
+    ($($args:tt)*) => {
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::std_specs::iter::iter_state_preserved_internal!($($args)*))
+    };
+}
 
-verus_! {
+#[doc(hidden)]
+pub use iter_state_preserved;
+#[doc(hidden)]
+pub use iter_state_preserved_internal;
+
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
+
+/********************************************************************************
+ * The main Iterator specification
+ ********************************************************************************/
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IteratorSpec via IteratorSpecImpl)]
@@ -16,55 +54,46 @@ pub trait ExIterator {
 
     type Item;
 
-    /// This iterator obeys the specifications below on `next`,
-    /// expressed in terms of prophetic spec functions.
-    /// Only iterators that terminate (i.e., eventually return None
-    /// and then continue to return None) should use this interface.
+    /// This iterator obeys the specifications below, including those on
+    /// overridden provided methods, expressed in terms of prophetic spec functions.
+    /// Only finite iterators (i.e., those that eventually return None
+    /// and then continue to return None) or infinite iterators that
+    /// never return None should use this interface.
     spec fn obeys_prophetic_iter_laws(&self) -> bool;
 
-    /// Sequence of items that will (eventually) be returned
+    /// Sequence of all potentially returned items
     #[verifier::prophetic]
     spec fn remaining(&self) -> Seq<Self::Item>;
 
-    /// Does this iterator complete with a `None` after the above sequence?
-    /// (As opposed to hanging indefinitely on a `next()` call)
-    /// Trivially true for most iterators but important for iterators
-    /// that apply an exec closure that may not terminate.
+    /// For each potential item in `remaining()`, does the item actually
+    /// get returned, or does the iterator get "stuck" trying to produce it,
+    /// e.g., because a client supplied a closure that diverges?
     #[verifier::prophetic]
-    spec fn will_return_none(&self) -> bool;
+    spec fn produces(&self) -> Seq<bool>;
 
     /// Advances the iterator and returns the next value.
     // In rustlib, `next` impls that turn a permission into a reference (`ptr_shr_ref`) need shadow data.
     #[cfg_attr(verus_verify_core, verifier::shadow_data)]
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
-            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            iter_state_preserved!(old(self), final(self)),
             // `next` pops the head of the prophesized remaining(), or returns None
             final(self).obeys_prophetic_iter_laws() ==>
             ({
                 if old(self).remaining().len() > 0 {
                     &&& final(self).remaining() == old(self).remaining().drop_first()
+                    &&& final(self).produces() == old(self).produces().drop_first()
                     &&& ret == Some(old(self).remaining()[0])
+                    &&& old(self).produces()[0]
                 } else {
-                    final(self).remaining() == old(self).remaining() && ret == None && final(self).will_return_none()
+                    &&& final(self).remaining() == old(self).remaining()
+                    &&& final(self).produces() == old(self).produces()
+                    &&& ret == None
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
             final(self).obeys_prophetic_iter_laws() && old(self).remaining().len() > 0 && final(self).decrease() is Some ==>
                 decreases_to!(old(self).decrease()->0 => final(self).decrease()->0),
-    ;
-
-    /// Returns bounds on the number of remaining items:
-    /// at least the lower bound, and at most the upper bound if there is one.
-    fn size_hint(&self) -> (r: (usize, Option<usize>))
-        ensures
-            self.obeys_prophetic_iter_laws() ==> {
-                &&& r.0 <= self.remaining().len()
-                &&& r.1 matches Some(u) ==> self.remaining().len() <= u
-            },
     ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
@@ -75,155 +104,48 @@ pub trait ExIterator {
     /// and the user will have to provide an explicit decreases clause.
     spec fn decrease(&self) -> Option<nat>;
 
-    /// Invariant relating the iterator to the initial expression that created it
-    /// (e.g., `my_vec.iter()`).  This allows for more ergonomic/intuitive invariants.
-    /// When the analysis can infer a spec initial value (by discovering a `when_used_as_spec`
-    /// annotation), the analysis places the value in init.
-    #[verifier::prophetic]
-    spec fn initial_value_relation(&self, init: &Self) -> bool;
-
     // If we can make a useful guess as to what the i-th value will be, return it.
     // Otherwise, return None.
     spec fn peek(&self, index: int) -> Option<Self::Item>;
 
-    // Provided methods
+    /******* Provided methods (in alphabetical order) *********/
+    // For provided method that returns a new iterator (e.g., filter, map, or zip),
+    // ideally we would write their postconditions here.  However, this requires
+    // a trait bound of `Self: IteratorSpec`, which introduces a cyclic dependency.
+    // Hence, we introduce a layer of indirection via an uninterp spec function that
+    // describes the postconditions.
 
-    // TODO: Once we can add when_used_as_spec to provided trait methods, this would be a simpler encoding:
-    //#[verifier::when_used_as_spec(into_rev_spec)]
-    fn rev(self) -> (r: Rev<Self>)
-        where Self: Sized,
-        default_ensures
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
-                r == into_rev_spec(self) && rev_post(self, r),
-    ;
-
-    //#[verifier::when_used_as_spec(into_map_spec)]
-    fn map<B, F>(self, f: F) -> (r: core::iter::Map<Self, F>)
-        where
-            Self: Sized,
-            F: FnMut(Self::Item) -> B,
-        requires
-            self.obeys_prophetic_iter_laws(),
-            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
-            self.initial_value_relation(&self),
-        default_ensures
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
-                r == into_map_spec::<Self, F>(self, f) && map_post(self, f, r),
-    ;
-
-    //#[verifier::when_used_as_spec(into_filter_spec)]
-    fn filter<P>(self, predicate: P) -> (r: core::iter::Filter<Self, P>)
-        where
-            Self: Sized,
-            P: FnMut(&Self::Item) -> bool,
-        requires
-            self.obeys_prophetic_iter_laws(),
-            // `filter`'s implementation loops over the inner iterator until the
-            // predicate accepts an element, so it needs a decreases metric to
-            // prove termination.
-            self.decrease() is Some,
-            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
-            self.initial_value_relation(&self),
-        default_ensures
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
-                r == into_filter_spec::<Self, P>(self, predicate) && filter_post(self, predicate, r),
-    ;
-
-    // We can't provide the ensures directly here, since Rust doesn't think that Take<Self> is an iterator
-    fn take(self, n: usize) -> (t: Take<Self>)
-        where Self: Sized,
-        default_ensures
-            self.obeys_prophetic_iter_laws() ==>
-                t == into_take_spec(self, n) && take_post(self, n, t),
-    ;
-
-    // We can't provide the ensures directly here, since Rust doesn't think that Skip<Self> is an iterator
-    fn skip(self, n: usize) -> (s: Skip<Self>)
-        where Self: Sized,
-        default_ensures
-            self.obeys_prophetic_iter_laws() ==>
-                s == into_skip_spec(self, n) && skip_post(self, n, s),
-    ;
-
-    // See below for why we can't use this at present
-    // fn zip<U>(self, other: U) -> (r: Zip<Self, <U as IntoIterator>::IntoIter>>)
-    // where
-    //     Self: Sized,
-    //     U: IntoIterator,
-    //     default_ensures
-    //         self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self)
-    //         other.obeys_prophetic_iter_laws() && other.initial_value_relation(&other)
-    //         ==> {
-    //           &&& zip_iter_fst(r) == a
-    //           &&& zip_iter_snd(r) == b
-    //           &&& IteratorSpec::remaining(&r) == a.remaining().zip_truncate(b.remaining())
-    //           &&& IteratorSpec::will_return_none(&r) ==> a.will_return_none() && b.will_return_none()
-    //           &&& IteratorSpec::decrease(&r) is Some == (a.decrease() is Some || b.decrease() is Some)
-    //           &&& IteratorSpec::initial_value_relation(&r, &r)
-    //         }
-    // //         self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self)
-    // //         other.obeys_prophetic_iter_laws() && other.initial_value_relation(&other)
-    // //         ==>
-    // //             z == into_zip_spec(self) && zip_post(self, r),
-    // // ;
-
-    fn collect<B>(self) -> (collection: B)
-        where
-            B: FromIterator<Self::Item>,
-            Self: Sized,
-        default_ensures
-            self.will_return_none(),
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
-                FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
-    ;
-
-    fn find<P>(&mut self, predicate: P) -> (r: Option<Self::Item>)
-        where Self: Sized,
-            P: FnMut(&Self::Item) -> bool
-        default_ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
-            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
-            final(self).obeys_prophetic_iter_laws() ==> {
-                final(self).remaining().is_suffix_of(old(self).remaining())
+    fn advance_by(&mut self, n: usize) -> (ret: Result<(), NonZero<usize>>)
+        ensures
+            iter_state_preserved!(old(self), final(self)),
+            ret matches Err(e) ==> 1 <= e@ <= n,
+            ret is Ok ==> ret == Ok(()),
+            // Discarded items need not have been produced by an optimized implementation.
+            old(self).obeys_prophetic_iter_laws() ==> final(self).produces() ==
+                old(self).produces().skip(old(self).remaining().len() - final(self).remaining().len()),
+            old(self).obeys_prophetic_iter_laws() ==> match ret {
+                Ok(()) => n <= old(self).remaining().len()
+                    && final(self).remaining() == old(self).remaining()[n..],
+                Err(e) => old(self).remaining().len() < n
+                    && e@ == n - old(self).remaining().len()
+                    && final(self).remaining() == Seq::empty(),
             },
-            // If find returns None, then the iterator has no remaining
-            // elements, and the predicate was false for all of the original
-            // iterator's elements.
-            final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
-                &&& final(self).remaining().len() == 0
-                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
-                    predicate.ensures((#[trigger]&old(self).remaining()[i],), false)
-            },
-            // If find returns Some, then the returned value satisfies the
-            // predicate, and all previous elements did not satisfy the
-            // predicate.
-            final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
-                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
-                {
-                    &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
-                    &&& predicate.ensures((&r.unwrap(),), true)
-                    &&& old(self).remaining()[idx] == r.unwrap()
-                    &&& forall |i| 0 <= i < idx ==>
-                        predicate.ensures((#[trigger] &old(self).remaining()[i],), false)
-                }
-            };
-
-    // TODO: The Rust implementations of `all` and `any` depend on a correct implementation of `try_fold`
-    //       For now, we assume obeys_prophetic_iter_laws() entails such an implementation, but we should
-    //       eventually constrain implementations of `try_fold` to actually be correct enough to uphold the specs below.
+    ;
 
     fn all<F>(&mut self, f: F) -> (r: bool)
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
-        default_ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
-            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+        requires
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() && self.produces()[k] ==> f.requires((#[trigger] self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #[trigger] f.requires((x, )),
+        ensures
+            iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
-                final(self).remaining().is_suffix_of(old(self).remaining())
+                let num_consumed = old(self).remaining().len() - final(self).remaining().len();
+                &&& final(self).remaining().is_suffix_of(old(self).remaining())
+                &&& final(self).produces() == old(self).produces().skip(num_consumed)
+                &&& old(self).produces().take(num_consumed).all(|p: bool| p)
             },
             // If all returns true, then the iterator has no remaining elements,
             // and the predicate was true for all of the original iterator's elements.
@@ -248,13 +170,17 @@ pub trait ExIterator {
     fn any<F>(&mut self, f: F) -> (r: bool)
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
-        default_ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
-            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+        requires
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() && self.produces()[k] ==> f.requires((#[trigger] self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #[trigger] f.requires((x, )),
+        ensures
+            iter_state_preserved!(old(self), final(self)),
             final(self).obeys_prophetic_iter_laws() ==> {
-                final(self).remaining().is_suffix_of(old(self).remaining())
+                let num_consumed = old(self).remaining().len() - final(self).remaining().len();
+                &&& final(self).remaining().is_suffix_of(old(self).remaining())
+                &&& final(self).produces() == old(self).produces().skip(num_consumed)
+                &&& old(self).produces().take(num_consumed).all(|p: bool| p)
             },
             // If any returns false, then the iterator has no remaining elements,
             // and the predicate was false for all of the original iterator's elements.
@@ -275,6 +201,258 @@ pub trait ExIterator {
                         f.ensures((#[trigger] old(self).remaining()[i],), false)
                 }
             };
+
+    fn collect<B>(self) -> (collection: B)
+        where
+            B: FromIterator<Self::Item>,
+            Self: Sized,
+        ensures
+            self.obeys_prophetic_iter_laws() ==>
+                FromIteratorSpec::from_iter_ensures(self.remaining(), self.produces(), collection),
+    ;
+
+    fn enumerate(self) -> (r: Enumerate<Self>)
+        where Self: Sized,
+        requires
+            // std's `Enumerate` keeps its count in a `usize`, so yielding more than `usize::MAX`
+            // items overflows it (panicking or wrapping around); without the laws, `remaining()`
+            // doesn't bound how many items will be yielded
+            self.obeys_prophetic_iter_laws(),
+            self.remaining().len() <= usize::MAX as int,
+        ensures
+            enumerate_post(self, r),
+    ;
+
+    fn filter<P>(self, predicate: P) -> (r: core::iter::Filter<Self, P>)
+        where
+            Self: Sized,
+            P: FnMut(&Self::Item) -> bool,
+        requires
+            // `filter`'s implementation loops over the inner iterator until the predicate accepts an element,
+            // so it needs a decreases metric to prove termination.
+            self.decrease() is Some,
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() && self.produces()[k] ==> predicate.requires((#[trigger] &self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `predicate` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #[trigger] predicate.requires((x, )),
+        ensures
+            self.obeys_prophetic_iter_laws() ==> filter_post(self, predicate, r),
+    ;
+
+    fn find<P>(&mut self, predicate: P) -> (r: Option<Self::Item>)
+        where Self: Sized,
+            P: FnMut(&Self::Item) -> bool
+        requires
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() && self.produces()[k] ==> predicate.requires((#[trigger] &self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `predicate` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: &Self::Item| #[trigger] predicate.requires((x, )),
+        ensures
+            iter_state_preserved!(old(self), final(self)),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).produces() ==
+                old(self).produces().skip(old(self).remaining().len() - final(self).remaining().len()),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                &&& final(self).remaining().is_suffix_of(old(self).remaining())
+                &&& old(self).produces().take(old(self).remaining().len() - final(self).remaining().len()).all(|p: bool| p)
+            },
+            // If find returns None, then the iterator has no remaining
+            // elements, and the predicate was false for all of the original
+            // iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    predicate.ensures((#[trigger]&old(self).remaining()[i],), false)
+            },
+            // If find returns Some, then the returned value satisfies the
+            // predicate, and all previous elements did not satisfy the
+            // predicate.
+            final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
+                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
+                {
+                    &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
+                    &&& predicate.ensures((&r.unwrap(),), true)
+                    &&& old(self).remaining()[idx] == r.unwrap()
+                    &&& forall |i| 0 <= i < idx ==>
+                        predicate.ensures((#[trigger] &old(self).remaining()[i],), false)
+                }
+            };
+
+    fn find_map<B, F>(&mut self, f: F) -> (r: Option<B>)
+        where Self: Sized,
+            F: FnMut(Self::Item) -> Option<B>
+        requires
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() && self.produces()[k] ==> f.requires((#[trigger] self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #[trigger] f.requires((x, )),
+        ensures
+            iter_state_preserved!(old(self), final(self)),
+
+            final(self).obeys_prophetic_iter_laws() ==> {
+                let num_consumed = old(self).remaining().len() - final(self).remaining().len();
+                &&& final(self).remaining().is_suffix_of(old(self).remaining())
+                &&& final(self).produces() == old(self).produces().skip(num_consumed)
+                &&& old(self).produces().take(num_consumed).all(|p: bool| p)
+            },
+            // If find_map returns None, then the iterator has no remaining
+            // elements, and f was None for all of the original
+            // iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    f.ensures((#[trigger]old(self).remaining()[i],), None)
+            },
+            // If find_map returns Some, then the returned value satisfies f,
+            // and all previous elements did not satisfy f
+            final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
+                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
+                {
+                    &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
+                    &&& f.ensures((old(self).remaining()[idx],), r)
+                    &&& forall |i| 0 <= i < idx ==>
+                        f.ensures((#[trigger] old(self).remaining()[i],), None)
+                }
+            };
+
+    fn fold<B, F>(self, init: B, f: F) -> (ret: B)
+        where Self: Sized, F: FnMut(B, Self::Item) -> B,
+        requires
+            self.obeys_prophetic_iter_laws() ==> fold_requires(self.remaining(), self.produces(), init, f),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !self.obeys_prophetic_iter_laws() ==> (forall |b: B, x: Self::Item| #[trigger] f.requires((b, x))),
+        ensures
+            self.obeys_prophetic_iter_laws() ==> fold_post(self.remaining(), self.produces(), init, f, ret),
+    ;
+
+    fn for_each<F>(self, f: F)
+        where Self: Sized, F: FnMut(Self::Item),
+        requires
+            self.obeys_prophetic_iter_laws() ==> forall |j: int| 0 <= j < self.remaining().len() && self.produces()[j] ==> f.requires((#[trigger] self.remaining()[j],)),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !self.obeys_prophetic_iter_laws() ==> (forall |x: Self::Item| #[trigger] f.requires((x, ))),
+        ensures
+            self.obeys_prophetic_iter_laws() ==> {
+                &&& self.produces().len() == self.remaining().len()
+                &&& self.produces().all(|p: bool| p)
+                &&& forall |j: int| 0 <= j < self.remaining().len() ==> f.ensures((#[trigger] self.remaining()[j],), ())
+            },
+    ;
+
+    fn map<B, F>(self, f: F) -> (r: core::iter::Map<Self, F>)
+        where
+            Self: Sized,
+            F: FnMut(Self::Item) -> B,
+        requires
+            self.obeys_prophetic_iter_laws() ==> forall |k| 0 <= k < self.remaining().len() && self.produces()[k] ==> f.requires((#[trigger] self.remaining()[k], )),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !self.obeys_prophetic_iter_laws() ==> forall |x: Self::Item| #[trigger] f.requires((x, )),
+        ensures
+            self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),
+    ;
+
+    fn nth(&mut self, n: usize) -> (ret: Option<Self::Item>)
+        ensures
+            iter_state_preserved!(old(self), final(self)),
+            old(self).obeys_prophetic_iter_laws() ==> final(self).produces() ==
+                old(self).produces().skip(old(self).remaining().len() - final(self).remaining().len()),
+            old(self).obeys_prophetic_iter_laws() ==> (
+                if n < old(self).remaining().len() {
+                    ret == Some(old(self).remaining()[n as int])
+                        && old(self).produces()[n as int]
+                        && final(self).remaining() == old(self).remaining()[n + 1..]
+                } else {
+                    ret == None && final(self).remaining() == Seq::empty()
+                }),
+    ;
+
+    fn position<P>(&mut self, predicate: P) -> (r: Option<usize>)
+        where
+            Self: Sized,
+            P: FnMut(Self::Item) -> bool,
+        requires
+            // without the laws, `remaining()` bounds neither the count std's `position` keeps
+            // (which may overflow) nor the items `predicate` is called on
+            self.obeys_prophetic_iter_laws(),
+            self.remaining().len() <= usize::MAX as int,
+            forall |k| 0 <= k < self.remaining().len() && self.produces()[k] ==> predicate.requires((#[trigger] self.remaining()[k], )),
+        ensures
+            iter_state_preserved!(old(self), final(self)),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                let num_consumed = old(self).remaining().len() - final(self).remaining().len();
+                &&& final(self).remaining().is_suffix_of(old(self).remaining())
+                &&& final(self).produces() == old(self).produces().skip(num_consumed)
+                &&& old(self).produces().take(num_consumed).all(|p: bool| p)
+            },
+            // If position returns None, then the iterator has no remaining
+            // elements, and the predicate was false for all of the original
+            // iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    predicate.ensures((#[trigger] old(self).remaining()[i],), false)
+            },
+            // If position returns Some, then the returned index whose value satisfies the
+            // predicate, and all previous elements did not satisfy the predicate.
+            final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
+                let index = r.unwrap();
+                {
+                    &&& index as int == (old(self).remaining().len() - final(self).remaining().len() - 1)
+                    &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
+                    &&& predicate.ensures((#[trigger] old(self).remaining()[index as int],), true)
+                    &&& forall |i| 0 <= i < index as int ==>
+                        predicate.ensures((#[trigger] old(self).remaining()[i],), false)
+                }
+            };
+
+    fn rev(self) -> (r: Rev<Self>)
+        where Self: Sized,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> rev_post(self, r),
+    ;
+
+    fn size_hint(&self) -> ((lower, upper): (usize, Option<usize>))
+        ensures
+            self.obeys_prophetic_iter_laws() ==>
+                lower <= self.remaining().len() && (upper matches Some(b) ==> self.remaining().len() <= b),
+        default_ensures
+            (lower, upper) == (0usize, None),
+    ;
+
+    fn skip(self, n: usize) -> (s: Skip<Self>)
+        where Self: Sized,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> skip_post(self, n, s),
+    ;
+
+    fn take(self, n: usize) -> (t: Take<Self>)
+        where Self: Sized,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> take_post(self, n, t),
+    ;
+
+    fn try_fold<B, F, R>(&mut self, init: B, f: F) -> (ret: R)
+        where Self: Sized, F: FnMut(B, Self::Item) -> R, R: Try<Output = B>,
+        requires
+            self.obeys_prophetic_iter_laws() && try_laws::<R>() ==>
+                try_fold_requires(self.remaining(), self.produces(), init, f),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !(self.obeys_prophetic_iter_laws() && try_laws::<R>()) ==>
+                forall |b: B, x: Self::Item| #[trigger] f.requires((b, x)),
+        ensures
+            iter_state_preserved!(old(self), final(self)),
+            old(self).obeys_prophetic_iter_laws() ==> {
+                let num_consumed = old(self).remaining().len() - final(self).remaining().len();
+                &&& final(self).remaining().is_suffix_of(old(self).remaining())
+                &&& try_fold_post(old(self).remaining(), old(self).produces(), init, f, ret,
+                    num_consumed, final(self).produces())
+            },
+    ;
+
+    #[verifier::impls_cannot_extend_spec]
+    fn zip<U>(self, other: U) -> (r: Zip<Self, <U as IntoIterator>::IntoIter>)
+        where
+            Self: Sized,
+            U: IntoIterator,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> zip_post(self, other, r),
+    ;
 }
 
 #[verifier::external_trait_specification]
@@ -294,18 +472,19 @@ pub trait ExDoubleEndedIterator : Iterator {
     // ```
     fn next_back(&mut self) -> (ret: Option<<Self as core::iter::Iterator>::Item>)
         ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) == <Self as IteratorSpec>::obeys_prophetic_iter_laws(old(self)),
-            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==> <Self as IteratorSpec>::will_return_none(final(self)) == <Self as IteratorSpec>::will_return_none(old(self)),
-            <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==> (<Self as IteratorSpec>::decrease(old(self)) is Some <==> <Self as IteratorSpec>::decrease(final(self)) is Some),
-            // `next` pops the tail of the prophesized remaining(), or returns None
+            iter_state_preserved!(old(self), final(self)),
+            // `next_back` pops the tail of the prophesized remaining(), or returns None
             <Self as IteratorSpec>::obeys_prophetic_iter_laws(final(self)) ==>
             ({
                 if <Self as IteratorSpec>::remaining(old(self)).len() > 0 {
-                    <Self as IteratorSpec>::remaining(final(self)) == <Self as IteratorSpec>::remaining(old(self)).drop_last()
-                        && ret == Some(<Self as IteratorSpec>::remaining(old(self)).last())
+                    &&& <Self as IteratorSpec>::remaining(final(self)) == <Self as IteratorSpec>::remaining(old(self)).drop_last()
+                    &&& <Self as IteratorSpec>::produces(final(self)) == <Self as IteratorSpec>::produces(old(self)).drop_last()
+                    &&& ret == Some(<Self as IteratorSpec>::remaining(old(self)).last())
+                    &&& <Self as IteratorSpec>::produces(old(self)).last()
                 } else {
-                    <Self as IteratorSpec>::remaining(final(self)) == <Self as IteratorSpec>::remaining(old(self)) && ret == None && <Self as IteratorSpec>::will_return_none(final(self))
+                    &&& <Self as IteratorSpec>::remaining(final(self)) == <Self as IteratorSpec>::remaining(old(self))
+                    &&& <Self as IteratorSpec>::produces(final(self)) == <Self as IteratorSpec>::produces(old(self))
+                    &&& ret == None
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
@@ -318,26 +497,127 @@ pub trait ExDoubleEndedIterator : Iterator {
     // If we can make a useful guess as to what the i-th value from the back will be, return it.
     // Otherwise, return None.
     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
+
+    /******* Provided methods (in alphabetical order) *********/
+    fn advance_back_by(&mut self, n: usize) -> (ret: Result<(), NonZero<usize>>)
+        ensures
+            iter_state_preserved!(old(self), final(self)),
+            ret matches Err(e) ==> 1 <= e@ <= n,
+            ret is Ok ==> ret == Ok(()),
+            // Discarded items need not have been produced by an optimized implementation.
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(old(self)) ==>
+                <Self as IteratorSpec>::produces(final(self)) ==
+                    <Self as IteratorSpec>::produces(old(self)).take(<Self as IteratorSpec>::remaining(final(self)).len() as int),
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(old(self)) ==> match ret {
+                Ok(()) => n <= <Self as IteratorSpec>::remaining(old(self)).len()
+                    && <Self as IteratorSpec>::remaining(final(self)) ==
+                        <Self as IteratorSpec>::remaining(old(self))[.. <Self as IteratorSpec>::remaining(old(self)).len() - n],
+                Err(e) => <Self as IteratorSpec>::remaining(old(self)).len() < n
+                    && e@ == n - <Self as IteratorSpec>::remaining(old(self)).len()
+                    && <Self as IteratorSpec>::remaining(final(self)) == Seq::empty(),
+            },
+    ;
+
+    fn nth_back(&mut self, n: usize) -> (ret: Option<Self::Item>)
+        ensures
+            iter_state_preserved!(old(self), final(self)),
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(old(self)) ==>
+                <Self as IteratorSpec>::produces(final(self)) ==
+                    <Self as IteratorSpec>::produces(old(self)).take(<Self as IteratorSpec>::remaining(final(self)).len() as int),
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(old(self)) ==> (
+                if n < <Self as IteratorSpec>::remaining(old(self)).len() {
+                    let idx = <Self as IteratorSpec>::remaining(old(self)).len() - n - 1;
+                    ret == Some(<Self as IteratorSpec>::remaining(old(self))[idx])
+                    && <Self as IteratorSpec>::produces(old(self))[idx]
+                    && <Self as IteratorSpec>::remaining(final(self)) ==
+                        <Self as IteratorSpec>::remaining(old(self))[..idx]
+                } else {
+                    ret == None && <Self as IteratorSpec>::remaining(final(self)) == Seq::empty()
+                }),
+    ;
+
+    fn rfind<P>(&mut self, predicate: P) -> (ret: Option<Self::Item>)
+        where Self: Sized, P: FnMut(&Self::Item) -> bool,
+        requires
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(self) ==>
+                forall |j: int| 0 <= j < <Self as IteratorSpec>::remaining(self).len()
+                    && <Self as IteratorSpec>::produces(self)[j] ==>
+                    predicate.requires((#[trigger] &<Self as IteratorSpec>::remaining(self)[j],)),
+            // without the laws, `remaining()` says nothing about the items `predicate` is called on
+            !<Self as IteratorSpec>::obeys_prophetic_iter_laws(self) ==>
+                forall |x: &Self::Item| #[trigger] predicate.requires((x,)),
+        ensures
+            iter_state_preserved!(old(self), final(self)),
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(old(self)) ==> {
+                let num_remaining = <Self as IteratorSpec>::remaining(final(self)).len() as int;
+                &&& <Self as IteratorSpec>::remaining(final(self)).is_prefix_of(<Self as IteratorSpec>::remaining(old(self)))
+                &&& <Self as IteratorSpec>::produces(final(self)) ==
+                    <Self as IteratorSpec>::produces(old(self)).take(num_remaining)
+                &&& <Self as IteratorSpec>::produces(old(self)).skip(num_remaining).all(|p: bool| p)
+            },
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(old(self)) ==> (
+                if ret is None {
+                    <Self as IteratorSpec>::remaining(final(self)) == Seq::empty()
+                    && forall |j: int| 0 <= j < <Self as IteratorSpec>::remaining(old(self)).len() ==>
+                        predicate.ensures((#[trigger] &<Self as IteratorSpec>::remaining(old(self))[j],), false)
+                } else {
+                    let k = <Self as IteratorSpec>::remaining(final(self)).len() as int;
+                    &&& k < <Self as IteratorSpec>::remaining(old(self)).len()
+                    &&& ret == Some(<Self as IteratorSpec>::remaining(old(self))[k])
+                    &&& predicate.ensures((&ret.unwrap(),), true)
+                    &&& <Self as IteratorSpec>::remaining(final(self)) == <Self as IteratorSpec>::remaining(old(self))[..k]
+                    &&& forall |j: int| k < j < <Self as IteratorSpec>::remaining(old(self)).len() ==>
+                        predicate.ensures((#[trigger] &<Self as IteratorSpec>::remaining(old(self))[j],), false)
+                }),
+    ;
+
+    fn rfold<B, F>(self, init: B, f: F) -> (ret: B)
+        where Self: Sized, F: FnMut(B, Self::Item) -> B,
+        requires
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(&self) ==>
+                fold_requires(<Self as IteratorSpec>::remaining(&self).reverse(), <Self as IteratorSpec>::produces(&self).reverse(), init, f),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !<Self as IteratorSpec>::obeys_prophetic_iter_laws(&self) ==>
+                forall |b: B, x: Self::Item| #[trigger] f.requires((b, x)),
+        ensures
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(&self) ==>
+                fold_post(<Self as IteratorSpec>::remaining(&self).reverse(), <Self as IteratorSpec>::produces(&self).reverse(), init, f, ret),
+    ;
+
+    fn try_rfold<B, F, R>(&mut self, init: B, f: F) -> (ret: R)
+        where Self: Sized, F: FnMut(B, Self::Item) -> R, R: Try<Output = B>,
+        requires
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(self) && try_laws::<R>() ==>
+                try_fold_requires(<Self as IteratorSpec>::remaining(self).reverse(), <Self as IteratorSpec>::produces(self).reverse(), init, f),
+            // without the laws, `remaining()` says nothing about the items `f` is called on
+            !(<Self as IteratorSpec>::obeys_prophetic_iter_laws(self) && try_laws::<R>()) ==>
+                forall |b: B, x: Self::Item| #[trigger] f.requires((b, x)),
+        ensures
+            iter_state_preserved!(old(self), final(self)),
+            <Self as IteratorSpec>::obeys_prophetic_iter_laws(old(self)) ==> {
+                let num_consumed = <Self as IteratorSpec>::remaining(old(self)).len() - <Self as IteratorSpec>::remaining(final(self)).len();
+                &&& <Self as IteratorSpec>::remaining(final(self)).is_prefix_of(<Self as IteratorSpec>::remaining(old(self)))
+                &&& try_fold_post(<Self as IteratorSpec>::remaining(old(self)).reverse(), <Self as IteratorSpec>::produces(old(self)).reverse(), init, f, ret,
+                    num_consumed, <Self as IteratorSpec>::produces(final(self)).reverse())
+            },
+    ;
+
 }
 
-pub uninterp spec fn iter_len<I: ?Sized>(i: &I) -> usize;
-
-pub broadcast axiom fn iter_len_exact<I: ExactSizeIterator>(i: I)
-    requires
-        i.obeys_prophetic_iter_laws(),
-        i.remaining().len() <= usize::MAX,
-    ensures
-        #[trigger] iter_len(&i) == i.remaining().len();
-
 #[verifier::external_trait_specification]
+#[verifier::external_trait_extension(ExactSizeIteratorSpec via ExactSizeIteratorSpecImpl)]
 pub trait ExExactSizeIterator: Iterator {
     type ExternalTraitSpecificationFor: ExactSizeIterator;
 
+    // An `ExactSizeIterator` can specify its length non-prophetically,
+    // i.e., without using `self.remaining().len()`.
+    spec fn exact_len(&self) -> usize;
+
     fn len(&self) -> (len: usize)
         ensures
-            self.obeys_prophetic_iter_laws() ==> len as int == iter_len(self) == self.remaining().len();
+            self.obeys_prophetic_iter_laws() ==> len == self.exact_len() == self.remaining().len() == self.produces().len(),
+    ;
 }
-
 
 /********************************************************************************
  * Definitions for `IntoIterator` and `FromIterator``
@@ -345,6 +625,11 @@ pub trait ExExactSizeIterator: Iterator {
 #[verifier::external_trait_specification]
 pub trait ExIntoIterator {
     type ExternalTraitSpecificationFor: core::iter::IntoIterator;
+
+    type Item;
+    type IntoIter: Iterator<Item = Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter;
 }
 
 pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
@@ -357,107 +642,29 @@ pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) ->
         r == i,
 ;
 
-// Uninterpreted function representing the sequence of elements that will be
-// produced by the iterator obtained from an IntoIterator value.
-// This avoids requiring IteratorSpec bounds in from_iter's ensures clause.
-pub uninterp spec fn into_iter_remaining<A, T>(iter: T) -> Seq<A>;
-
-// Connects into_iter_remaining to remaining() for types implementing Iterator + IteratorSpec.
-// This allows callers of from_iter to relate the result to the iterator's remaining elements.
-pub broadcast axiom fn axiom_from_iterator_ensures<A, I: Iterator<Item = A> + IteratorSpec>(iter: I)
-    ensures
-        #[trigger] into_iter_remaining::<A, I>(iter) == iter.remaining(),
-;
-
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(FromIteratorSpec via FromIteratorSpecImpl)]
 pub trait ExFromIterator<A>: Sized {
     type ExternalTraitSpecificationFor: FromIterator<A>;
 
-    spec fn from_iter_ensures(remaining: Seq<A>, s: Self) -> bool;
+    // `produces` indicates whether the items at indices in `remaining` are actually computed
+    spec fn from_iter_ensures(remaining: Seq<A>, produces: Seq<bool>, s: Self) -> bool;
 
+    // from_iter may be nondeterministic, which we represent with an existential
+    #[verifier::impls_cannot_extend_spec]
     fn from_iter<T>(iter: T) -> (s: Self)
        where T: IntoIterator<Item = A>
         ensures
-            Self::from_iter_ensures(into_iter_remaining(iter), s),
+            exists |initial: T::IntoIter|
+                #[trigger] (T::into_iter).ensures((iter,), initial)
+                && (initial.obeys_prophetic_iter_laws() ==>
+                    Self::from_iter_ensures(initial.remaining(), initial.produces(), s)),
     ;
 }
 
 /********************************************************************************
- * Definitions for `rev()`
+ * Definitions for `&mut I`
  ********************************************************************************/
-#[verifier::external_body]
-#[verifier::external_type_specification]
-#[verifier::reject_recursive_types(I)]
-pub struct ExRev<I>(Rev<I>);
-
-// Ghost accessor for the inner iterator
-pub uninterp spec fn rev_iter<I>(r: Rev<I>) -> I;
-
-// Spec version of Rev::new
-pub uninterp spec fn into_rev_spec<I>(i: I) -> Rev<I>;
-
-// Ideally, we would write this postcondition directly on the definition of
-// Iterator::rev above.  However, to do so, we would need to impose a trait
-// bound of `Self: DoubleEndedIteratorSpec`.  However, this introduces a cyclic
-// dependency, since DoubleEndedIteratorSpec depends on Iterator.  Hence,
-// we introduce a layer of indirection via this uninterp spec function.
-pub uninterp spec fn rev_post<I>(i: I, r: Rev<I>) -> bool;
-
-pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I)
-    requires
-        i.obeys_prophetic_iter_laws(),
-        i.initial_value_relation(&i),
-        rev_post(i, into_rev_spec(i)),
-    ensures
-        {
-            let r = #[trigger] into_rev_spec(i);
-            &&& IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse()
-            &&& IteratorSpec::will_return_none(&r) == i.will_return_none()
-            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
-            &&& IteratorSpec::initial_value_relation(&r, &r)
-        },
-;
-
-impl <I> IteratorSpecImpl for Rev<I>
-    where I: DoubleEndedIterator + DoubleEndedIteratorSpec {
-    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        rev_iter(*self).obeys_prophetic_iter_laws()
-    }
-
-    #[verifier::prophetic]
-    closed spec fn remaining(&self) -> Seq<Self::Item> {
-        rev_iter(*self).remaining().reverse()
-    }
-
-    #[verifier::prophetic]
-    closed spec fn will_return_none(&self) -> bool {
-        rev_iter(*self).will_return_none()
-    }
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& rev_iter(*self).initial_value_relation(&rev_iter(*init))
-    }
-
-    closed spec fn decrease(&self) -> Option<nat> {
-        rev_iter(*self).decrease()
-    }
-
-    open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        rev_iter(*self).peek_back(index)
-    }
-}
-
-impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
-    where I: DoubleEndedIterator + IteratorSpec {
-
-    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
-        rev_iter(*self).peek(index)
-    }
-}
-
 // Forwarding spec impl for the Rust-supplied blanket `impl<I> Iterator for &mut I`.
 // Without this, bare method-call syntax on a `i: &mut I` receiver (e.g. `i.remaining()`)
 // resolves to these (otherwise uninterpreted) functions on `&mut I` rather than on `I`,
@@ -474,13 +681,8 @@ impl <I> IteratorSpecImpl for &mut I
     }
 
     #[verifier::prophetic]
-    open spec fn will_return_none(&self) -> bool {
-        <I as IteratorSpec>::will_return_none(*self)
-    }
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        <I as IteratorSpec>::initial_value_relation(*self, &**init)
+    open spec fn produces(&self) -> Seq<bool> {
+        <I as IteratorSpec>::produces(*self)
     }
 
     open spec fn decrease(&self) -> Option<nat> {
@@ -492,251 +694,240 @@ impl <I> IteratorSpecImpl for &mut I
     }
 }
 
-
 /********************************************************************************
- * Definitions for `zip()`
- ********************************************************************************/
-#[verifier::external_body]
-#[verifier::external_type_specification]
-#[verifier::reject_recursive_types(A)]
-#[verifier::reject_recursive_types(B)]
-pub struct ExZip<A, B>(Zip<A, B>);
-
-// Ghost accessor for the first inner iterator
-pub uninterp spec fn zip_iter_fst<A, B>(z: Zip<A, B>) -> A;
-
-// Ghost accessor for the second inner iterator
-pub uninterp spec fn zip_iter_snd<A, B>(z: Zip<A, B>) -> B;
-
-/// Wrapper for `Iterator::zip`, since the actual function takes an `IntoIter`,
-/// which creates a cylic dependency cycle.
-#[verifier::external_body]
-pub fn zip_iterators<A: Iterator, B: Iterator>(a: A, b: B) -> (r: Zip<A, B>)
-    requires
-        a.obeys_prophetic_iter_laws(),
-        a.initial_value_relation(&a),
-        b.obeys_prophetic_iter_laws(),
-        b.initial_value_relation(&b),
-    ensures
-        zip_iter_fst(r) == a,
-        zip_iter_snd(r) == b,
-        IteratorSpec::remaining(&r) == a.remaining().zip_truncate(b.remaining()),
-        IteratorSpec::will_return_none(&r) ==> a.will_return_none() && b.will_return_none(),
-        IteratorSpec::decrease(&r) is Some == (a.decrease() is Some || b.decrease() is Some),
-        IteratorSpec::initial_value_relation(&r, &r),
-{
-    a.zip(b)
-}
-
-impl<A, B> IteratorSpecImpl for Zip<A, B>
-    where A: Iterator + IteratorSpec, B: Iterator + IteratorSpec
-{
-    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        &&& zip_iter_fst(*self).obeys_prophetic_iter_laws()
-        &&& zip_iter_snd(*self).obeys_prophetic_iter_laws()
-    }
-
-    #[verifier::prophetic]
-    closed spec fn remaining(&self) -> Seq<Self::Item> {
-        zip_iter_fst(*self).remaining().zip_truncate(zip_iter_snd(*self).remaining())
-    }
-
-    #[verifier::prophetic]
-    closed spec fn will_return_none(&self) -> bool {
-        zip_iter_fst(*self).will_return_none() || zip_iter_snd(*self).will_return_none()
-    }
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& zip_iter_fst(*self).initial_value_relation(&zip_iter_fst(*init))
-        &&& zip_iter_snd(*self).initial_value_relation(&zip_iter_snd(*init))
-    }
-
-    closed spec fn decrease(&self) -> Option<nat> {
-        match (zip_iter_fst(*self).decrease(), zip_iter_snd(*self).decrease()) {
-            (Some(a), Some(b)) => if a <= b { Some(a) } else { Some(b) },
-            (Some(a), None) => Some(a),
-            (None, Some(b)) => Some(b),
-            (None, None) => None,
-        }
-    }
-
-    open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        match (zip_iter_fst(*self).peek(index), zip_iter_snd(*self).peek(index)) {
-            (Some(a), Some(b)) => Some((a, b)),
-            _ => None,
-        }
-    }
-}
-
-
-/********************************************************************************
- * Definitions for `take()`
+ * Definitions for `enumerate()`
  ********************************************************************************/
 #[verifier::external_body]
 #[verifier::external_type_specification]
 #[verifier::reject_recursive_types(I)]
-pub struct ExTake<I>(Take<I>);
+pub struct ExEnumerate<I>(Enumerate<I>);
 
 // Ghost accessor for the inner iterator
-pub uninterp spec fn take_iter<I>(r: Take<I>) -> I;
+pub uninterp spec fn enumerate_iter<I>(e: Enumerate<I>) -> I;
 
-// Ghost accessor for the count
-pub uninterp spec fn take_count<I>(r: Take<I>) -> usize;
+// Define Iter::enumerate's postcondition
+pub uninterp spec fn enumerate_post<I>(i: I, e: Enumerate<I>) -> bool;
 
-// Spec version of Take::new
-pub uninterp spec fn into_take_spec<I>(i: I, n: usize) -> Take<I>;
-
-
-// Ideally, we would write this postcondition directly on the definition of Iterator::take above.
-pub uninterp spec fn take_post<I>(i: I, n: usize, t: Take<I>) -> bool;
-
-pub broadcast axiom fn take_postcondition<I: IteratorSpec>(i: I, n: usize)
+// The count starts at 0, and `enumerate`'s precondition bounds the number of items
+// by `usize::MAX`, so the count never overflows and `k as usize` is exact.
+pub broadcast axiom fn enumerate_postcondition<I: IteratorSpec>(i: I, r: Enumerate<I>)
     requires
         i.obeys_prophetic_iter_laws(),
-        i.initial_value_relation(&i),
-        take_post(i, n, into_take_spec(i, n)),
+        #[trigger] enumerate_post(i, r),
     ensures
-        {
-            let r = #[trigger] into_take_spec(i, n);
-            &&& IteratorSpec::remaining(&r) == if i.remaining().len() < n { i.remaining() } else { i.remaining().take(n as int) }
-            &&& IteratorSpec::will_return_none(&r) <==> i.will_return_none() || i.remaining().len() >= n
-            &&& IteratorSpec::decrease(&r) is Some
-            &&& IteratorSpec::initial_value_relation(&r, &r)
-        },
+        IteratorSpec::remaining(&r).len() == i.remaining().len(),
+        forall|k: int|
+            #![trigger IteratorSpec::remaining(&r)[k]]
+            #![trigger i.remaining()[k]]
+            0 <= k < i.remaining().len() ==> IteratorSpec::remaining(&r)[k] == (k as usize, i.remaining()[k]),
+        IteratorSpec::produces(&r) == i.produces(),
+        enumerate_iter(r) == i,
+        IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
 ;
 
-impl <I> IteratorSpecImpl for Take<I>
+impl <I> IteratorSpecImpl for Enumerate<I>
     where I: Iterator {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        take_iter(*self).obeys_prophetic_iter_laws()
+        enumerate_iter(*self).obeys_prophetic_iter_laws()
     }
 
     #[verifier::prophetic]
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
     #[verifier::prophetic]
-    uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& take_iter(*self).initial_value_relation(&take_iter(*init))
-        &&& take_iter(*self) == take_iter(*init)
-        &&& IteratorSpec::remaining(self) == if take_iter(*self).remaining().len() < take_count(*self)
-                { take_iter(*self).remaining() } else { take_iter(*self).remaining().take(take_count(*self) as int) }
-    }
+    uninterp spec fn produces(&self) -> Seq<bool>;
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        take_iter(*self).peek(index)
-    }
-}
-
-impl <I> DoubleEndedIteratorSpecImpl for Take<I>
-    where I: DoubleEndedIteratorSpec + ExactSizeIterator
-{
-    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
-        let len = iter_len(&take_iter(*self));
-        if len < take_count(*self) {
-            None
-        } else {
-            take_iter(*self).peek_back(len - take_count(*self) - index - 1)
+        match enumerate_iter(*self).peek(index) {
+            Some(x) => Some((index as usize, x)),
+            None => None,
         }
     }
 }
 
 /********************************************************************************
- * Definitions for `skip()`
+ * Definitions for `filter()`
  ********************************************************************************/
 #[verifier::external_body]
 #[verifier::external_type_specification]
 #[verifier::reject_recursive_types(I)]
-pub struct ExSkip<I>(Skip<I>);
+#[verifier::reject_recursive_types(F)]
+pub struct ExFilter<I, F>(Filter<I, F>);
 
 // Ghost accessor for the inner iterator
-pub uninterp spec fn skip_iter<I>(s: Skip<I>) -> I;
+pub uninterp spec fn filter_iter<I, F>(r: Filter<I, F>) -> I;
 
-// Ghost accessor for the (current) count of items still to be skipped
-pub uninterp spec fn skip_n<I>(s: Skip<I>) -> usize;
+// Ghost accessor for the inner predicate
+pub uninterp spec fn filter_fun<I, F>(r: Filter<I, F>) -> F;
 
-// Ghost accessor for the initial count of items to skip
-pub uninterp spec fn skip_init_n<I>(s: Skip<I>) -> usize;
+// Ghost accessor for the decisions at every inner position.
+#[verifier::prophetic]
+pub uninterp spec fn filter_keep<I, F>(r: Filter<I, F>) -> Seq<bool>;
 
-// Spec version of Skip::new
-pub uninterp spec fn into_skip_spec<I>(i: I, n: usize) -> Skip<I>;
+// Define Iter::filter's postcondition
+pub uninterp spec fn filter_post<I, F>(i: I, f: F, r: Filter<I, F>) -> bool;
 
-// Ideally, we would write this postcondition directly on the definition of Iterator::skip above.
-pub uninterp spec fn skip_post<I>(i: I, n: usize, s: Skip<I>) -> bool;
-
-pub broadcast axiom fn skip_postcondition<I: IteratorSpec>(i: I, n: usize)
+// See examples/iterators/map_and_filter.rs for a verified version of this interface.
+// Any changes here should first be verified over there.
+pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F, r: core::iter::Filter<I, F>)
+    where
+        I: IteratorSpec,
+        F: FnMut(&I::Item) -> bool,
     requires
-        i.obeys_prophetic_iter_laws(),
-        i.initial_value_relation(&i),
-        skip_post(i, n, into_skip_spec(i, n)),
+        #[trigger] filter_post(i, f, r),
     ensures
         {
-            let r = #[trigger] into_skip_spec(i, n);
-            &&& IteratorSpec::remaining(&r) == if i.remaining().len() < n { Seq::empty() } else { i.remaining().skip(n as int) }
-            &&& IteratorSpec::will_return_none(&r) <==> i.will_return_none()
+            let keep = filter_keep(r);
+            {
+            // Discarding a position requires producing its value and a false predicate result.
+            // A position that gets stuck is retained, with a false production flag.
+            &&& keep.len() == i.remaining().len()
+            &&& forall |j| 0 <= j < keep.len() && !(#[trigger] keep[j]) ==>
+                i.produces()[j] && f.ensures((&i.remaining()[j],), false)
+            &&& forall |j| 0 <= j < keep.len() && #[trigger] keep[j] ==> {
+                let k = i.remaining()[..j].filter_index(|idx: int| keep[idx]).len() as int;
+                IteratorSpec::produces(&r)[k] ==>
+                    i.produces()[j] && f.ensures((&i.remaining()[j],), true)
+            }
+            // Completeness: Every inner element the predicate keeps is retained and in order.
+            &&& IteratorSpec::remaining(&r) == i.remaining().filter_index(|j: int| keep[j])
+            // Expose the size bound and source positions directly for convenience.
+            &&& IteratorSpec::produces(&r).len() == IteratorSpec::remaining(&r).len()
+            &&& IteratorSpec::remaining(&r).len() <= i.remaining().len()
+            &&& forall |k| #![trigger IteratorSpec::remaining(&r)[k]] 0 <= k < IteratorSpec::remaining(&r).len() ==>
+                    exists |j| 0 <= j < i.remaining().len()
+                        && IteratorSpec::remaining(&r)[k] == #[trigger] i.remaining()[j]
+                        && keep[j]
+                        && k == i.remaining()[..j].filter_index(|idx: int| keep[idx]).len()
+                        && (IteratorSpec::produces(&r)[k] ==>
+                            i.produces()[j] && f.ensures((&i.remaining()[j],), true))
             &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
-            &&& IteratorSpec::initial_value_relation(&r, &r)
+            &&& filter_iter(r) == i
+            &&& filter_fun(r) == f
+            }
         },
 ;
 
-impl <I> IteratorSpecImpl for Skip<I>
-    where I: Iterator {
+impl <I, P> IteratorSpecImpl for core::iter::Filter<I, P>
+    where
+        I: Iterator + IteratorSpec,
+        P: FnMut(&I::Item) -> bool,
+{
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        skip_iter(*self).obeys_prophetic_iter_laws()
+        filter_iter(*self).obeys_prophetic_iter_laws()
     }
 
     #[verifier::prophetic]
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
     #[verifier::prophetic]
-    uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& skip_iter(*self).initial_value_relation(&skip_iter(*init))
-        &&& skip_iter(*self) == skip_iter(*init)
-        &&& skip_init_n(*self) == skip_init_n(*init)
-        &&& IteratorSpec::remaining(self) == if skip_iter(*self).remaining().len() < skip_n(*self)
-                { Seq::empty() } else { skip_iter(*self).remaining().skip(skip_n(*self) as int) }
-    }
+    uninterp spec fn produces(&self) -> Seq<bool>;
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
+    // `filter` cannot make a useful static guess about which element will be returned at a given index,
+    // since that depends on prophetic evaluations of the predicate.
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        skip_iter(*self).peek(skip_init_n(*self) + index)
+        None
     }
 }
 
-impl <I> DoubleEndedIteratorSpecImpl for Skip<I>
-    where I: DoubleEndedIteratorSpec + ExactSizeIterator
-{
-    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
-        // Skip only drops elements from the front, so the back of the skipped
-        // sequence coincides with the back of the inner iterator, as long as
-        // `index` stays within the (un-skipped) remaining elements.
-        let len = iter_len(&skip_iter(*self));
-        if len < skip_init_n(*self) || index >= len - skip_init_n(*self) {
-            None
-        } else {
-            skip_iter(*self).peek_back(index)
-        }
-    }
+/********************************************************************************
+ * Definitions for fold and try_fold
+ ********************************************************************************/
+
+pub open spec fn fold_prefix<A, B, F: FnMut(B, A) -> B>(
+    items: Seq<A>, produces: Seq<bool>, init: B, f: F, bs: Seq<B>,
+) -> bool {
+    &&& 1 <= bs.len() <= items.len() + 1
+    &&& bs[0] == init
+    &&& produces.take(bs.len() - 1).all(|p: bool| p)
+    &&& forall |j: int| 0 <= j < bs.len() - 1 ==>
+        f.requires((bs[j], #[trigger] items[j]))
+        && f.ensures((bs[j], items[j]), bs[j + 1])
 }
 
+pub open spec fn fold_requires<A, B, F: FnMut(B, A) -> B>(
+    items: Seq<A>, produces: Seq<bool>, init: B, f: F,
+) -> bool {
+    forall |bs: Seq<B>| (
+        // If all of the intermediate computations succeed,
+        #[trigger] fold_prefix(items, produces, init, f, bs)
+            // and we produce the next item
+            && bs.len() - 1 < items.len()
+            && produces[bs.len() - 1]) ==>
+            // then we can call f on the last set of inputs
+            f.requires((bs.last(), items[bs.len() - 1]))
+}
 
+pub open spec fn fold_post<A, B, F: FnMut(B, A) -> B>(
+    items: Seq<A>, produces: Seq<bool>, init: B, f: F, result: B,
+) -> bool {
+    &&& produces.len() == items.len()
+    &&& produces.all(|p: bool| p)
+    &&& exists |bs: Seq<B>| #![trigger bs.len()] #![trigger bs.last()] fold_prefix(items, produces, init, f, bs)
+        && bs.len() == items.len() + 1 && result == bs.last()
+}
+
+pub open spec fn try_fold_prefix<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
+    items: Seq<A>, produces: Seq<bool>, init: B, f: F, bs: Seq<B>, results: Seq<R>,
+) -> bool {
+    &&& bs.len() == results.len() + 1
+    &&& results.len() <= items.len()
+    &&& bs[0] == init
+    &&& produces.take(results.len() as int).all(|p: bool| p)
+    &&& forall |j: int| #![trigger results[j]] #![trigger items[j]] 0 <= j < results.len() ==>
+        f.requires((bs[j], items[j]))
+        && f.ensures((bs[j], items[j]), results[j])
+        && results[j].branch_model() == ControlFlow::Continue(bs[j + 1])
+}
+
+pub open spec fn try_fold_requires<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
+    items: Seq<A>, produces: Seq<bool>, init: B, f: F,
+) -> bool {
+    forall |bs: Seq<B>, results: Seq<R>| (
+        // If all of the intermediate computations succeed,
+        #[trigger] try_fold_prefix(items, produces, init, f, bs, results)
+            // and we produce the next item
+            && results.len() < items.len()
+            && produces[results.len() as int]) ==>
+            // then we can call f on the last set of inputs
+            f.requires((bs.last(), items[results.len() as int]))
+}
+
+/// `consumed` counts items up to and including the failing item
+pub open spec fn try_fold_post<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
+    items: Seq<A>, produces: Seq<bool>, init: B, f: F, result: R, consumed: int,
+    remaining_produces: Seq<bool>,
+) -> bool {
+    &&& remaining_produces == produces.skip(consumed)
+    &&& produces.take(consumed).all(|p: bool| p)
+    &&& try_laws::<R>() ==> match result.branch_model() {
+        ControlFlow::Continue(output) =>
+            consumed == items.len()
+            && exists |bs: Seq<B>, results: Seq<R>|
+                #[trigger] try_fold_prefix(items, produces, init, f, bs, results)
+                && results.len() == items.len() && output == bs.last(),
+        ControlFlow::Break(residual) =>
+            1 <= consumed <= items.len()
+            && exists |bs: Seq<B>, results: Seq<R>, failed: R|
+                try_fold_prefix(items, produces, init, f, bs, results)
+                && results.len() == consumed - 1
+                && results.len() < items.len()
+                && {
+                    produces[results.len() as int]
+                    && f.requires((bs.last(), items[results.len() as int]))
+                    && #[trigger] f.ensures((bs.last(), items[results.len() as int]), failed)
+                    && failed.branch_model() == ControlFlow::Break(residual)
+                },
+    }
+}
 
 /********************************************************************************
  * Definitions for `map()`
  ********************************************************************************/
-
 #[verifier::external_body]
 #[verifier::external_type_specification]
 #[verifier::reject_recursive_types(I)]
@@ -749,42 +940,28 @@ pub uninterp spec fn map_iter<I, F>(r: core::iter::Map<I, F>) -> I;
 // Ghost accessor for the inner function
 pub uninterp spec fn map_fun<I, F>(r: core::iter::Map<I, F>) -> F;
 
-// Spec version of Map::new()
-pub uninterp spec fn into_map_spec<I, F>(i: I, f: F) -> core::iter::Map<I, F>;
-
-// Ideally, we would write this postcondition directly on the definition of
-// Iterator::map above.  However, to do so, we would need to impose a trait
-// bound of `Self: IteratorSpec`.  However, this introduces a cyclic
-// dependency, since IteratorSpec depends on Iterator.  Hence,
-// we introduce a layer of indirection via this uninterp spec function.
+// Define Iter::map's postcondition
 pub uninterp spec fn map_post<I, F>(i: I, f: F, r: core::iter::Map<I, F>) -> bool;
 
-pub broadcast axiom fn map_postcondition<I, F>(i: I, f: F)
+// See examples/iterators/map_and_filter.rs for a verified version of this interface.
+// Any changes here should first be verified over there.
+pub broadcast axiom fn map_postcondition<I, F>(i: I, f: F, r: core::iter::Map<I, F>)
     where
         I: IteratorSpec,
         F: FnMut<(I::Item,)>,
     requires
-        i.obeys_prophetic_iter_laws(),
-        i.initial_value_relation(&i),
-        map_post(i, f, into_map_spec(i, f)),
+        #[trigger] map_post(i, f, r),
     ensures
-        {
-            let r = #[trigger] into_map_spec(i, f);
-            {
-            &&& IteratorSpec::remaining(&r).len() <= i.remaining().len()
-            &&& forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (i.remaining()[k],), IteratorSpec::remaining(&r)[k])
-            &&& IteratorSpec::will_return_none(&r) ==> i.will_return_none() && IteratorSpec::remaining(&r).len() == i.remaining().len()
-            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
-            &&& IteratorSpec::initial_value_relation(&r, &r)
-            &&& map_iter(r) == i
-            &&& map_fun(r) == f
-            }
-       },
+        IteratorSpec::remaining(&r).len() == i.remaining().len(),
+        IteratorSpec::produces(&r).len() == IteratorSpec::remaining(&r).len(),
+        forall |k| #![trigger IteratorSpec::remaining(&r)[k]] #![trigger IteratorSpec::produces(&r)[k]]
+            0 <= k < IteratorSpec::remaining(&r).len() && IteratorSpec::produces(&r)[k] ==>
+            i.produces()[k] && f.ensures((i.remaining()[k],), IteratorSpec::remaining(&r)[k]),
+        IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
+        map_iter(r) == i,
+        map_fun(r) == f,
 ;
 
-// See rust_verify_test/tests/iterators.rs for how this Map
-// spec can be verifiably implemented when Map is not an
-// external type.
 impl <B, I, F> IteratorSpecImpl for core::iter::Map<I, F>
     where
         I: Iterator + IteratorSpec,
@@ -799,13 +976,7 @@ impl <B, I, F> IteratorSpecImpl for core::iter::Map<I, F>
     uninterp spec fn remaining(&self) -> Seq<B>;
 
     #[verifier::prophetic]
-    uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& map_iter(*self).initial_value_relation(&map_iter(*init))
-    }
+    uninterp spec fn produces(&self) -> Seq<bool>;
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -836,118 +1007,269 @@ impl <B, I, F> DoubleEndedIteratorSpecImpl for core::iter::Map<I, F>
 }
 
 /********************************************************************************
- * Definitions for `filter()`
+ * Definitions for `rev()`
  ********************************************************************************/
-
 #[verifier::external_body]
 #[verifier::external_type_specification]
 #[verifier::reject_recursive_types(I)]
-#[verifier::reject_recursive_types(F)]
-pub struct ExFilter<I, F>(Filter<I, F>);
+pub struct ExRev<I>(Rev<I>);
 
 // Ghost accessor for the inner iterator
-pub uninterp spec fn filter_iter<I, F>(r: Filter<I, F>) -> I;
+pub uninterp spec fn rev_iter<I>(r: Rev<I>) -> I;
 
-// Ghost accessor for the inner predicate
-pub uninterp spec fn filter_fun<I, F>(r: Filter<I, F>) -> F;
+// Define Iter::rev's postcondition
+pub uninterp spec fn rev_post<I>(i: I, r: Rev<I>) -> bool;
 
-// Ghost accessor for the sequence of predicate decisions made for the (prefix of) the
-// inner iterator's elements
-pub uninterp spec fn filter_keep<I, F>(r: Filter<I, F>) -> Seq<bool>;
-
-// Spec version of Filter::new()
-pub uninterp spec fn into_filter_spec<I, F>(i: I, f: F) -> Filter<I, F>;
-
-// Ideally, we would write this postcondition directly on the definition of
-// Iterator::filter above.  However, to do so, we would need to impose a trait
-// bound of `Self: IteratorSpec`.  However, this introduces a cyclic
-// dependency, since IteratorSpec depends on Iterator.  Hence,
-// we introduce a layer of indirection via this uninterp spec function.
-pub uninterp spec fn filter_post<I, F>(i: I, f: F, r: Filter<I, F>) -> bool;
-
-pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F)
-    where
-        I: IteratorSpec,
-        F: FnMut(&I::Item) -> bool,
+pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I, r: Rev<I>)
     requires
-        i.obeys_prophetic_iter_laws(),
-        i.decrease() is Some,
-        i.initial_value_relation(&i),
-        forall |k| #![auto] 0 <= k < i.remaining().len() ==> call_requires(f, (&i.remaining()[k], )),
-        filter_post(i, f, into_filter_spec(i, f)),
+        #[trigger] rev_post(i, r),
     ensures
-        {
-            let r = #[trigger] into_filter_spec(i, f);
-            let keep = filter_keep(r);
-            {
-            // `keep` records, for each inspected inner element, the predicate's decision
-            &&& keep.len() <= i.remaining().len()
-            &&& forall |j| 0 <= j < keep.len() ==> call_ensures(f, (&i.remaining()[j],), #[trigger] keep[j])
-            // Completeness: Every inner element the predicate keeps is retained and in order.
-            &&& IteratorSpec::remaining(&r) == i.remaining().take(keep.len() as int).filter_index(|j: int| keep[j])
-            // The two facts below follow from the `filter_index` above; we expose them directly for convenience.
-            &&& IteratorSpec::remaining(&r).len() <= i.remaining().len()
-            &&& forall |k| #![trigger IteratorSpec::remaining(&r)[k]] 0 <= k < IteratorSpec::remaining(&r).len() ==>
-                    exists |j| 0 <= j < i.remaining().len()
-                        && IteratorSpec::remaining(&r)[k] == #[trigger] i.remaining()[j]
-                        && call_ensures(f, (&i.remaining()[j],), true)
-            &&& IteratorSpec::will_return_none(&r) ==> i.will_return_none() && keep.len() == i.remaining().len()
-            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
-            &&& IteratorSpec::initial_value_relation(&r, &r)
-            &&& filter_iter(r) == i
-            &&& filter_fun(r) == f
-            }
-        },
+        IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
+        IteratorSpec::produces(&r) == i.produces().reverse(),
+        IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
 ;
 
-// See rust_verify_test/tests/iterators.rs for how this Filter
-// spec can be verifiably implemented when Filter is not an
-// external type.
-impl <I, P> IteratorSpecImpl for core::iter::Filter<I, P>
-    where
-        I: Iterator + IteratorSpec,
-        P: FnMut(&I::Item) -> bool,
-{
+impl <I> IteratorSpecImpl for Rev<I>
+    where I: DoubleEndedIterator + DoubleEndedIteratorSpec {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        filter_iter(*self).obeys_prophetic_iter_laws()
+        rev_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    closed spec fn remaining(&self) -> Seq<Self::Item> {
+        rev_iter(*self).remaining().reverse()
+    }
+
+    #[verifier::prophetic]
+    closed spec fn produces(&self) -> Seq<bool> {
+        rev_iter(*self).produces().reverse()
+    }
+
+    closed spec fn decrease(&self) -> Option<nat> {
+        rev_iter(*self).decrease()
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        rev_iter(*self).peek_back(index)
+    }
+}
+
+impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
+    where I: DoubleEndedIterator + IteratorSpec {
+
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        rev_iter(*self).peek(index)
+    }
+}
+
+/********************************************************************************
+ * Definitions for `skip()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+pub struct ExSkip<I>(Skip<I>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn skip_iter<I>(s: Skip<I>) -> I;
+
+// Ghost accessor for the initial count of items to skip
+pub uninterp spec fn skip_init_n<I>(s: Skip<I>) -> usize;
+
+// Define Iter::skip's postcondition
+pub uninterp spec fn skip_post<I>(i: I, n: usize, s: Skip<I>) -> bool;
+
+pub broadcast axiom fn skip_postcondition<I: IteratorSpec>(i: I, n: usize, r: Skip<I>)
+    requires
+        i.obeys_prophetic_iter_laws(),
+        #[trigger] skip_post(i, n, r),
+    ensures
+        IteratorSpec::remaining(&r) == if i.remaining().len() < n { Seq::empty() } else { i.remaining()[n..] },
+        IteratorSpec::produces(&r) == if i.remaining().len() < n { Seq::empty() } else { i.produces()[n..] },
+        skip_iter(r) == i,
+        skip_init_n(r) == n,
+        IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
+;
+
+impl <I> IteratorSpecImpl for Skip<I>
+    where I: Iterator {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        skip_iter(*self).obeys_prophetic_iter_laws()
     }
 
     #[verifier::prophetic]
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
     #[verifier::prophetic]
-    uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& filter_iter(*self).initial_value_relation(&filter_iter(*init))
-    }
+    uninterp spec fn produces(&self) -> Seq<bool>;
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
-    // `filter` cannot make a useful static guess about which element will be returned at a given index,
-    // since that depends on prophetic evaluations of the predicate.
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        None
+        skip_iter(*self).peek(skip_init_n(*self) + index)
     }
 }
 
+impl <I> DoubleEndedIteratorSpecImpl for Skip<I>
+    where I: DoubleEndedIteratorSpec + ExactSizeIteratorSpec
+{
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        // Skip only drops elements from the front, so the back of the skipped
+        // sequence coincides with the back of the inner iterator, as long as
+        // `index` stays within the (un-skipped) remaining elements.
+        let len = skip_iter(*self).exact_len();
+        if len < skip_init_n(*self) || index >= len - skip_init_n(*self) {
+            None
+        } else {
+            skip_iter(*self).peek_back(index)
+        }
+    }
+}
+
+/********************************************************************************
+ * Definitions for `take()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+pub struct ExTake<I>(Take<I>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn take_iter<I>(r: Take<I>) -> I;
+
+// Ghost accessor for the count
+pub uninterp spec fn take_count<I>(r: Take<I>) -> usize;
+
+// Define Iter::take's postcondition
+pub uninterp spec fn take_post<I>(i: I, n: usize, t: Take<I>) -> bool;
+
+// See examples/iterators/take.rs for a verified version of this interface.
+// Any changes here should first be verified over there.
+pub broadcast axiom fn take_postcondition<I: IteratorSpec>(i: I, n: usize, r: Take<I>)
+    requires
+        i.obeys_prophetic_iter_laws(),
+        #[trigger] take_post(i, n, r),
+    ensures
+        IteratorSpec::remaining(&r) == if i.remaining().len() < n { i.remaining() } else { i.remaining()[..n] },
+        IteratorSpec::produces(&r) == if i.remaining().len() < n { i.produces() } else { i.produces()[..n] },
+        take_iter(r) == i,
+        take_count(r) == n,
+        IteratorSpec::decrease(&r) is Some,
+;
+
+impl <I> IteratorSpecImpl for Take<I>
+    where I: Iterator {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        take_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    uninterp spec fn produces(&self) -> Seq<bool>;
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        take_iter(*self).peek(index)
+    }
+}
+
+impl <I> DoubleEndedIteratorSpecImpl for Take<I>
+    where I: DoubleEndedIteratorSpec + ExactSizeIteratorSpec
+{
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        let len = take_iter(*self).exact_len();
+        if len < take_count(*self) {
+            None
+        } else {
+            take_iter(*self).peek_back(len - take_count(*self) - index - 1)
+        }
+    }
+}
+
+/********************************************************************************
+ * Definitions for `zip()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(A)]
+#[verifier::reject_recursive_types(B)]
+pub struct ExZip<A, B>(Zip<A, B>);
+
+// Ghost accessor for the first inner iterator
+pub uninterp spec fn zip_iter_fst<A, B>(z: Zip<A, B>) -> A;
+
+// Ghost accessor for the second inner iterator
+pub uninterp spec fn zip_iter_snd<A, B>(z: Zip<A, B>) -> B;
+
+impl<A, B> IteratorSpecImpl for Zip<A, B>
+    where A: Iterator + IteratorSpec, B: Iterator + IteratorSpec
+{
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        &&& zip_iter_fst(*self).obeys_prophetic_iter_laws()
+        &&& zip_iter_snd(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    closed spec fn remaining(&self) -> Seq<Self::Item> {
+        zip_iter_fst(*self).remaining().zip_truncate(zip_iter_snd(*self).remaining())
+    }
+
+    #[verifier::prophetic]
+    closed spec fn produces(&self) -> Seq<bool> {
+        zip_iter_fst(*self).produces().zip_truncate(zip_iter_snd(*self).produces()).map_values(|p: (bool, bool)| p.0 && p.1)
+    }
+
+    closed spec fn decrease(&self) -> Option<nat> {
+        match (zip_iter_fst(*self).decrease(), zip_iter_snd(*self).decrease()) {
+            (Some(a), Some(b)) => if a <= b { Some(a) } else { Some(b) },
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        match (zip_iter_fst(*self).peek(index), zip_iter_snd(*self).peek(index)) {
+            (Some(a), Some(b)) => Some((a, b)),
+            _ => None,
+        }
+    }
+}
+
+// Define Iter::zip's postcondition
+pub uninterp spec fn zip_post<I, U, Z>(i: I, other: U, r: Z) -> bool;
+
+pub broadcast axiom fn zip_postcondition<I, U>(i: I, other: U, r: Zip<I, <U as IntoIterator>::IntoIter>)
+    where
+            I: Sized + IteratorSpec,
+            U: IntoIterator, //Spec,
+    requires
+        i.obeys_prophetic_iter_laws(),
+        #[trigger] zip_post(i, other, r),
+    ensures
+        (U::into_iter).ensures((other,), zip_iter_snd(r)),
+        zip_iter_fst(r) == i,
+        IteratorSpec::remaining(&r) == i.remaining().zip_truncate(zip_iter_snd(r).remaining()),
+        IteratorSpec::produces(&r) == i.produces().zip_truncate(zip_iter_snd(r).produces()).map_values(|p: (bool, bool)| p.0 && p.1),
+        IteratorSpec::decrease(&r) is Some == (i.decrease() is Some || zip_iter_snd(r).decrease() is Some),
+;
 
 /********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
  * for ergonomic for-loop support.
  ********************************************************************************/
 
-pub struct VerusForLoopWrapper<'a, I: Iterator> {
+pub struct VerusForLoopWrapper<I: Iterator> {
     pub index: Ghost<int>,
     pub snapshot: Ghost<I>,
-    pub init: Ghost<Option<&'a I>>,
     pub iter: I,
     pub history: Ghost<Seq<I::Item>>,
 }
 
-impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
+impl <I: Iterator> VerusForLoopWrapper<I> {
     #[verifier::prophetic]
     pub open spec fn seq(self) -> Seq<I::Item> {
         self.snapshot@.remaining()
@@ -968,38 +1290,38 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     pub closed spec fn wf_inner(self) -> bool {
         &&& self.iter.remaining().len() == self.seq().len() - self.index()
         &&& forall |i| 0 <= i < self.iter.remaining().len() ==> #[trigger] self.iter.remaining()[i] == self.seq()[self.index() + i]
-        &&& self.iter.will_return_none() ==> self.snapshot@.will_return_none()
+        &&& self.index() <= self.snapshot@.produces().len()
+        &&& self.iter.produces() == self.snapshot@.produces().skip(self.index())
     }
 
     /// These properties are needed for the client code to verify
     #[verifier::prophetic]
     pub open spec fn wf(self) -> bool {
         &&& 0 <= self.index() <= self.seq().len()
-        &&& self.init@ matches Some(init) ==> self.snapshot@.initial_value_relation(init)
         &&& self.wf_inner()
         &&& self.iter.obeys_prophetic_iter_laws() ==> {
                 &&& self.history@.len() == self.index()
                 &&& forall |i| 0 <= i < self.index() ==> #[trigger] self.history@[i] == self.seq()[i]
+                &&& self.snapshot@.produces().take(self.index()).all(|p: bool| p)
             }
     }
 
     /// Bundle the real iterator with its ghost state and loop invariants
-    pub fn new(iter: I, init: Ghost<Option<&'a I>>) -> (s: Self)
-        requires
-            init@ matches Some(i) ==> iter.initial_value_relation(i),
+    pub fn new(iter: I) -> (s: Self)
         ensures
             s.index == 0,
             s.snapshot == iter,
-            s.init == init,
             s.iter == iter,
             s.history@ == Seq::<I::Item>::empty(),
             s.wf(),
     {
-        broadcast use axiom_seq_empty;
+        broadcast use group_seq_lemmas;
+        proof {
+            assert(iter.produces().skip(0) =~= iter.produces());
+        }
         VerusForLoopWrapper {
             index: Ghost(0),
             snapshot: Ghost(iter),
-            init: init,
             iter,
             history: Ghost(Seq::empty()),
         }
@@ -1014,31 +1336,17 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             final(self).seq() == old(self).seq(),
             final(self).index() == old(self).index() + if ret is Some { 1int } else { 0 },
             final(self).snapshot == old(self).snapshot,
-            final(self).init == old(self).init,
             final(self).iter.obeys_prophetic_iter_laws() ==> final(self).wf(),
             final(self).iter.obeys_prophetic_iter_laws() && ret is None ==>
-                final(self).snapshot@.will_return_none() && final(self).index() == final(self).seq().len(),
+                final(self).index() == final(self).seq().len()
+                    && final(self).snapshot@.produces().all(|p: bool| p),
             final(self).iter.obeys_prophetic_iter_laws() ==> (ret matches Some(r) ==>
-                r == old(self).seq()[old(self).index()]),
+                r == old(self).seq()[old(self).index()] && old(self).snapshot@.produces()[old(self).index()]),
             // History updates always hold
             ret matches Some(i) ==> final(self).history@ == old(self).history@.push(i),
             ret is None ==> final(self).history@ == old(self).history@,
-            // TODO: Uncomment this line to replace everything below, once general mutable refs are supported
-            //call_ensures(I::next, (old(self).iter,), ret),
-            final(self).iter.obeys_prophetic_iter_laws() == old(self).iter.obeys_prophetic_iter_laws(),
-            final(self).iter.obeys_prophetic_iter_laws() ==> final(self).iter.will_return_none() == old(self).iter.will_return_none(),
-            final(self).iter.obeys_prophetic_iter_laws() ==> (old(self).iter.decrease() is Some <==> final(self).iter.decrease() is Some),
-            final(self).iter.obeys_prophetic_iter_laws() ==>
-            ({
-                if old(self).iter.remaining().len() > 0 {
-                    &&& final(self).iter.remaining() == old(self).iter.remaining().drop_first()
-                    &&& ret == Some(old(self).iter.remaining()[0])
-                } else {
-                    final(self).iter.remaining() == old(self).iter.remaining() && ret == None && final(self).iter.will_return_none()
-                }
-            }),
-            final(self).iter.obeys_prophetic_iter_laws() && old(self).iter.remaining().len() > 0 && final(self).iter.decrease() is Some ==>
-                decreases_to!(old(self).iter.decrease()->0 => final(self).iter.decrease()->0),
+            // All of the standard Iterator::next guarantees still hold
+            exists |m: &mut I| #![auto] (I::next).ensures((m,), ret) && *m == old(self).iter && *final(m) == final(self).iter,
     {
         let ghost old_history = self.history@;
         let ret = self.iter.next();
@@ -1046,9 +1354,16 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             self.history = Ghost(old_history.push(ret->0));
         }
         proof {
-            broadcast use group_seq_axioms;
+            broadcast use group_seq_lemmas;
             if ret.is_some() {
                 self.index@ = self.index@ + 1;
+            }
+            if self.iter.obeys_prophetic_iter_laws() {
+                assert(self.snapshot@.produces().len() == self.seq().len());
+                assert(self.iter.produces() =~= self.snapshot@.produces().skip(self.index()));
+                if ret.is_none() {
+                    assert(self.snapshot@.produces().take(self.index()) =~= self.snapshot@.produces());
+                }
             }
         }
         ret
@@ -1091,12 +1406,13 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
  ********************************************************************************/
 
 pub broadcast group group_iter_axioms {
+    enumerate_postcondition,
     rev_postcondition,
+    zip_postcondition,
+    filter_postcondition,
     take_postcondition,
     skip_postcondition,
-    iter_len_exact,
     map_postcondition,
-    filter_postcondition,
 }
 
 } // verus!

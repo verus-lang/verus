@@ -7,8 +7,9 @@
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
 use crate::ast::{
-    AssertQueryMode, BinaryOp, Constant, Dt, Fun, Mode, NullaryOpr, Path, Quant, SpannedTyped, Typ,
-    Typs, UnaryOp, UnaryOpr, VarAt, VarBinders, VarIdent,
+    ArrayKind, AssertQueryMode, BitwiseOp, Constant, Dt, Fun, IeeeFloatBinaryOp, InequalityOp,
+    Label, Mode, NullaryOpr, Path, Quant, RealArithOp, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr,
+    VarAt, VarBinders, VarIdent,
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
@@ -50,6 +51,7 @@ pub type UniqueIdent = VarIdent;
 pub enum InternalFun {
     ClosureReq,
     ClosureEns,
+    ClosureOpensInvariants,
     DefaultEns,
     CheckDecreaseHeight,
     OpenInvariantMask(Fun, usize),
@@ -61,6 +63,57 @@ pub enum CallFun {
     Fun(Fun, Option<(Fun, Typs)>),
     Recursive(Fun),
     InternalFun(InternalFun),
+}
+
+/// Arithmetic operation
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum ArithOp {
+    /// IntRange::Int +
+    Add,
+    /// IntRange::Int -
+    Sub,
+    /// IntRange::Int *
+    Mul,
+    /// IntRange::Int / defined as Euclidean (round towards -infinity)
+    EuclideanDiv,
+    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative dividend)
+    EuclideanMod,
+}
+
+/// Primitive binary operations, all are pure functions on 2 inputs
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum BinaryOp {
+    /// boolean and (no short-circuiting: Exps are pure)
+    And,
+    /// boolean or (no short-circuiting: Exps are pure)
+    Or,
+    /// boolean xor
+    Xor,
+    /// boolean implies (no short-circuiting: Exps are pure)
+    Implies,
+    /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
+    HeightCompare { strictly_lt: bool, recursive_function_field: bool },
+    /// SMT equality for any type -- two expressions are exactly the same value
+    /// Some types support compilable equality (Mode == Exec); others only support spec equality (Mode == Spec)
+    Eq,
+    /// not Eq
+    Ne,
+    /// arithmetic inequality
+    Inequality(InequalityOp),
+    /// IntRange operations, all over int
+    Arith(ArithOp),
+    /// Spec-mode real number operations
+    RealArith(RealArithOp),
+    /// Bit Vector Operators
+    Bitwise(BitwiseOp),
+    /// IEEE floating point binary ops (rounding mode RNE)
+    IeeeFloat(IeeeFloatBinaryOp),
+    /// Used only for handling verus_builtin::strslice_get_char
+    StrGetChar,
+    /// Index into an array or slice, no bounds-checking.
+    /// `verus_builtin::array_index` lowers to this.
+    /// Can be used as a Loc
+    Index(ArrayKind),
 }
 
 pub type Exp = Arc<SpannedTyped<ExpX>>;
@@ -118,13 +171,6 @@ pub enum ExpX {
     FuelConst(usize),
 }
 
-#[derive(Debug, Clone, Copy, ToDebugSNode)]
-pub enum ParPurpose {
-    MutPre,
-    MutPost,
-    Regular,
-}
-
 /// Function parameter
 pub type Par = Arc<Spanned<ParX>>;
 pub type Pars = Arc<Vec<Par>>;
@@ -133,7 +179,6 @@ pub struct ParX {
     pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
-    pub purpose: ParPurpose,
 }
 
 #[derive(Clone, Debug, ToDebugSNode)]
@@ -164,7 +209,7 @@ pub enum CallTarget {
 
 pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
-#[derive(Clone, Debug, ToDebugSNode)]
+#[derive(Debug, ToDebugSNode, Clone)]
 pub enum StmX {
     /// Call to exec/proof function (or spec function when checking preconditions).
     /// Unlike `ExpX::Call`, this has side effects and may modify state.
@@ -186,6 +231,9 @@ pub enum StmX {
         /// In practice, we currently generate a temp variable for each destination anyway
         dest: Arc<Vec<Dest>>,
         assert_id: Option<AssertId>,
+        /// Code to be executed *inside* the function call,
+        /// i.e. emplaced between the pre- and postcondition
+        body: Option<Stm>,
     },
     /// Assertion to be verified by the SMT solver; reports Stm's span on failure plus optional extra info
     Assert(Option<AssertId>, Option<Message>, Exp),
@@ -210,13 +258,15 @@ pub enum StmX {
     Fuel(Fun, u32),
     /// Make a string literal available for use in specifications (hidden by default for perf reasons)
     RevealString(Arc<String>),
+    /// Make a byte-string literal available in specifications.
+    RevealByteString(Arc<Vec<u8>>),
     /// Marks unreachable code; verification assumes this path is never taken
     DeadEnd(Stm),
     /// Function return: asserts postcondition holds, then exits function.
     /// If `inside_body` is true, adds `assume false` afterward (early return).
     Return { assert_id: Option<AssertId>, base_error: Message, ret_exp: Exps, inside_body: bool },
     /// Loop control flow to a labeled or innermost loop
-    BreakOrContinue { label: Option<String>, is_break: bool },
+    BreakOrContinue { label: Label, is_break: bool },
     /// Conditional statement (condition, then-branch, optional else-branch)
     If(Exp, Stm, Option<Stm>),
     /// Loop with invariants and termination measure.
@@ -227,11 +277,14 @@ pub enum StmX {
     Loop {
         /// If true, loop body is verified in isolation (no outer context)
         loop_isolation: bool,
+        /// Statements to evalute before the loop which are part of the "isolation boundary".
+        /// Should only be non-empty when loop_isolation=true.
+        pre_stms: Stms,
         /// True if this was originally a for loop (affects error messages)
         is_for_loop: bool,
         /// Unique identifier for this loop instance
         id: u64,
-        label: Option<String>,
+        label: Label,
         /// For simple while loops: (condition setup statements, condition expression)
         cond: Option<(Stm, Exp)>,
         body: Stm,
@@ -243,11 +296,26 @@ pub enum StmX {
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         /// Variables potentially modified by the loop body
         modified_vars: Option<Arc<crate::sst_vars::HavocSet>>,
-        /// Params (including closure params) that may be modified _in or before_ this loop body
-        /// but *excluding* their initial assignments.
+        au_branch_bool: Option<Exp>,
+        /// Params (including closure params) that may be modified before the beginning
+        /// of any loop iteration, but *excluding* their initial assignments.
         /// This is the same set of variables for which we need to consider different values
         /// for the 'current' and 'pre-state' value of the variable at the beginning of the loop.
-        pre_modified_params: Option<Arc<crate::sst_vars::HavocSet>>,
+        ///
+        /// Note that "before the beginning of any loop iteration" means that:
+        ///  * If known_no_back_edge=true, then this means we consider any assignment
+        ///    that can occur in the execution of the function up to the entry of the entry
+        ///    of the loop.
+        ///  * If known_no_back_edge=false, then this means we consider any assignment
+        ///    that occur up to function entry or inside the loop itself.
+        ///
+        /// This is only used when pre_stms is empty.
+        pre_modified_params_incl: Option<Arc<crate::sst_vars::HavocSet>>,
+        /// Params (including closure params) that may be modified _before_ the pre_stms.
+        ///
+        /// This is only used when pre_stms is non-empty.
+        pre_modified_params_excl: Option<Arc<crate::sst_vars::HavocSet>>,
+        known_no_back_edge: bool,
     },
     /// Atomic invariant opening for concurrent verification
     OpenInvariant(Stm),
@@ -281,6 +349,7 @@ pub enum LocalDeclKind {
     Nondeterministic,
     OpenInvariantInnerTemp,
     BorrowMut,
+    LoopBreakValue,
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;
@@ -334,6 +403,7 @@ pub struct FuncDeclSst {
 #[derive(Debug, Clone, ToDebugSNode)]
 pub struct FuncCheckSst {
     pub reqs: Exps,
+    pub return_opaque_type_eqs: Arc<Vec<(Typ, Typ)>>,
     pub post_condition: Arc<PostConditionSst>,
     pub unwind: UnwindSst,
     pub body: Stm,
@@ -384,11 +454,17 @@ pub struct FunctionSstX {
     // or 1 if we inserted dummy_param_name into an originally empty parameter list.
     pub n_orig_params: usize,
     pub pars: Pars,
-    // For unit-value returning functions, ret includes the unit value,
-    // so it's always the case that ret.len() >= 1
+    /// Return value from the external perspective.
+    /// Callers of this function see this as the return value, and should apply it as the
+    /// last argument to ensures.
+    pub outer_ret: Par,
+    /// Return value from the internal perspective, used primarily by the `FuncCheckSst`.
+    pub inner_ret: Par,
     // For exec/proof functions that are not const/static values,
-    // ret may contain arbitrarily many extra return values after the original one Rust return value
-    pub ret: Pars,
+    // there may be arbitrarily many extra return values after the original one Rust return value
+    // (e.g. shadow data for the return value).
+    // These are the same from the external and internal perspectives.
+    pub extra_rets: Pars,
     pub ens_has_return: bool,
     pub item_kind: crate::ast::ItemKind,
     pub attrs: crate::ast::FunctionAttrs,
@@ -398,7 +474,7 @@ pub struct FunctionSstX {
     pub exec_proof_check: Option<Arc<FuncCheckSst>>,
     pub recommends_check: Option<Arc<FuncCheckSst>>,
     pub safe_api_check: Option<Arc<FuncCheckSst>>,
-    pub async_ret: Option<Par>,
+    pub hidden: Arc<Vec<Fun>>,
 }
 
 pub type KrateSst = Arc<KrateSstX>;
@@ -411,4 +487,5 @@ pub struct KrateSstX {
     pub trait_impls: Vec<crate::ast::TraitImpl>,
     pub assoc_type_impls: Vec<crate::ast::AssocTypeImpl>,
     pub reveal_groups: Vec<crate::ast::RevealGroup>,
+    pub arch_word_bits: crate::ast::ArchWordBits,
 }

@@ -71,7 +71,7 @@ test_both! {
                 proof { inner = 0u8; }
             }); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "Cannot show invariant holds at end of block")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant holds at end of block")
 }
 
 test_both! {
@@ -167,7 +167,7 @@ test_both! {
           open_atomic_invariant_in_proof!(credit => &i => inner => {
           });
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `vstd::invariant::spend_open_invariant_credit_in_proof` with mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot open invariant in spec mode")
 }
 
 test_both! {
@@ -217,7 +217,7 @@ test_both! {
             });
         }
 
-    } => Err(err) => assert_vir_error_msg(err, "Invariant must be Proof mode")
+    } => Err(err) => assert_vir_error_msg(err, "invariant must be proof mode")
 }
 
 test_both! {
@@ -322,6 +322,21 @@ test_both! {
 }
 
 test_both! {
+    break_block_early break_block_early_local verus_code! {
+        use vstd::invariant::*;
+
+        pub fn blah<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
+          let mut idx = 0;
+          'a: {
+            open_atomic_invariant!(&i => inner => {
+              break 'a;
+            });
+          }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
+}
+
+test_both! {
     continue_early continue_early_local verus_code! {
         use vstd::invariant::*;
 
@@ -378,6 +393,38 @@ test_both! {
         }
 
     } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
+}
+
+test_verify_one_file! {
+    #[test] into_inner_atomic verus_code! {
+        use vstd::invariant::*;
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>, Tracked(j): Tracked<AtomicInvariant<A, u8, B>>)
+            requires
+                i.inv(0),
+        {
+          open_atomic_invariant!(&i => inner => {
+              proof {
+                  j.into_inner(); // FAILS
+              }
+          });
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] into_inner_local verus_code! {
+        use vstd::invariant::*;
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>, Tracked(j): Tracked<LocalInvariant<A, u8, B>>)
+            requires
+                i.inv(0),
+        {
+          open_local_invariant!(&i => inner => {
+              proof {
+                  j.into_inner();
+              }
+          });
+        }
+    } => Ok(())
 }
 
 // Check that we can't open an AtomicInvariant with open_local_invariant and vice-versa
@@ -518,7 +565,7 @@ test_verify_one_file! {
           opens_invariants [ true ]
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "opens_invariants needs an int expression")
+    } => Err(err) => assert_vir_error_msg(err, "invariant mask must be type `int`")
 }
 
 test_verify_one_file! {
@@ -529,7 +576,7 @@ test_verify_one_file! {
           opens_invariants [ some_inv() ]
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "in 'opens_invariants' clause of public function, cannot refer to private function")
+    } => Err(err) => assert_vir_error_msg(err, "in `opens_invariants` clause of public function, cannot refer to private function")
 }
 
 test_verify_one_file! {
@@ -556,7 +603,7 @@ test_verify_one_file! {
             fn stuff()
                 opens_invariants any;
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare an opens_invariants spec")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare an `opens_invariants` spec")
 }
 
 test_verify_one_file! {
@@ -579,7 +626,7 @@ test_verify_one_file! {
                 });
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the scope")
 }
 
 test_verify_one_file! {
@@ -601,7 +648,7 @@ test_verify_one_file! {
                 });
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the scope")
 }
 
 test_verify_one_file! {
@@ -783,7 +830,7 @@ test_verify_one_file! {
                 }
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "Cannot show invariant holds at end of block")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant holds at end of block")
 }
 
 test_verify_one_file! {
@@ -810,13 +857,13 @@ test_verify_one_file! {
                 open_atomic_invariant!(&self.inv => inner => {});
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the scope")
 }
 
 test_verify_one_file! {
     #[test] opens_invariants_set verus_code!{
         use vstd::invariant::*;
-        use vstd::set::*;
+        use vstd::iset::*;
 
         struct P {}
         impl InvariantPredicate<(), ()> for P {
@@ -827,7 +874,7 @@ test_verify_one_file! {
                    tracked credit2: OpenInvariantCredit,
                    tracked inv1: AtomicInvariant<(), (), P>,
                    tracked inv2: AtomicInvariant<(), (), P>,
-                   s: Set<int>)
+                   s: ISet<int>)
             requires
                 !s.contains(inv1.namespace()),
                 !s.contains(inv2.namespace()),
@@ -843,7 +890,7 @@ test_verify_one_file! {
             });
         }
 
-        proof fn b(s: Set<int>)
+        proof fn b(s: ISet<int>)
             opens_invariants s
         {
         }
@@ -853,7 +900,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] opens_invariants_set_fails verus_code!{
         use vstd::invariant::*;
-        use vstd::set::*;
+        use vstd::iset::*;
 
         struct P {}
         impl InvariantPredicate<(), ()> for P {
@@ -862,7 +909,7 @@ test_verify_one_file! {
 
         proof fn a(tracked credit: OpenInvariantCredit,
                    tracked inv: AtomicInvariant<(), (), P>,
-                   s: Set<int>)
+                   s: ISet<int>)
             opens_invariants
                 any
         {
@@ -871,7 +918,7 @@ test_verify_one_file! {
             });
         }
 
-        proof fn b(s: Set<int>)
+        proof fn b(s: ISet<int>)
             opens_invariants s
         {
         }
@@ -998,4 +1045,67 @@ test_verify_one_file! {
             });
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] credit_ok verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        fn test() {
+            let tracked x = create_open_invariant_credit();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] credit_bad_proof_fn verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        proof fn test_proof_fn() {
+            let tracked x = create_open_invariant_credit();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "creating an invariant credit in potentially-unbounded ghost code")
+}
+
+test_verify_one_file! {
+    #[test] credit_bad_proof_closure verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        fn test_proof_closure() {
+            let tracked x = proof_fn|| {
+                let tracked x = create_open_invariant_credit();
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "creating an invariant credit in potentially-unbounded ghost code")
+}
+
+test_verify_one_file! {
+    #[test] credit_bad_proof_closure_in_proof_fn verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        proof fn test_proof_closure_in_proof_fn() {
+            let tracked x = proof_fn|| {
+                let tracked x = create_open_invariant_credit();
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "creating an invariant credit in potentially-unbounded ghost code")
+}
+
+test_verify_one_file! {
+    #[test] credit_bad_proof_loop verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        fn test_proof_loop() {
+            proof {
+                let mut i: int = 0;
+                while i < 10
+                    decreases 10 - i,
+                {
+                    let tracked x = create_open_invariant_credit();
+                    i = i + 1;
+                }
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use loop in proof or spec mode")
+    //} => Err(err) => assert_vir_error_msg(err, "creating an invariant credit in potentially-unbounded ghost code")
 }

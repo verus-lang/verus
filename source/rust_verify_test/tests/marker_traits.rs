@@ -5,6 +5,10 @@ use common::*;
 
 const COMMON: &str = code_str! {
     use vstd::*;
+    use vstd::resource::algebra::ResourceAlgebra;
+    use vstd::resource::pcm::{PCM, Resource};
+    use vstd::resource::storage_protocol::{Protocol, StorageResource, CopyableStorageResource};
+
     fn require_sync<T: Sync>(t: T) { }
     fn require_send<T: Send>(t: T) { }
 
@@ -17,6 +21,36 @@ const COMMON: &str = code_str! {
         struct Pred2;
         impl<'a> vstd::invariant::InvariantPredicate<(), &'a u8> for Pred2 {
             open spec fn inv(k: (), v: &'a u8) -> bool { true }
+        }
+
+        // PCM
+        #[derive(Copy, Clone)]
+        pub enum Excl {
+            Unit,
+            Excl(int),
+            Fail,
+        }
+
+        impl ResourceAlgebra for Excl {
+            open spec fn valid(self) -> bool { self != Excl::Fail }
+            open spec fn op(a: Self, b: Self) -> Self {
+                if a == Excl::Unit {
+                    b
+                } else if b == Excl::Unit {
+                    a
+                } else {
+                    Excl::Fail
+                }
+            }
+            proof fn associative(a: Self, b: Self, c: Self) { }
+            proof fn commutative(a: Self, b: Self) { }
+            proof fn valid_op(a: Self, b: Self) { }
+        }
+
+        impl PCM for Excl {
+            open spec fn unit() -> Self { Excl::Unit }
+            proof fn op_unit(self) { }
+            proof fn unit_valid() { }
         }
     }
 };
@@ -48,6 +82,23 @@ macro_rules! check_not_copy {
                 ".replace("$tparams", $tparams)
                 .replace("$t", $t)
             => Err(e) => assert_rust_error_msg(e, "use of moved value")
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! check_copy {
+    ($name:ident, $tparams:expr, $t:expr) => {
+        test_verify_one_file! {
+            #[test] $name COMMON.to_string() + &"
+                fn test1<X>(x: X) { }
+                fn test2$tparams(t: $t) {
+                    test1(t);
+                    test1(t);
+                }
+                ".replace("$tparams", $tparams)
+                .replace("$t", $t)
+            => Ok(())
         }
     };
 }
@@ -150,7 +201,7 @@ macro_rules! check_covariant {
             struct J { }
             impl<'a> J {
                 fn check_covariance$tparams(x: $WITH_STATIC) -> $WITH_A {
-                    x   
+                    x
                 }
             }
             ".replace("$tparams", $tparams)
@@ -163,7 +214,7 @@ macro_rules! check_covariant {
             struct J { }
             impl<'a> J {
                 fn check_contravariance$tparams(x: $WITH_A) -> $WITH_STATIC {
-                    x   
+                    x
                 }
             }
             ".replace("$tparams", $tparams)
@@ -171,7 +222,7 @@ macro_rules! check_covariant {
             .replace("$WITH_A", &($t).replace("$P", "&'a u8"))
             => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -182,7 +233,7 @@ macro_rules! check_invariant {
             struct J { }
             impl<'a> J {
                 fn check_covariance$tparams(x: $WITH_STATIC) -> $WITH_A {
-                    x   
+                    x
                 }
             }
             ".replace("$tparams", $tparams)
@@ -195,7 +246,7 @@ macro_rules! check_invariant {
             struct J { }
             impl<'a> J {
                 fn check_contravariance$tparams(x: $WITH_A) -> $WITH_STATIC {
-                    x   
+                    x
                 }
             }
             ".replace("$tparams", $tparams)
@@ -203,7 +254,7 @@ macro_rules! check_invariant {
             .replace("$WITH_A", &($t).replace("$P", "&'a u8"))
             => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
         }
-    }
+    };
 }
 
 // raw ptrs
@@ -329,6 +380,37 @@ check_not_copy!(
     "vstd::invariant::AtomicInvariant<(), T, Pred<(), T>>"
 );
 
+// AtomicUpdate
+
+check_send_sync!(
+    au_send_sync_of_send_sync,
+    "<X: Send + Sync, Y: Send + Sync, P>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+check_send_sync!(
+    au_send_sync_of_send,
+    "<X: Send, Y: Send, P>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+check_sync!(
+    au_sync_of_sync,
+    au_not_send_of_sync,
+    "<X: Sync, Y: Sync, P>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+check_sync!(
+    au_sync_of_none,
+    au_not_send_of_none,
+    "<X, Y, P>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+check_not_copy!(
+    au_not_copy,
+    au_still_not_copy,
+    "<X: Copy, Y: Copy, P: Copy>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+
 // Ghost and Tracked
 
 check_send_sync!(trk_send_sync, "<T: Send + Sync>", "vstd::prelude::Tracked<T>");
@@ -342,3 +424,59 @@ check_send_sync!(gho, "<T>", "vstd::prelude::Ghost<T>");
 check_covariant!(trk_covariant, trk_covariant2, "", "vstd::prelude::Tracked<$P>");
 
 check_covariant!(gho_covariant, gho_covariant2, "", "vstd::prelude::Ghost<$P>");
+
+// PCM resources
+check_not_copy!(res_not_copy1, res_not_copy2, "", "vstd::resource::pcm::Resource<Excl>");
+check_send_sync!(res_send_sync, "", "vstd::resource::pcm::Resource<Excl>");
+
+check_copy!(cres_copy1, "", "vstd::resource::pcm::CopyableResource<Excl>");
+check_send_sync!(cres_send_sync, "", "vstd::resource::pcm::CopyableResource<Excl>");
+
+// Storage resources
+// note: bounds on K, P should be unnecessary; V is what matters
+check_not_copy!(
+    sp_not_copy1,
+    sp_not_copy2,
+    "<K: Copy, V: Copy, P: Protocol<K, V> + Copy>",
+    "vstd::resource::storage_protocol::StorageResource<K, V, P>"
+);
+check_send_sync!(
+    sp_send_sync,
+    "<K:Send+Sync, V: Send+Sync, P: Protocol<K, V> + Send + Sync>",
+    "vstd::resource::storage_protocol::StorageResource<K, V, P>"
+);
+check_none!(
+    sp_none1,
+    sp_none2,
+    "<K:Send+Sync, V: Sync, P: Protocol<K, V> + Send + Sync>",
+    "vstd::resource::storage_protocol::StorageResource<K, V, P>"
+);
+check_none!(
+    sp_none3,
+    sp_none4,
+    "<K:Send+Sync, V: Send, P: Protocol<K, V> + Send + Sync>",
+    "vstd::resource::storage_protocol::StorageResource<K, V, P>"
+);
+
+check_copy!(
+    csp_copy1,
+    "<K, V, P>",
+    "vstd::resource::storage_protocol::CopyableStorageResource<K, V, P>"
+);
+check_send_sync!(
+    csp_send_sync,
+    "<K:Send+Sync, V: Send+Sync, P: Protocol<K, V> + Send + Sync>",
+    "vstd::resource::storage_protocol::CopyableStorageResource<K, V, P>"
+);
+check_none!(
+    csp_none1,
+    csp_none2,
+    "<K:Send+Sync, V: Sync, P: Protocol<K, V> + Send + Sync>",
+    "vstd::resource::storage_protocol::CopyableStorageResource<K, V, P>"
+);
+check_none!(
+    csp_none3,
+    csp_none4,
+    "<K:Send+Sync, V: Send, P: Protocol<K, V> + Send + Sync>",
+    "vstd::resource::storage_protocol::CopyableStorageResource<K, V, P>"
+);

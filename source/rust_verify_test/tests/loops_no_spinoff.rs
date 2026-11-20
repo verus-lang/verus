@@ -1419,7 +1419,7 @@ test_verify_one_file_with_options! {
                 i = i + 1;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "attribute 'allow_complex_invariants' can only be used with 'loop_isolation(false)'")
+    } => Err(err) => assert_vir_error_msg(err, "attribute `allow_complex_invariants` can only be used with `loop_isolation(false)`")
 }
 
 // Invariant violation - invariant_except_break not maintained
@@ -1437,4 +1437,33 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] break_with_differing_isolation_levels_issue2690 ["exec_allows_no_decreases_clause"] => verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test() {
+            let mut x = 0;
+
+            #[verifier::loop_isolation(false)]
+            'outer: loop
+            {
+
+                #[verifier::loop_isolation(true)]
+                while cond() {
+                    if cond() {
+                        break 'outer;
+                    }
+                }
+
+                x = 20;
+
+                if cond() { break; }
+            }
+
+            assert(x == 20); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "loop with `loop_isolation(false)` contains `break` statement inside a nested loop with `loop_isolation(true)`")
 }

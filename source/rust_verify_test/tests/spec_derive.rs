@@ -429,3 +429,124 @@ test_verify_one_file! {
         }
     }).to_string() => Ok(())
 }
+
+// Test 23: make_spec_type on a single-field tuple struct (newtype) with a lifetime.
+// Regression: previously panicked because tuple-struct fields have no ident.
+test_verify_one_file! {
+    #[test] test_make_spec_type_tuple_newtype (code_str! {
+        use vstd::contrib::make_spec_type;
+        use vstd::prelude::*;
+
+        #[make_spec_type]
+        pub struct AccountId<'a>(pub &'a str);
+
+        verus! {
+        fn test_tuple_newtype(a: AccountId) {
+            // The generated spec type is a tuple struct `AccountIdSpec(Seq<char>)`.
+            assert(a@ == AccountIdSpec(a@.0));
+            let ghost chars: Seq<char> = a@.0;
+        }
+        }
+    }).to_string() => Ok(())
+}
+
+// Test 24: make_spec_type on a multi-field tuple struct (mixed reference / owned fields).
+test_verify_one_file! {
+    #[test] test_make_spec_type_tuple_multi (code_str! {
+        use vstd::contrib::make_spec_type;
+        use vstd::prelude::*;
+
+        #[make_spec_type]
+        pub struct Pair<'a>(pub &'a str, pub u64, pub Vec<u8>);
+
+        verus! {
+        fn test_tuple_multi() {
+            let original = Pair("hi", 7, vec![1u8, 2u8]);
+            // The generated spec type is `PairSpec(Seq<char>, u64, Seq<u8>)`; check each field's view.
+            assert(original@.0 == "hi"@);
+            assert(original@.1 == 7);
+            assert(original@.2 == seq![1u8, 2u8]);
+        }
+        }
+    }).to_string() => Ok(())
+}
+
+// Test 25: make_spec_type on a unit struct.
+test_verify_one_file! {
+    #[test] test_make_spec_type_unit_struct (code_str! {
+        use vstd::contrib::make_spec_type;
+        use vstd::prelude::*;
+
+        #[make_spec_type]
+        pub struct Marker;
+
+        verus! {
+        fn test_unit_struct() {
+            let original = Marker;
+            assert(original@ == MarkerSpec);
+            assert(original.deep_view() == MarkerSpec);
+        }
+        }
+    }).to_string() => Ok(())
+}
+
+// Test 26: `closed` option lets make_spec_type apply to a type with a non-`pub` (here pub(crate))
+// field. Without `closed`, the generated `open spec fn deep_view` reading the field would fail
+// with an opaque-datatype error. An accessor in the same module can still relate the view to the
+// field, since the closed body is visible there.
+test_verify_one_file! {
+    #[test] test_make_spec_type_closed_pub_crate_field (code_str! {
+        use vstd::contrib::make_spec_type;
+        use vstd::prelude::*;
+
+        #[make_spec_type(closed)]
+        pub struct AccountId<'a>(pub(crate) &'a str);
+
+        verus! {
+        impl<'a> AccountId<'a> {
+            pub fn as_str(&self) -> (r: &'a str)
+                ensures r@ == self@.0
+            {
+                self.0
+            }
+        }
+        }
+    }).to_string() => Ok(())
+}
+
+// Test 27: `closed` composes with `exclude(...)` (order-independent), on a struct with a private field.
+test_verify_one_file! {
+    #[test] test_make_spec_type_closed_with_exclude (code_str! {
+        use vstd::contrib::make_spec_type;
+        use vstd::prelude::*;
+
+        #[make_spec_type(exclude(secret), closed)]
+        pub struct Record {
+            pub x: u32,
+            secret: u64,
+        }
+
+        verus! {
+        impl Record {
+            pub fn x(&self) -> (r: u32)
+                ensures r == self@.x
+            {
+                self.x
+            }
+        }
+        }
+    }).to_string() => Ok(())
+}
+
+// Test 28: an unknown option is rejected (compile error from the attribute macro).
+test_verify_one_file! {
+    #[test] test_make_spec_type_unknown_option (code_str! {
+        use vstd::contrib::make_spec_type;
+        use vstd::prelude::*;
+
+        #[make_spec_type(bogus)] // FAILS
+        pub struct TestStruct {
+            pub x: u32,
+        }
+    }).to_string() => Err(_e) => { /* rejected at macro-expansion time */ }
+}

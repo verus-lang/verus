@@ -145,3 +145,347 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    /// Tests a basic inherent impl with a `&self` method in unverified mode.
+    #[test] test_exec_spec_unverified_impl_basic IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            struct Point {
+                x: u32,
+                y: u32,
+            }
+
+            impl Point {
+                spec fn get_x(&self) -> u32 {
+                    self.x
+                }
+
+                spec fn sum(&self) -> u32
+                    recommends self.x + self.y <= u32::MAX
+                {
+                    (self.x + self.y) as u32
+                }
+            }
+        }
+
+        fn sanity_check() {
+            let p = ExecPoint { x: 3, y: 4 };
+            let xv = p.exec_get_x();
+            assert(xv == 3);
+            let s = p.exec_sum();
+            if s == 7 {
+                assert(p.x + p.y == 7);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests an impl on an enum with `&self` methods over multiple variants in unverified mode.
+    #[test] test_exec_spec_unverified_impl_enum IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            enum Shape {
+                Circle(u32),
+                Rect { w: u32, h: u32 },
+                Unit,
+            }
+
+            impl Shape {
+                spec fn is_unit(&self) -> bool {
+                    match self {
+                        Shape::Unit => true,
+                        _ => false,
+                    }
+                }
+
+                spec fn describe(&self) -> SpecString {
+                    match self {
+                        Shape::Circle(_) => "circle"@,
+                        Shape::Rect { .. } => "rect"@,
+                        Shape::Unit => "unit"@,
+                    }
+                }
+            }
+        }
+
+        fn sanity_check() {
+            let c = ExecShape::Circle(5);
+            let u = ExecShape::Unit;
+            let c_is = c.exec_is_unit();
+            let u_is = u.exec_is_unit();
+            assert(!c_is);
+            assert(u_is);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests impl methods with additional parameters beyond the receiver in unverified mode.
+    #[test] test_exec_spec_unverified_impl_method_args IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            struct Counter {
+                count: u32,
+            }
+
+            impl Counter {
+                spec fn plus(&self, n: u32) -> u32
+                    recommends self.count + n <= u32::MAX
+                {
+                    (self.count + n) as u32
+                }
+
+                spec fn between(&self, lo: u32, hi: u32) -> bool {
+                    lo <= self.count && self.count <= hi
+                }
+            }
+        }
+
+        fn sanity_check() {
+            let c = ExecCounter { count: 10 };
+            let b = c.exec_between(0, 20);
+            if b {
+                assert(0 <= c.count && c.count <= 20);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests impls used across both verified and unverified modules.
+    #[test] test_exec_spec_unverified_impl_mixed_modes IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            struct Pair(u32, u32);
+
+            impl Pair {
+                spec fn ordered(&self) -> bool {
+                    self.0 <= self.1
+                }
+            }
+        }
+
+        exec_spec_unverified! {
+            spec fn pair_eq_ordered(p: Pair) -> bool {
+                p.ordered()
+            }
+        }
+
+        fn sanity_check() {
+            let p = ExecPair(2, 5);
+            let o = p.exec_ordered();
+            let r = exec_pair_eq_ordered(&p);
+            assert(o == r);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests an unverified impl using a quantifier in the method body.
+    #[test] test_exec_spec_unverified_impl_quant IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            struct Bag {
+                items: Seq<u8>,
+            }
+
+            impl Bag {
+                spec fn all_nonzero(&self) -> bool {
+                    forall |i: usize| 0 <= i < self.items.len() ==> self.items[i as int] != 0
+                }
+            }
+        }
+
+        fn sanity_check() {
+            let b = ExecBag { items: vec![1, 2, 3] };
+            let _ = b.exec_all_nonzero();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests that the postcondition of an associated fn (no receiver) refers to `T::f`,
+    /// not to a module-level spec fn of the same name.
+    #[test] test_exec_spec_unverified_impl_assoc_fn_shadowed IMPORTS.to_string() + verus_code_str! {
+        spec fn mk(x: u8) -> u8 { 0 }
+
+        exec_spec_unverified! {
+            pub struct Foo { pub a: u8 }
+
+            impl Foo {
+                spec fn mk(x: u8) -> u8 {
+                    x
+                }
+            }
+        }
+
+        fn test_ok() {
+            let r = ExecFoo::exec_mk(5);
+            assert(r == Foo::mk(5));
+            assert(r == 5);
+        }
+
+        fn test_fail() {
+            let r = ExecFoo::exec_mk(5);
+            assert(r == 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    /// Tests that the postcondition of a `&self` method refers to the inherent method `T::f`,
+    /// not to a by-value trait method `f(self)` that method-call syntax would prefer.
+    #[test] test_exec_spec_unverified_impl_method_shadowed_by_trait IMPORTS.to_string() + verus_code_str! {
+        trait Tr {
+            spec fn get(self) -> u8;
+        }
+
+        impl Tr for Foo {
+            spec fn get(self) -> u8 { 0 }
+        }
+
+        exec_spec_unverified! {
+            pub struct Foo { pub a: u8 }
+
+            impl Foo {
+                spec fn get(&self) -> u8 {
+                    self.a
+                }
+            }
+        }
+
+        fn test_ok() {
+            let f = ExecFoo { a: 5 };
+            let r = f.exec_get();
+            assert(r == 5);
+        }
+
+        fn test_fail() {
+            let f = ExecFoo { a: 5 };
+            let r = f.exec_get();
+            assert(r == 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    /// Tests that `Self` in the clauses of an impl method refers to the spec type.
+    #[test] test_exec_spec_unverified_impl_self_in_clauses IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            struct Foo { a: u8 }
+
+            impl Foo {
+                spec fn small(x: u8) -> bool {
+                    x < 100
+                }
+
+                spec fn inc(x: u8) -> u8
+                    recommends Self::small(x)
+                {
+                    (x + 1) as u8
+                }
+            }
+        }
+
+        fn test() {
+            let r = ExecFoo::exec_inc(5);
+            assert(r == 6);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests that trait impls are still rejected in unverified mode.
+    #[test] test_exec_spec_unverified_impl_trait_rejected IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            struct S {
+                x: u32,
+            }
+
+            trait T {
+                spec fn f(&self) -> u32;
+            }
+
+            impl T for S {
+                spec fn f(&self) -> u32 {
+                    self.x
+                }
+            }
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] test_exec_spec_unverified_misc_forms IMPORTS.to_string() + verus_code_str! {
+        use vstd::raw_ptr::MemContents;
+
+        exec_spec_unverified! {
+            enum E {
+                A(u32),
+                B { x: u32 },
+            }
+
+            spec fn guarded(x: Option<u32>) -> u32 {
+                match x {
+                    Some(v) if v > 3 => v,
+                    _ => 0,
+                }
+            }
+
+            spec fn arrow(e: E) -> u32
+                recommends e is A,
+            {
+                e->A_0
+            }
+
+            spec fn ext_eq(a: Seq<u8>, b: Seq<u8>) -> bool {
+                a =~= b
+            }
+
+            spec fn is_a(e: E) -> bool {
+                is_variant(e, "A")
+            }
+
+            spec fn wrap(a: u8, b: u8) -> u8 {
+                sub(add(a, b), mul(a, b))
+            }
+
+            spec fn init_value(m: MemContents<u32>) -> u32
+                recommends m is Init,
+            {
+                m.value()
+            }
+
+            spec fn ok_val(r: Result<u32, bool>) -> u32
+                recommends r is Ok,
+            {
+                r->Ok_0
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Explicit discriminants carry over to the exec enum, so the trusted
+    /// `exec_disc` agrees with `disc` at run time.
+    #[test] test_exec_spec_unverified_enum_discriminant IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            #[derive(Clone, Copy)]
+            pub enum E {
+                A = 10,
+                B = 20,
+                C,
+            }
+
+            spec fn disc(e: E) -> u8 {
+                e as u8
+            }
+        }
+
+        fn test() {
+            assert(disc(E::B) == 20);
+            // the exec enum must have the same discriminants as the spec enum
+            let b = ExecE::B as u8;
+            assert(b == 20);
+            let c = ExecE::C as u8;
+            assert(c == 21);
+        }
+    } => Ok(())
+}

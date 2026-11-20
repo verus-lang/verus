@@ -169,7 +169,7 @@ broadcast use {
     super::raw_ptr::group_raw_ptr_axioms,
     super::layout::group_layout_axioms,
     super::set_lib::group_set_lib_default,
-    super::set::group_set_axioms};
+    super::set::group_set_lemmas};
 
 impl<V> PPtr<V> {
     /// Use `addr()` instead
@@ -283,7 +283,7 @@ impl<V> PointsTo<V> {
     }
 
     /// "Forgets" about the value stored behind the pointer.
-    /// Updates the `PointsTo` value to [`TypedValue::Empty`](TypedValue::Empty).
+    /// Updates the `PointsTo` value to [`TypedValue::Empty`].
     /// Note that this is a `proof` function, i.e., it is operationally a no-op in executable code.
     pub proof fn leak_contents(tracked &mut self)
         ensures

@@ -105,12 +105,9 @@ fn exp_for_decrease(_ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
     match &*undecorate_typ(&exp.typ) {
         TypX::Int(_) => Ok(exp.clone()),
         TypX::Datatype(..) => Ok(exp.clone()),
-        _ => Err(error(
+        _ => Err(crate::messages::internal_error(
             &exp.span,
-            format!(
-                "internal error: unsupported type for decreases {}",
-                typ_to_diagnostic_str(&exp.typ)
-            ),
+            format!("unsupported type for decreases {}", typ_to_diagnostic_str(&exp.typ)),
         )),
     }
 }
@@ -162,6 +159,7 @@ fn check_decrease_call(
     span: &Span,
     target: &Fun,
     resolved_method: &Option<(Fun, Typs)>,
+    typ_args: &Typs,
     args: &Exps,
 ) -> Result<Exp, VirErr> {
     let name = if let Some(callee) = get_callee(ctxt.ctx, target, resolved_method) {
@@ -174,6 +172,12 @@ fn check_decrease_call(
         ));
     };
     let function = &ctxt.ctx.func_map[&name];
+    let typ_args = match resolved_method {
+        Some((m, ts)) if *m == name => ts,
+        _ => typ_args,
+    };
+    let typ_substs: HashMap<_, _> =
+        function.x.typ_params.iter().cloned().zip(typ_args.iter().cloned()).collect();
     // check_decrease(let params = args in decreases_exp, decreases_at_entry)
     let params = &function.x.params;
     assert!(params.len() == args.len());
@@ -201,6 +205,8 @@ fn check_decrease_call(
             &params_to_pars(&function.x.params),
             expr,
         )?;
+        let decreases_exp =
+            crate::sst_util::subst_exp(&typ_substs, &HashMap::new(), &decreases_exp);
         let dec_exp = exp_rename_vars(&decreases_exp, &renames);
         let e_decx = ExpX::Bind(
             Spanned::new(span.clone(), BndX::Let(Arc::new(binders.clone()))),
@@ -223,8 +229,8 @@ fn check_decrease_call(
             return Err(error(
                 span,
                 format!(
-                    "in mutually recursive functions, decreases clauses at the same position \
-                     must have compatible types: the caller's decreases clause #{} has {} type, \
+                    "in mutually recursive functions, `decreases` clauses at the same position \
+                     must have compatible types: the caller's `decreases` clause #{} has {} type, \
                      but the callee's has {} type",
                     i + 1,
                     caller_kind,
@@ -306,7 +312,7 @@ pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(
         return Ok((body.clone(), scc_rep));
     }
     if !function.x.has.has_decrease {
-        return Err(error(&function.span, "recursive function must have a decreases clause"));
+        return Err(error(&function.span, "recursive function must have a `decreases` clause"));
     }
     let ctxt = Ctxt {
         recursive_function_name: function.x.name.clone(),
@@ -355,6 +361,28 @@ pub(crate) fn rewrite_rec_call_with_fuel_const(body: &Exp, fuel: usize) -> Exp {
     })
 }
 
+// Spans of the calls inside spec closures. A spec closure is a function over its whole domain,
+// so a recursive call in its body must decrease for every input, not just the ones it's applied to.
+fn closure_call_spans(function: &Function) -> Vec<Span> {
+    let mut spans = Vec::new();
+    if let Some(body) = &function.x.body {
+        crate::ast_visitor::expr_visitor_walk(body, &mut |expr| {
+            if let ExprX::Closure(_, body) = &expr.x {
+                crate::ast_visitor::expr_visitor_walk(body, &mut |e| {
+                    if matches!(e.x, ExprX::Call { .. }) && e.span.id != 0 {
+                        spans.push(e.span.clone());
+                    }
+                    crate::visitor::VisitorControlFlow::Recurse
+                });
+                // the walk above already covered any nested closures
+                return crate::visitor::VisitorControlFlow::Return;
+            }
+            crate::visitor::VisitorControlFlow::Recurse
+        });
+    }
+    spans
+}
+
 fn check_termination<'a>(
     ctx: &'a Ctx,
     diagnostics: &impl Diagnostics,
@@ -367,9 +395,9 @@ fn check_termination<'a>(
             || (!function.x.attrs.exec_allows_no_decreases_clause
                 && !function.x.attrs.exec_assume_termination))
     {
-        let mut e = error(&function.span, "recursive function must have a decreases clause");
+        let mut e = error(&function.span, "recursive function must have a `decreases` clause");
         if function.x.mode == crate::ast::Mode::Exec {
-            e = e.help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function");
+            e = e.help("to disable this check, use `#[verifier::exec_allows_no_decreases_clause]` on the function");
         }
         return Err(e);
     }
@@ -388,13 +416,35 @@ fn check_termination<'a>(
         ctx,
         caller_decreases_typs,
     };
+    let closure_call_spans = closure_call_spans(function);
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
         StmX::Call {
-            fun: crate::sst::CallTarget::Fun(fun), resolved_method, args, dest, ..
+            fun: crate::sst::CallTarget::Fun(fun),
+            resolved_method,
+            typ_args,
+            args,
+            dest,
+            ..
         } if is_recursive_call(&ctxt, fun, resolved_method) => {
-            let check =
-                check_decrease_call(&ctxt, diagnostics, &s.span, fun, resolved_method, args)?;
-            let error = error(&s.span, "could not prove termination");
+            let check = check_decrease_call(
+                &ctxt,
+                diagnostics,
+                &s.span,
+                fun,
+                resolved_method,
+                typ_args,
+                args,
+            )?;
+            let mut error = error(&s.span, "could not prove termination");
+            if closure_call_spans.iter().any(|c| c.id == s.span.id) {
+                error = error
+                    .help(
+                        "this call is inside a closure, and Verus checks the decreases measure for all possible values of the closure inputs, even if it is only applied to a subset of those inputs",
+                    )
+                    .help(
+                        "if needed, guard the call with a conditional, e.g., `if 0 <= i < len { call(...) } else { arbitrary() }`",
+                    );
+            }
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(None, Some(error), check));
 
             let mut stms = vec![stm_assert, s.clone()];
@@ -493,9 +543,16 @@ pub(crate) fn expand_call_graph(
 
     // Add T --> f if T declares method f
     if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
-        // T --> f
-        call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
-        // T --> ...typs...
+        if function.x.mode == crate::ast::Mode::Exec && function.x.attrs.impls_cannot_extend_spec {
+            // We allow a particular form of nontermination of exec functions
+            // by omitting the T --> f edge.
+            // This is only safe for impls_cannot_extend_spec;
+            // otherwise, call_ensures could be used to create an ill-founded spec expression..
+        } else {
+            // T --> f
+            call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
+            // T --> ...typs...
+        }
     }
 
     // Add D: T --> f and f --> T where f is one of D's methods that implements T
@@ -586,7 +643,12 @@ pub(crate) fn expand_call_graph(
     // (See, for example, test_default17 in rust_verify_test/tests/traits.rs.)
     let add_calls = &mut |expr: &crate::ast::Expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, attrs), _, _) => {
+            ExprX::Call {
+                target: CallTarget::Fun(kind, x, ts, impl_paths, attrs),
+                args: _,
+                post_args: _,
+                body: _,
+            } => {
                 assert!(attrs.autospec == AutospecUsage::Final);
                 let (callee, ts, impl_paths) = if let CallTargetKind::DynamicResolved {
                     resolved: x_resolved,
@@ -631,9 +693,27 @@ pub(crate) fn expand_call_graph(
             ExprX::ConstVar(callee, _) => {
                 call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
             }
-            ExprX::Call(CallTarget::BuiltinSpecFun(_bsf, _typs, impl_paths), _, _) => {
+            ExprX::Call {
+                target: CallTarget::BuiltinSpecFun(_bsf, _typs, impl_paths),
+                args: _,
+                post_args: _,
+                body: _,
+            } => {
                 for impl_path in impl_paths.iter() {
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
+                }
+            }
+            ExprX::UnaryOpr(UnaryOpr::ToDyn(_, impl_paths), _) => {
+                for impl_path in impl_paths.iter() {
+                    let expr_node = crate::recursive_types::new_span_info_node(
+                        span_infos,
+                        expr.span.clone(),
+                        ": coercion to a trait object, which depends on trait implementations \
+                            to satisfy the object's trait bounds"
+                            .to_string(),
+                    );
+                    call_graph.add_edge(f_node.clone(), expr_node.clone());
+                    call_graph.add_edge(expr_node, Node::TraitImpl(impl_path.clone()));
                 }
             }
             ExprX::Fuel(callee, fuel, _is_broadcast_use) if *fuel >= 1 => {

@@ -17,14 +17,14 @@ tokenized_state_machine! {InternSystem<T> {
         #[sharding(variable)]
         pub auth: Seq<T>,
 
-        #[sharding(persistent_map)]
-        pub frag: Map<int, T>,
+        #[sharding(persistent_imap)]
+        pub frag: IMap<int, T>,
     }
 
     init!{
         empty() {
             init auth = Seq::empty();
-            init frag = Map::empty();
+            init frag = IMap::empty();
         }
     }
 

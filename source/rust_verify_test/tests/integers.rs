@@ -441,6 +441,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_integer_trait_inline verus_code! {
+        use vstd::prelude::*;
+        spec fn f(i: int) -> int { i }
+        #[verifier::inline]
+        spec fn g<I: Integer>(i: I) -> int {
+            f(i as int)
+        }
+        proof fn test(i: nat) {
+            let x = g(i);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_integer_trait_3 verus_code! {
         use vstd::prelude::*;
         pub open spec fn plus_three<T: Integer>(t: T) -> int {
@@ -454,7 +468,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         struct S;
         impl Integer for S {}
-    } => Err(err) => assert_rust_error_msg(err, "the trait `verus_builtin::Integer` requires an `unsafe impl` declaration")
+    } => Err(err) => assert_vir_error_msg(err, "cannot implement `sealed` trait")
 }
 
 test_verify_one_file! {
@@ -518,6 +532,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enum_to_int verus_code! {
+        use vstd::prelude::*;
         #[derive(Copy, Clone)]
         enum E {
             A,
@@ -540,6 +555,7 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] test_enum_to_int_overflow ["--compile"] => verus_code! {
+        use vstd::prelude::*;
         #[derive(Copy, Clone)]
         enum E {
             A,
@@ -568,11 +584,13 @@ test_verify_one_file! {
                 self as int == 0
             {}
         }
-    } => Err(err) => assert_vir_error_msg(err, "Zero-sized empty Enum expr")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support casting an enum with no variants")
 }
 
 test_verify_one_file! {
     #[test] test_enum_to_int_non_empty_fields1 verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)]
         enum E {
             A(bool),
@@ -582,11 +600,13 @@ test_verify_one_file! {
         ensures
             v as int == 0,
         {}
-    } => Err(err) => assert_vir_error_msg(err, "Enum variant should not contain any fields.")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support casting an enum whose variants have fields")
 }
 
 test_verify_one_file! {
     #[test] test_enum_to_int_non_empty_fields2 verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)]
         enum E {
             A(bool),
@@ -596,11 +616,13 @@ test_verify_one_file! {
         ensures
             E::A(false) as int == 0,
         {}
-    } => Err(err) => assert_vir_error_msg(err, "Enum variant should not contain any fields.")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support casting an enum whose variants have fields")
 }
 
 test_verify_one_file! {
     #[test] test_enum_to_int_proof verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)]
         enum E {
             A,
@@ -613,4 +635,125 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_enums_with_signed_representations_issue2767 verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Copy, Clone)] #[repr(i8)] enum E8 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(i16)] enum E16 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(i32)] enum E32 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(i64)] enum E64 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(i128)] enum E128 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(isize)] enum ESized { A = -1, B = 0, C = 1 }
+
+        fn test() {
+            assert(E8::A as int == -1);
+            assert(E8::B as int == 0);
+            assert(E8::C as int == 1);
+
+            assert(E16::A as int == -1);
+            assert(E16::B as int == 0);
+            assert(E16::C as int == 1);
+
+            assert(E32::A as int == -1);
+            assert(E32::B as int == 0);
+            assert(E32::C as int == 1);
+
+            assert(E64::A as int == -1);
+            assert(E64::B as int == 0);
+            assert(E64::C as int == 1);
+
+            assert(E128::A as int == -1);
+            assert(E128::B as int == 0);
+            assert(E128::C as int == 1);
+
+            assert(ESized::A as int == -1);
+            assert(ESized::B as int == 0);
+            assert(ESized::C as int == 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_enums_with_unsigned_representations verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Copy, Clone)] #[repr(u8)] enum E8 { A = 0xff, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(u16)] enum E16 { A = 0xffff, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(u32)] enum E32 { A = 0xffff_ffff, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(u64)] enum E64 { A = 0xffff_ffff_ffff_ffff, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(u128)] enum E128 { A = 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff,  B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(usize)] enum ESized { A = 0xffff_ffff, B = 0, C = 1 }
+
+        fn test() {
+            assert(E8::A as int == 0xff);
+            assert(E8::B as int == 0);
+            assert(E8::C as int == 1);
+
+            assert(E16::A as int == 0xffff);
+            assert(E16::B as int == 0);
+            assert(E16::C as int == 1);
+
+            assert(E32::A as int == 0xffff_ffff);
+            assert(E32::B as int == 0);
+            assert(E32::C as int == 1);
+
+            assert(E64::A as int == 0xffff_ffff_ffff_ffff);
+            assert(E64::B as int == 0);
+            assert(E64::C as int == 1);
+
+            assert(E128::A as int == 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff);
+            assert(E128::B as int == 0);
+            assert(E128::C as int == 1);
+
+            assert(ESized::A as int == 0xffff_ffff);
+            assert(ESized::B as int == 0);
+            assert(ESized::C as int == 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_enums_with_overflow verus_code! {
+        use vstd::prelude::*;
+
+        #[allow(overflowing_literals)]
+        #[derive(Copy, Clone)] #[repr(i8)] enum Ei8 { A = 255, B = 0 }
+
+        #[allow(overflowing_literals)]
+        #[derive(Copy, Clone)] #[repr(i8)] enum Eu8 { A = 300, B = 0 }
+
+        fn test() {
+            assert(Ei8::A as int == -1);
+            assert(Eu8::A as int == 44);
+        }
+
+        fn test_fails() {
+            assert(Ei8::A as int == -1);
+            assert(Eu8::A as int == 44);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_enums_with_arch_dependent verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Copy, Clone)] #[repr(isize)] enum Eisize { A = 0x8000_0000, B = 0 }
+        #[derive(Copy, Clone)] #[repr(usize)] enum Eusize { A = 0x1_0000_0000, B = 0 }
+
+        fn test() {
+            assert(Eisize::A as int == 0x8000_0000);
+        }
+
+        fn test2() {
+            assert(Eusize::A as int == 0x1_000_0000);
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "discriminants that do not fit in 32 bits when isize is used",
+        "discriminants that do not fit in 32 bits when usize is used",
+    ])
 }

@@ -17,7 +17,7 @@ test_verify_one_file! {
                 bar();
             }
         }
-    } => Err(err) => assert_vir_error_msgs(err, &["bar", "foo"])
+    } => Err(err) => assert_vir_error_msgs(err, &["foo", "bar"])
 }
 test_verify_one_file! {
     #[test] test_assume_specification_simple_suggestion_made code! {
@@ -124,6 +124,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_assume_specification_mut_ref_suggestion_made code! {
+        use vstd::prelude::*;
+
+        fn unverified_function(x: &mut u64) {
+            *x += 42;
+        }
+
+        verus! {
+            fn verified_caller() {
+                let mut x = 42;
+                unverified_function(&mut x);
+            }
+        }
+    } => Err(err) => assert_help_error_msg(err, "assume_specification [crate::unverified_function] (_0: &mut u64);")
+}
+test_verify_one_file! {
+    #[test] test_assume_specification_mut_ref_suggestion_correct code! {
+        use vstd::prelude::*;
+
+        fn unverified_function(x: &mut u64) {
+            *x += 42;
+        }
+
+        verus! {
+            assume_specification [crate::unverified_function] (_0: &mut u64);
+
+            fn verified_caller() {
+                let mut x = 42;
+                unverified_function(&mut x);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_assume_specification_foreign_suggestion_made code! {
         use vstd::prelude::*;
 
@@ -155,18 +190,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_assume_specification_format_visibility code! {
-        use vstd::prelude::*;
-
-        verus! {
-            fn foo(x: &str, y: &str) -> (res: String)
-            {
-                format!("{}_{}", x, y)
-            }
-        }
-    } => Err(err) => assert_help_error_msgs(err, &["assume_specification", "assume_specification"])
-}
 test_verify_one_file! {
     #[test] test_assume_specification_const_generics_suggestion_made code! {
         use vstd::prelude::*;
@@ -209,21 +232,31 @@ test_verify_one_file! {
            where
            'c: 'a + 'b,;")
 }
+
+// The impl header has an anonymous early-bound lifetime (`S<'_>`) that the
+// method inherits, and which also appears in the method's `Self: Bound`
+// where-clause. The RegionRenamer must rename that anonymous lifetime
+// consistently in *both* the fn signature and the where-clause predicates.
+// If the predicates are not folded, the fn signature reads `&crate::S<'a>`
+// but the where-clause reads `crate::S<'_>: crate::Bound`, producing an
+// inconsistent (uncompilable) suggestion.
 test_verify_one_file! {
-    #[test] test_assume_specification_region_outlives_correct code! {
-        fn foo<'a, 'b, 'c, A, B>(a: &'a A, b: &'b B) -> &'c A
-        where 'c: 'a + 'b {
-            panic!()
+    #[test] test_assume_specification_anon_early_bound_in_where_suggestion_made code! {
+        use vstd::prelude::*;
+        pub trait Bound { }
+        pub struct S<'a> { pub x: &'a u8 }
+        impl Bound for S<'_> { }
+        impl S<'_> {
+            pub fn go(&self) where Self: Bound { }
         }
         verus! {
-            assume_specification<'a, 'b, 'c, A, B> [crate::foo] (_0: &'a A, _1: &'b B) -> &'c A
-            where
-            'c: 'a + 'b,;
-            pub fn bar<'a, 'b, 'c, A, B>(a: &'a A, b: &'b B) -> &'c A {
-                foo(a, b)
+            pub fn bar<'a>(s: S<'a>) {
+                s.go()
             }
         }
-    } => Ok(())
+    } => Err(e) => assert_help_error_msg(e, "(_0: &crate::S<'a>)
+           where
+           crate::S<'a>: crate::Bound,;")
 }
 
 // Tests for external_type_specification

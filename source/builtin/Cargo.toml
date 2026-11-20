@@ -1,11 +1,10 @@
 [package]
 name = "verus_builtin"
-version = "0.0.0-2026-05-17-0151"
+version = "0.0.0-2026-11-15-0327"
 edition = "2018"
 license = "MIT"
 description = "Verus Builtins: Rust definitions for core constructs in Verus"
 documentation = "https://verus-lang.github.io/verus/verusdoc/vstd/pervasive"
-homepage = "https://github.com/verus-lang/verus"
 repository = "https://github.com/verus-lang/verus"
 readme = "../../README.md"
 keywords = ["verus", "verified-rust", "verification"]

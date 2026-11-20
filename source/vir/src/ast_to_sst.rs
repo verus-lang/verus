@@ -1,28 +1,35 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck,
-    ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Expr, ExprX, FieldOpr, Fun, Function,
-    Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode, OverflowBehavior,
-    PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
-    VariantCheck, VirErr,
+    ArithOp, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
+    BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr,
+    Fun, Function, Ident, IntRange, IntegerTypeBoundKind, InvAtomicity, Label, LogicalOp,
+    LoopInvariantKind, LoopSource, MaskSpec, Mode, OverflowBehavior, PatternBinding, PatternX,
+    Place, PlaceX, SignedDivEdgeCaseBehavior, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, UninterpretedFloatBinaryOp, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders,
+    VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
-use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_typ};
-use crate::context::Ctx;
-use crate::def::{Spanned, unique_local};
-use crate::fun;
-use crate::inv_masks::MaskSet;
-use crate::messages::{
-    Span, ToAny, error, error_with_label, error_with_secondary_label, internal_error, warning,
+use crate::ast_util::{
+    QUANT_FORALL, bitwidth_to_signed_type_string, bool_typ, int_typ, is_unit, types_equal,
+    undecorate_typ, unit_typ,
 };
+use crate::context::Ctx;
+use crate::def::{self, Spanned};
+use crate::fun;
+use crate::inv_masks::{MaskQueryKind, MaskSet};
+use crate::messages::{
+    Message, Span, ToAny, WarningAllow, error, error_with_label, error_with_secondary_label,
+    internal_error,
+};
+use crate::sst;
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
-    ParPurpose, Pars, Stm, StmX, UniqueIdent,
+    Pars, Stm, StmX, Stms, UniqueIdent,
 };
 use crate::sst_util::{
-    exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_exp_get_proof_note,
-    sst_int_literal, sst_le, sst_lt, sst_mut_ref_current, sst_mut_ref_ptr, sst_ptr_addr,
-    sst_unit_value, stm_with_vars_at_pre_state, subst_exp, subst_pre_local_decl, subst_stm,
+    exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_disjoin, sst_equal,
+    sst_exp_get_proof_note, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
+    sst_mut_ref_future, sst_mut_ref_ptr, sst_ptr_addr, sst_unit_value, stm_with_vars_at_pre_state,
+    subst_exp, subst_pre_local_decl, subst_stm, subst_typ,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, stm_visitor_check};
 use crate::util::vec_map_result;
@@ -107,8 +114,25 @@ pub(crate) struct State<'a> {
     statics: IndexSet<Fun>,
     pub assert_id_counter: u64,
     loop_id_counter: u64,
+    loop_result_dests: HashMap<Label, VarIdent>,
 
     pub mask: Option<MaskSet>,
+
+    /// Function arguments to be used in the construction of the update
+    /// predicate for the atomic update by the atomic function call.
+    pub au_pred_args: Vec<crate::sst::Exp>,
+    /// This variable is bound by the `atomically |update| { ... }` block
+    /// and read by the corresponding `update` function.
+    pub au_var_exp: Option<crate::sst::Exp>,
+    /// This boolean corresponds to the update control flow of the update
+    /// function in the current atomic call, where:
+    /// - `Commit` (i.e. `true`) forces the loop to `break`, and
+    /// - `Abort` (i.e. `false`) forces the loop to `continue`.
+    pub branch_bool_var: Option<(VarIdent, crate::sst::Exp)>,
+
+    /// This is the atomic update bound in the atomic spec,
+    /// we must assert `au.resolves()` at the end of the function.
+    pub au_var_exp_to_resolve: Option<crate::sst::Exp>,
 }
 
 pub(crate) struct FinalState {
@@ -132,7 +156,7 @@ pub(crate) enum Value {
 
 impl Value {
     /// Turn this into a normal Exp
-    fn to_exp(self) -> Exp {
+    pub(crate) fn to_exp(self) -> Exp {
         match self {
             Value::Exp(e) => e,
             Value::ImplicitUnit(span) => sst_unit_value(&span),
@@ -140,9 +164,15 @@ impl Value {
     }
 }
 
+impl<T> Maybe<T> {
+    pub(crate) fn is_never(&self) -> bool {
+        matches!(self, Maybe::Never)
+    }
+}
+
 impl Maybe<Value> {
     /// Map `to_exp` over the Some case
-    fn to_maybe_exp(self) -> Maybe<Exp> {
+    pub(crate) fn to_maybe_exp(self) -> Maybe<Exp> {
         match self {
             Maybe::Some(val) => Maybe::Some(val.to_exp()),
             Maybe::Never => Maybe::Never,
@@ -150,7 +180,7 @@ impl Maybe<Value> {
     }
 
     /// Expect the Some case and return the Exp; panic on the Never case
-    fn expect_exp(self) -> Exp {
+    pub(crate) fn expect_exp(self) -> Exp {
         match self {
             Maybe::Some(val) => val.to_exp(),
             Maybe::Never => panic!("Maybe::Never unexpected here"),
@@ -231,14 +261,18 @@ impl<'a> State<'a> {
             statics: IndexSet::new(),
             assert_id_counter: 0,
             loop_id_counter: 0,
-
+            loop_result_dests: HashMap::new(),
             mask: None,
+            au_pred_args: Vec::new(),
+            au_var_exp_to_resolve: None,
+            au_var_exp: None,
+            branch_bool_var: None,
         }
     }
 
     fn next_temp(&mut self, span: &Span, typ: &Typ) -> (VarIdent, Exp) {
         self.next_var += 1;
-        let x = crate::def::new_temp_var(self.next_var);
+        let x = def::new_temp_var(self.next_var);
         (x.clone(), SpannedTyped::new(span, typ, ExpX::Var(x.clone())))
     }
 
@@ -399,17 +433,15 @@ impl<'a> State<'a> {
 
     pub(crate) fn declare_params(&mut self, params: &Pars) {
         for param in params.iter() {
-            if !matches!(param.x.purpose, ParPurpose::MutPost) {
-                let name = &param.x.name;
-                self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
-                self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
-                self.declare_imm_var_stm(
-                    name,
-                    &param.x.typ,
-                    LocalDeclKind::Param { mutable: false },
-                    false,
-                );
-            }
+            let name = &param.x.name;
+            self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
+            self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
+            self.declare_imm_var_stm(
+                name,
+                &param.x.typ,
+                LocalDeclKind::Param { mutable: false },
+                false,
+            );
         }
     }
 
@@ -511,12 +543,9 @@ impl PreLocalDeclKind {
         match self {
             PreLocalDeclKind::Immutable(Immutable(imm)) => {
                 if let Some(span) = mutbl {
-                    Err(error(
+                    Err(crate::messages::internal_error(
                         span,
-                        format!(
-                            "Verus Internal Error: assignment for immutable decl kind {:?}",
-                            imm
-                        ),
+                        format!("assignment for immutable decl kind {:?}", imm),
                     ))
                 } else {
                     Ok(imm)
@@ -547,7 +576,7 @@ pub(crate) fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
 
 pub(crate) fn get_function(ctx: &Ctx, span: &Span, name: &Fun) -> Result<Function, VirErr> {
     match ctx.func_map.get(name) {
-        None => Err(error(span, format!("could not find function {:?}", &name))),
+        None => Err(error(span, format!("could not find function {:?}", name))),
         Some(func) => Ok(func.clone()),
     }
 }
@@ -558,8 +587,18 @@ pub(crate) fn get_function_sst(
     name: &Fun,
 ) -> Result<crate::sst::FunctionSst, VirErr> {
     match ctx.func_sst_map.get(name) {
-        None => Err(error(span, format!("could not find function {:?}", &name))),
+        None => Err(error(span, format!("could not find function {:?}", name))),
         Some(func) => Ok(func.clone()),
+    }
+}
+
+pub(crate) fn ens_has_return(ctx: &Ctx, function: &Function) -> bool {
+    match &function.x.kind {
+        crate::ast::FunctionKind::TraitMethodImpl { method, .. } => {
+            let method = &ctx.func_map[method];
+            !is_unit(&undecorate_typ(&method.x.outer_ret.x.typ))
+        }
+        _ => !is_unit(&undecorate_typ(&function.x.outer_ret.x.typ)),
     }
 }
 
@@ -586,32 +625,29 @@ pub fn assume_false(span: &Span) -> Stm {
 
 pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
     let xvarx = ExpX::Var(x.clone());
-    // TODO: Bool is wrong here
-    let xvar = SpannedTyped::new(span, &Arc::new(TypX::Bool), xvarx);
+    let xvar = SpannedTyped::new(span, typ, xvarx);
     let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(typ.clone()), xvar);
     let has_typ = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_typx);
     Spanned::new(span.clone(), StmX::Assume(has_typ))
 }
 
 fn loop_body_find_breaks(
-    loop_label: &Option<String>,
-    in_subloop: bool,
+    loop_label: &Label,
     num_breaks: &mut usize,
+    num_isolated_breaks: &mut usize,
+    in_isolated: bool,
     body: &Expr,
 ) {
     let mut f = |expr: &Expr| match &expr.x {
-        ExprX::Loop { body, .. } => {
-            loop_body_find_breaks(loop_label, true, num_breaks, body);
+        ExprX::Loop { loop_isolation: true, .. } if !in_isolated => {
+            loop_body_find_breaks(loop_label, num_breaks, num_isolated_breaks, true, expr);
             VisitorControlFlow::Return
         }
-        ExprX::BreakOrContinue { label: break_label, is_break: true } => {
-            if break_label.is_none() {
-                if !in_subloop {
-                    *num_breaks += 1;
-                }
-            } else {
-                if break_label == loop_label {
-                    *num_breaks += 1;
+        ExprX::BreakOrContinue { label: break_label, is_break: true, .. } => {
+            if break_label == loop_label {
+                *num_breaks += 1;
+                if in_isolated {
+                    *num_isolated_breaks += 1;
                 }
             }
             VisitorControlFlow::Recurse
@@ -621,21 +657,22 @@ fn loop_body_find_breaks(
     crate::ast_visitor::expr_visitor_walk(body, &mut f);
 }
 
-fn loop_body_has_breaks(loop_label: &Option<String>, body: &Expr) -> usize {
+/// Returns (num_breaks, num_isolated_breaks):
+///  * `num_breaks` = Total # of break statements of the given label
+///  * `num_isolated_breaks` = # of break statements of the given label
+///    that are within a loop_isolation=true loop
+fn loop_has_breaks(loop_label: &Label, expr: &Expr) -> (usize, usize) {
     let mut num_breaks = 0;
-    loop_body_find_breaks(loop_label, false, &mut num_breaks, body);
-    num_breaks
+    let mut num_isolated_breaks = 0;
+    loop_body_find_breaks(loop_label, &mut num_breaks, &mut num_isolated_breaks, false, expr);
+    (num_breaks, num_isolated_breaks)
 }
 
 /// Determine if it's possible for control flow to reach the statement after the loop exit.
 /// To be conservative, we need to answer 'yes' (true) if we can't tell.
-///
-/// Note: we originally used this to handle the case where the loop body returns
-/// the never type (!). However, that isn't actually important anymore since loops will
-/// be wrapped in the NeverToAny node. It's likely that this check can simply be removed.
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
-        ExprX::Loop { label, cond: None, body, .. } => loop_body_has_breaks(label, body) > 0,
+        ExprX::Loop { label, cond: None, body, .. } => loop_has_breaks(label, body).0 > 0,
         ExprX::Loop { cond: Some(_), .. } => true,
         _ => {
             panic!("expected while loop");
@@ -802,7 +839,7 @@ impl Sequencer {
                         if let Some(span) = crate::sst_vars::find_overlapping_assignment(stm, loc) {
                             return Err(error_with_label(
                                 &loc.span,
-                                "Verus doesn't support assigning during mutable borrow like this",
+                                "Verus does not currently support assigning during a mutable borrow like this",
                                 "this borrow",
                             )
                             .secondary_label(&span, "followed by this assignment"));
@@ -825,6 +862,7 @@ struct ReturnedCall {
     args: Exps,
     obligations: Vec<Obligation>,
     may_unwind: bool,
+    body: Option<Stm>,
 }
 
 fn get_call_args(
@@ -832,9 +870,13 @@ fn get_call_args(
     state: &mut State,
     args: &Exprs,
     post_args: &Option<Expr>,
+    body: &Option<Expr>,
     function_kind: &crate::ast::FunctionKind,
     function_mode: Mode,
-) -> Result<(Vec<Stm>, Vec<Obligation>, Option<Vec<Exp>>), VirErr> {
+    function_typ_params: &[Ident],
+    function_typ_args: &[Typ],
+    function_params: &crate::ast::Params,
+) -> Result<(Vec<Stm>, Vec<Obligation>, Option<Vec<Exp>>, Option<Stm>), VirErr> {
     let mut sequr = Sequencer::new();
 
     // Suppose have as arguments:
@@ -858,18 +900,24 @@ fn get_call_args(
     // delayed "phase2" Stms
     let mut second_phase: Vec<Stm> = Vec::new();
     let mut all_obligations: Vec<Obligation> = Vec::new();
+    let mut atomically: Option<&Expr> = None;
 
-    for arg in args.iter() {
-        let poly = crate::poly::arg_is_poly(ctx, function_kind, function_mode, &arg.typ);
+    for (k, arg) in args.iter().enumerate() {
+        let poly = crate::poly::arg_is_poly(ctx, &function_kind, function_mode, &arg.typ);
         let kind = Immutable(LocalDeclKind::StmCallArg { native: !poly });
 
         match &arg.x {
+            ExprX::AtomicUpdateInitDummy => {
+                assert_eq!(k + 1, args.len());
+                atomically = Some(arg);
+                break;
+            }
             ExprX::TwoPhaseBorrowMut(..) => {
                 let (phase1_stms, bor_sst) = borrow_mut_to_sst(ctx, state, arg)?;
 
                 let early_return = sequr.push_2phase(phase1_stms, &bor_sst, kind);
                 if let Some(stms) = early_return {
-                    return Ok((stms, all_obligations, None));
+                    return Ok((stms, all_obligations, None, None));
                 }
 
                 let Maybe::Some((bor_sst, obligations)) = bor_sst else { unreachable!() };
@@ -886,7 +934,7 @@ fn get_call_args(
 
                 let early_return = sequr.push(stms0, exp0, kind);
                 if let Some(stms) = early_return {
-                    return Ok((stms, all_obligations, None));
+                    return Ok((stms, all_obligations, None, None));
                 }
 
                 let Maybe::Some((_exp0, obligations)) = e0 else { unreachable!() };
@@ -901,8 +949,36 @@ fn get_call_args(
         second_phase.append(&mut stms0);
     }
 
-    let (stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
-    Ok((stms, all_obligations, Some(exps)))
+    let (mut stms, mut exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
+
+    if let Some(expr) = atomically {
+        assert_eq!(function_typ_params.len(), function_typ_args.len());
+        let typ_substs: HashMap<Ident, Typ> =
+            function_typ_params.iter().cloned().zip(function_typ_args.iter().cloned()).collect();
+
+        for (exp, param) in std::iter::zip(&mut exps, function_params.iter()) {
+            let tmp = state.make_tmp_var_for_exp(&mut stms, exp.clone());
+            let param_typ = subst_typ(&typ_substs, &param.x.typ);
+            *exp = SpannedTyped::new(&tmp.span, &param_typ, tmp.x.clone());
+        }
+
+        state.au_pred_args = exps.clone();
+        let (au_stms, value) = expr_to_stm_opt(ctx, state, expr)?;
+        let au_exp = value.expect_exp();
+
+        stms.extend(au_stms);
+        exps.push(au_exp);
+    }
+
+    let body = match body {
+        Some(expr) => {
+            let (stms, _) = expr_to_stm_opt(ctx, state, expr)?;
+            stms_to_one_stm_opt(&expr.span, stms)
+        }
+        None => None,
+    };
+
+    Ok((stms, all_obligations, Some(exps), body))
 }
 
 fn expr_get_call(
@@ -912,7 +988,7 @@ fn expr_get_call(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Maybe<ReturnedCall>)>, VirErr> {
     match &expr.x {
-        ExprX::Call(target, args, post_args) => match target {
+        ExprX::Call { target, args, post_args, body } => match target {
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
@@ -921,13 +997,13 @@ fn expr_get_call(
                     return Err(internal_error(&expr.span, "autospec not discharged"));
                 }
                 let function = get_function(ctx, &expr.span, x)?;
-                let has_ret = function.x.ens_has_return;
+                let has_ret = ens_has_return(ctx, &function);
                 if disallow_poly_ret.is_some()
                     && has_ret
                     && crate::poly::ret_needs_native(
                         ctx,
                         &function.x.kind,
-                        &function.x.ret.x.typ,
+                        &function.x.outer_ret.x.typ,
                         disallow_poly_ret.unwrap(),
                     )
                 {
@@ -939,8 +1015,42 @@ fn expr_get_call(
                     return Ok(None);
                 }
 
-                let (stms, all_obligations, exps) =
-                    get_call_args(ctx, state, args, post_args, &function.x.kind, function.x.mode)?;
+                let func_is_atomic = function.x.atomic_update.is_some();
+                let call_is_atomic = args.last().is_some_and(|expr| {
+                    // atomically block was replaced by init dummy
+                    matches!(expr.x, ExprX::AtomicUpdateInitDummy)
+                });
+
+                match (func_is_atomic, call_is_atomic) {
+                    (true, false) => {
+                        return Err(error_with_label(
+                            &expr.span,
+                            "invalid call to logically atomic function",
+                            "expected atomic function call here",
+                        ));
+                    }
+                    (false, true) => {
+                        return Err(error_with_label(
+                            &expr.span,
+                            "invalid atomic function call",
+                            "unexpected atomic function call here",
+                        ));
+                    }
+                    _ => {}
+                }
+
+                let (stms, all_obligations, exps, body) = get_call_args(
+                    ctx,
+                    state,
+                    args,
+                    post_args,
+                    body,
+                    &function.x.kind,
+                    function.x.mode,
+                    &function.x.typ_params,
+                    typs,
+                    &function.x.params,
+                )?;
                 let Some(exps) = exps else {
                     return Ok(Some((stms, Maybe::Never)));
                 };
@@ -976,6 +1086,7 @@ fn expr_get_call(
                             function.x.unwind_spec_or_default(),
                             UnwindSpec::NoUnwind
                         ),
+                        body,
                     }),
                 )))
             }
@@ -998,9 +1109,12 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Maybe<ReturnedCall>)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), _, _)
-            if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? =>
-        {
+        ExprX::Call {
+            target: CallTarget::Fun(kind, x, _, _, _),
+            args: _,
+            post_args: _,
+            body: _,
+        } if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? => {
             expr_get_call(ctx, state, disallow_poly_ret, expr)
         }
         _ => Ok(None),
@@ -1191,6 +1305,44 @@ pub(crate) fn stms_to_one_stm_opt(span: &Span, stms: Vec<Stm>) -> Option<Stm> {
     if stms.len() == 0 { None } else { Some(stms_to_one_stm(span, stms)) }
 }
 
+fn assert_atomic_update_resolves(
+    ctx: &Ctx,
+    state: &mut State,
+    stms: &mut Vec<Stm>,
+    error: impl FnOnce(Message) -> Message,
+) {
+    if state.checking_recommends(ctx) {
+        return;
+    }
+
+    let Some(au_exp) = &state.au_var_exp_to_resolve else { return };
+
+    let au_span = &au_exp.span;
+    let TypX::Datatype(_, typ_args, _) = au_exp.typ.as_ref() else {
+        panic!("atomic update type should be a datatype")
+    };
+
+    let call_resolves = ExpX::Call(
+        CallFun::Fun(def::fn_au_resolves(), None),
+        typ_args.clone(),
+        Arc::new(vec![au_exp.clone()]),
+    );
+
+    let call_resolves = SpannedTyped::new(au_span, &Arc::new(TypX::Bool), call_resolves);
+    let base_error = error_with_label(
+        &au_span,
+        "cannot show atomic update resolves at end of function",
+        "unresolved atomic update",
+    );
+
+    let error = error(base_error);
+
+    stms.push(Spanned::new(
+        au_span.clone(),
+        StmX::Assert(state.next_assert_id(), Some(error), call_resolves),
+    ));
+}
+
 /// Convert the expression to a Stm, and assert the post-conditions for
 /// the final returned expression.
 pub(crate) fn expr_to_one_stm_with_post(
@@ -1201,19 +1353,24 @@ pub(crate) fn expr_to_one_stm_with_post(
 ) -> Result<Stm, VirErr> {
     let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
 
-    // secondary label (indicating which post-condition failed) is added later
-    // in ast_to_sst when the post condition is expanded
-    let base_error = error_with_secondary_label(
-        find_last_span_in_expr(&expr, func_span),
-        crate::def::POSTCONDITION_FAILURE.to_string(),
-        "at the end of the function body".to_string(),
-    );
-
     match exp.to_maybe_exp() {
         Maybe::Some(exp) => {
             // Emit the postcondition for the common case where the function body
             // terminates with an expression to be returned (or an implicit
             // return value of 'unit').
+
+            let end_of_fn = find_last_span_in_expr(&expr, func_span);
+            assert_atomic_update_resolves(ctx, state, &mut stms, |base| {
+                base.secondary_label(end_of_fn, "at the end of the function body")
+            });
+
+            // secondary label (indicating which post-condition failed) is added later
+            // in ast_to_sst when the post condition is expanded
+            let base_error = error_with_secondary_label(
+                end_of_fn,
+                def::POSTCONDITION_FAILURE.to_string(),
+                "at the end of the function body".to_string(),
+            );
 
             stms.push(Spanned::new(
                 expr.span.clone(),
@@ -1243,6 +1400,7 @@ pub(crate) fn expr_to_one_stm_with_post(
             // function.
         }
     };
+
     Ok(stms_to_one_stm(&expr.span, stms))
 }
 
@@ -1318,6 +1476,7 @@ fn stm_call(
     typs: Typs,
     args: Exps,
     dest: Vec<Dest>,
+    body: Option<Stm>,
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
@@ -1343,7 +1502,9 @@ fn stm_call(
         match &state.mask {
             Some(caller_mask) => {
                 let callee_mask = mask_set_for_call(&fun, &typs, small_args.clone());
-                for assertion in callee_mask.subset_of(ctx, caller_mask, span) {
+                for assertion in
+                    callee_mask.subset_of(ctx, caller_mask, span, MaskQueryKind::FunctionCall)
+                {
                     stms.push(Spanned::new(
                         span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
@@ -1355,18 +1516,31 @@ fn stm_call(
     }
 
     let call = StmX::Call {
-        fun: crate::sst::CallTarget::Fun(name),
+        fun: crate::sst::CallTarget::Fun(name.clone()),
         resolved_method,
         mode: fun.x.mode,
         is_trait_default,
         typ_args: typs,
-        args: small_args,
+        args: small_args.clone(),
         split: None,
         dest: Arc::new(dest),
         assert_id: state.next_assert_id(),
+        body,
     };
 
     stms.push(Spanned::new(span.clone(), call));
+    if (name == def::nonstatic_call_fun(false) || name == def::nonstatic_call_fun(true))
+        && matches!(&*small_args[0].typ, TypX::MutRef(_))
+    {
+        // Supported closures cannot mutate their captures, so a FnMut call preserves
+        // the callable during its call reborrow. This does not constrain the final
+        // value of a longer-lived reference passed through a generic FnOnce argument.
+        let f = &small_args[0];
+        let current = sst_mut_ref_current(span, f);
+        let future = sst_mut_ref_future(span, f);
+        let equal = sst_equal(span, &current, &future);
+        stms.push(Spanned::new(span.clone(), StmX::Assume(equal)));
+    }
     Ok(stms_to_one_stm(span, stms))
 }
 
@@ -1446,6 +1620,32 @@ fn if_to_stm(
     }
 }
 
+/// Emits the Stms for a field-access check: `is_hard_requirement` (e.g. union access)
+/// asserts except while checking recommends, plus an assume for both passes; otherwise
+/// (e.g. get_variant access) it only asserts while checking recommends, with no assume,
+/// since it's not a soundness fact.
+fn field_check_stms(
+    state: &mut State,
+    ctx: &Ctx,
+    span: &Span,
+    condition: Exp,
+    msg: Message,
+    is_hard_requirement: bool,
+) -> Vec<Stm> {
+    let mut stms = vec![];
+    if is_hard_requirement {
+        if !state.checking_recommends(ctx) {
+            let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
+            stms.push(Spanned::new(span.clone(), assert));
+        }
+        stms.push(Spanned::new(span.clone(), StmX::Assume(condition)));
+    } else if state.checking_recommends(ctx) {
+        let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition);
+        stms.push(Spanned::new(span.clone(), assert));
+    }
+    stms
+}
+
 /// Convert a VIR Expr to a SST (Vec<Stm>, Maybe<Value>), i.e., instructions of the form,
 /// "run these statements, then return this side-effect-free expression".
 ///
@@ -1487,11 +1687,8 @@ pub(crate) fn expr_to_stm_opt(
             ))
         }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
-        ExprX::AssignToPlace { place, rhs, op: Some(binary_op), resolve, typ: _ } => {
+        ExprX::Assign { place, rhs, op: Some(binary_op), resolve, typ: _ } => {
             assert!(!resolve);
-
-            // No support for short-circuit ops here
-            assert!(!matches!(binary_op, BinaryOp::And | BinaryOp::Or | BinaryOp::Implies));
 
             let (stms_r, e_r) = expr_to_stm_opt(ctx, state, rhs)?;
             let e_r = to_exp_or_return_never!(e_r, stms_r);
@@ -1523,7 +1720,7 @@ pub(crate) fn expr_to_stm_opt(
 
             Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
-        ExprX::AssignToPlace { place, rhs, op: None, resolve, typ } => {
+        ExprX::Assign { place, rhs, op: None, resolve, typ } => {
             let (stms_r, e_r) = expr_to_stm_opt(ctx, state, rhs)?;
             let e_r = to_exp_or_return_never!(e_r, stms_r);
 
@@ -1558,8 +1755,9 @@ pub(crate) fn expr_to_stm_opt(
 
             Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
-        ExprX::Call(CallTarget::FnSpec(e0), args, post_args) => {
+        ExprX::Call { target: CallTarget::FnSpec(e0), args, post_args, body } => {
             assert!(post_args.is_none());
+            assert!(body.is_none());
             let (mut check_stms, e0) = expr_to_pure_exp_check(ctx, state, e0)?;
             let mut arg_exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
@@ -1570,8 +1768,14 @@ pub(crate) fn expr_to_stm_opt(
             let call = ExpX::CallLambda(e0, Arc::new(arg_exps));
             Ok((check_stms, Maybe::Some(Value::Exp(mk_exp(call)))))
         }
-        ExprX::Call(CallTarget::BuiltinSpecFun(bsf, ts, _impl_paths), args, post_args) => {
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(bsf, ts, _impl_paths),
+            args,
+            post_args,
+            body,
+        } => {
             assert!(post_args.is_none());
+            assert!(body.is_none());
             let mut check_stms: Vec<Stm> = Vec::new();
             let mut arg_exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
@@ -1582,6 +1786,7 @@ pub(crate) fn expr_to_stm_opt(
             let f = match bsf {
                 BuiltinSpecFun::ClosureReq => InternalFun::ClosureReq,
                 BuiltinSpecFun::ClosureEns => InternalFun::ClosureEns,
+                BuiltinSpecFun::ClosureOpensInvariants => InternalFun::ClosureOpensInvariants,
                 BuiltinSpecFun::DefaultEns => InternalFun::DefaultEns,
             };
             Ok((
@@ -1593,7 +1798,7 @@ pub(crate) fn expr_to_stm_opt(
                 )))),
             ))
         }
-        ExprX::Call(CallTarget::Fun(..), _, _) => {
+        ExprX::Call { target: CallTarget::Fun(..), args: _, post_args: _, body: _ } => {
             match expr_get_call(ctx, state, None, expr)?.expect("Call") {
                 (stms, Maybe::Never) => Ok((stms, Maybe::Never)),
                 (
@@ -1607,6 +1812,7 @@ pub(crate) fn expr_to_stm_opt(
                         args,
                         obligations,
                         may_unwind,
+                        body,
                     }),
                 ) => {
                     if function_can_be_exp(ctx, state, expr, &x, &resolved_method)? {
@@ -1635,6 +1841,7 @@ pub(crate) fn expr_to_stm_opt(
                             typs.clone(),
                             args.clone(),
                             vec![dest],
+                            body,
                         )?);
                         // REVIEW: this emits a StmX::Assign to set the value of the destination when,
                         // in recommends checking, the StmX::Call is used to check its recommends, however
@@ -1674,6 +1881,7 @@ pub(crate) fn expr_to_stm_opt(
                             typs.clone(),
                             args,
                             vec![],
+                            body,
                         )?);
                         let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(x) };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
@@ -1682,14 +1890,18 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
         }
-        ExprX::Call(CallTarget::AssumeExternal, args, post_args) => {
-            let (mut stms, all_obligations, exps) = get_call_args(
+        ExprX::Call { target: CallTarget::AssumeExternal, args, post_args, body } => {
+            let (mut stms, all_obligations, exps, body) = get_call_args(
                 ctx,
                 state,
                 args,
                 post_args,
+                body,
                 &crate::ast::FunctionKind::Static,
                 Mode::Exec,
+                &[],
+                &[],
+                &Default::default(),
             )?;
             let Some(exps) = exps else {
                 return Ok((stms, Maybe::Never));
@@ -1710,6 +1922,7 @@ pub(crate) fn expr_to_stm_opt(
                 split: None,
                 dest: Arc::new(vec![dest]),
                 assert_id: None,
+                body,
             };
             stms.push(Spanned::new(expr.span.clone(), call));
             let ti = TypInv::UnwindError; // exec functions are may_unwind = true by default
@@ -1757,10 +1970,24 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::NullaryOpr(op) => {
             Ok((vec![], Maybe::Some(Value::Exp(mk_exp(ExpX::NullaryOpr(op.clone()))))))
         }
-        ExprX::Unary(op @ UnaryOp::InferSpecForLoopIter { .. }, spec_expr) => {
-            let spec_exp = expr_to_pure_exp_skip_checks(ctx, state, &spec_expr)?;
-            let infer_exp = mk_exp(ExpX::Unary(*op, spec_exp));
-            Ok((vec![], Maybe::Some(Value::Exp(infer_exp))))
+        ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(label), e) => {
+            let (stms, exp) = expr_to_stm_opt(ctx, state, e)?;
+            match find_loop_in_stms(&stms, label) {
+                Some((prefix, the_loop, suffix)) => {
+                    let mut stm = loop_set_pre_stms(the_loop, Arc::new(prefix));
+                    if suffix.len() > 0 {
+                        let mut v = vec![stm];
+                        v.extend(suffix);
+                        stm = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(v)))
+                    }
+                    Ok((vec![stm], exp))
+                }
+                None => {
+                    // Unusual case; loop would have to be cut out by Never
+                    assert!(matches!(exp, Maybe::Never));
+                    return Ok((stms, exp));
+                }
+            }
         }
         ExprX::Unary(op, exprr) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, exprr)?;
@@ -1781,6 +2008,14 @@ pub(crate) fn expr_to_stm_opt(
             }
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::Unary(*op, exp))))))
         }
+        ExprX::UnaryOpr(UnaryOpr::ToDyn(..), _)
+            if matches!(&*undecorate_typ(&expr.typ), TypX::MutRef(_)) =>
+        {
+            let (mut stms, e) = expr_to_stm_opt_with_delayed_obligations(ctx, state, expr)?;
+            let (e, obligations) = unwrap_or_return_never!(e, stms);
+            typ_inv_obligations(ctx, state, &mut stms, obligations, TypInv::BareMutRefError)?;
+            Ok((stms, Maybe::Some(e)))
+        }
         ExprX::UnaryOpr(op, arg) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, arg)?;
             let exp = to_exp_or_return_never!(exp, stms);
@@ -1791,78 +2026,93 @@ pub(crate) fn expr_to_stm_opt(
                             &expr.span, &exp, field_opr,
                         );
                         let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
-                        (Some((condition, msg)), UnaryOpr::Field(field_opr))
+                        (Some((condition, msg, true)), UnaryOpr::Field(field_opr))
+                    }
+                    // `get_variant` accessors are total - just give a recommends-only hint.
+                    VariantCheck::Recommends => {
+                        let (condition, msg) =
+                            crate::place_preconditions::sst_field_recommends_check(
+                                &expr.span, &exp, field_opr,
+                            );
+                        let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
+                        (Some((condition, msg, false)), UnaryOpr::Field(field_opr))
                     }
                     VariantCheck::None => (None, op.clone()),
                 },
                 _ => (None, op.clone()),
             };
-            if let Some((condition, msg)) = check {
-                if !state.checking_recommends(ctx) {
-                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
-                    let assert = Spanned::new(expr.span.clone(), assert);
-                    stms.push(assert);
-                }
-                let assume = StmX::Assume(condition);
-                let assume = Spanned::new(expr.span.clone(), assume);
-                stms.push(assume);
+            if let Some((condition, msg, is_hard_requirement)) = check {
+                stms.extend(field_check_stms(
+                    state,
+                    ctx,
+                    &expr.span,
+                    condition,
+                    msg,
+                    is_hard_requirement,
+                ));
             }
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::UnaryOpr(op, exp))))))
         }
-        ExprX::Binary(op, e1, e2) => {
-            // Handle short-circuiting, when applicable.
-            // The pair (proceed_on, other) means:
-            // If e1 evaluates to `proceed_on`, then evaluate and
-            // return e2; otherwise, return the value `other`
-            // (without evaluating `e2`).
-            // Also note: if `e2` is a pure expression, we don't need to do the
-            // special handling.
-            let short_circuit = match op {
-                BinaryOp::And => Some((true, false)),
-                BinaryOp::Implies => Some((true, true)),
-                BinaryOp::Or => Some((false, true)),
-                _ => None,
-            };
+        ExprX::Logical(op, e1, e2) => {
             let (stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
+            let exp1 = to_exp_or_return_never!(e1.clone(), stms1);
+
             let (stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
-            match (short_circuit, stms2.len()) {
-                (Some((proceed_on, other)), n) if n > 0 => {
-                    // and:
-                    //   if e1 { stmts2; e2 } else { false }
-                    // implies:
-                    //   if e1 { stmts2; e2 } else { true }
-                    // or:
-                    //   if e1 { true } else { stmts2; e2 }
-                    let bx = ExpX::Const(Constant::Bool(other));
-                    let b = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), bx);
-                    let b = Maybe::Some(Value::Exp(b));
-                    if proceed_on {
-                        Ok(if_to_stm(state, expr, stms1, &e1, stms2, &e2, vec![], &b))
-                    } else {
-                        Ok(if_to_stm(state, expr, stms1, &e1, vec![], &b, stms2, &e2))
-                    }
-                }
-                _ => {
-                    let mut sequr = Sequencer::new();
-                    push_or_return_never!(sequr.push(
-                        stms1,
-                        e1,
-                        Immutable(LocalDeclKind::TempViaAssign)
-                    ));
-                    push_or_return_never!(sequr.push(
-                        stms2,
-                        e2,
-                        Immutable(LocalDeclKind::TempViaAssign)
-                    ));
-                    let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state)?;
 
-                    let (mut stms3, bin) =
-                        binary_op_exp(ctx, state, &expr.span, &expr.typ, *op, &e1, &e2);
-                    stms.append(&mut stms3);
+            if stms2.len() == 0
+                && let Maybe::Some(exp2) = e2.clone().to_maybe_exp()
+            {
+                // If e2 is pure, we can lower the logical op to an ordinary, pure Exp
+                let sst_op = match op {
+                    LogicalOp::And => sst::BinaryOp::And,
+                    LogicalOp::Implies => sst::BinaryOp::Implies,
+                    LogicalOp::Or => sst::BinaryOp::Or,
+                };
+                let binx = ExpX::Binary(sst_op, exp1.clone(), exp2.clone());
+                let bin = SpannedTyped::new(&expr.span, &bool_typ(), binx);
+                Ok((stms1, Maybe::Some(Value::Exp(bin))))
+            } else {
+                // Handle short-circuiting.
+                // The pair (proceed_on, other) means:
+                // If e1 evaluates to `proceed_on`, then evaluate and
+                // return e2; otherwise, return the value `other`
+                // (without evaluating `e2`).
+                let (proceed_on, other) = match op {
+                    LogicalOp::And => (true, false),
+                    LogicalOp::Implies => (true, true),
+                    LogicalOp::Or => (false, true),
+                };
 
-                    Ok((stms, Maybe::Some(Value::Exp(bin))))
+                // and:
+                //   if e1 { stmts2; e2 } else { false }
+                // implies:
+                //   if e1 { stmts2; e2 } else { true }
+                // or:
+                //   if e1 { true } else { stmts2; e2 }
+                let bx = ExpX::Const(Constant::Bool(other));
+                let b = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), bx);
+                let b = Maybe::Some(Value::Exp(b));
+                if proceed_on {
+                    Ok(if_to_stm(state, expr, stms1, &e1, stms2, &e2, vec![], &b))
+                } else {
+                    Ok(if_to_stm(state, expr, stms1, &e1, vec![], &b, stms2, &e2))
                 }
             }
+        }
+        ExprX::Binary(op, e1, e2) => {
+            let mut sequr = Sequencer::new();
+
+            let (stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
+            push_or_return_never!(sequr.push(stms1, e1, Immutable(LocalDeclKind::TempViaAssign)));
+
+            let (stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
+            push_or_return_never!(sequr.push(stms2, e2, Immutable(LocalDeclKind::TempViaAssign)));
+            let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state)?;
+
+            let (mut stms3, bin) = binary_op_exp(ctx, state, &expr.span, &expr.typ, *op, &e1, &e2);
+            stms.append(&mut stms3);
+
+            Ok((stms, Maybe::Some(Value::Exp(bin))))
         }
         ExprX::BinaryOpr(op, e1, e2) => {
             let (stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
@@ -1915,10 +2165,11 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::NonSpecClosure {
             params,
-            proof_fn_modes: _,
+            proof_fn_modes,
             body,
             requires,
             ensures,
+            mask_spec,
             ret,
             external_spec,
         } => {
@@ -1927,8 +2178,17 @@ pub(crate) fn expr_to_stm_opt(
             // Emit the internals of the closure (ClosureInner behaves like a dead-end)
             // This includes assuming the requires, asserting the ensures, everything else
 
-            let (inner_stms, typ_inv_vars) =
-                exec_closure_body_stms(ctx, state, params, ret, body, requires, ensures)?;
+            let (inner_stms, typ_inv_vars) = exec_closure_body_stms(
+                ctx,
+                state,
+                params,
+                ret,
+                body,
+                requires,
+                ensures,
+                mask_spec,
+                proof_fn_modes.is_some(),
+            )?;
             let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_stms)));
             let clos =
                 Spanned::new(expr.span.clone(), StmX::ClosureInner { body: block, typ_inv_vars });
@@ -1998,7 +2258,7 @@ pub(crate) fn expr_to_stm_opt(
                 let e_exists = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, e_exists));
                 let error = error(
                     &cond_exp.span,
-                    "recommendation not met: cannot prove that there exists values that satisfy the condition of the choose expression",
+                    "recommendation not met: cannot prove that there exist values that satisfy the condition of the choose expression",
                 );
                 let assertx = StmX::Assert(state.next_assert_id(), Some(error), e_exists);
                 check_stms.push(Spanned::new(cond_exp.span.clone(), assertx));
@@ -2027,8 +2287,12 @@ pub(crate) fn expr_to_stm_opt(
             let skip = !ctx.reveal_group_set.contains(x) && !ctx.func_map.contains_key(x);
 
             if skip {
-                state.diagnostics.report(&warning(
-                    &expr.span, "this reveal/fuel statement has no effect because no verification condition in this module depends on this function").to_any());
+                ctx.warning_maybe_if_in_local_crate(
+                    &expr.span,
+                    &WarningAllow::DeadReveal,
+                    || "this reveal/fuel statement has no effect because no verification condition in this module depends on this function",
+                    |msg| state.diagnostics.report(&msg.to_any()),
+                );
             }
 
             let stms = if skip {
@@ -2051,6 +2315,10 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::RevealString(path) => {
             let stm = Spanned::new(expr.span.clone(), StmX::RevealString(path.clone()));
+            Ok((vec![stm], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
+        }
+        ExprX::RevealByteString(bytes) => {
+            let stm = Spanned::new(expr.span.clone(), StmX::RevealByteString(bytes.clone()));
             Ok((vec![stm], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
         ExprX::Header(_) => {
@@ -2146,7 +2414,7 @@ pub(crate) fn expr_to_stm_opt(
             if let Maybe::Some(Value::Exp(_)) = e {
                 return Err(error(
                     &expr.span,
-                    "'assert ... by' block cannot end with an expression",
+                    "`assert ... by` block cannot end with an expression",
                 ));
             }
             let (require_checks, require_exp) = expr_to_pure_exp_check(ctx, state, &require)?;
@@ -2176,7 +2444,7 @@ pub(crate) fn expr_to_stm_opt(
             state.pop_scope();
 
             // Translate ensure into an assume
-            let implyx = ExprX::Binary(BinaryOp::Implies, require.clone(), ensure.clone());
+            let implyx = ExprX::Logical(LogicalOp::Implies, require.clone(), ensure.clone());
             let imply = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), implyx);
             state.push_scope();
             let vars = state.rename_binders_exp(vars);
@@ -2215,7 +2483,7 @@ pub(crate) fn expr_to_stm_opt(
                     if let Maybe::Some(Value::Exp(_)) = e {
                         return Err(error(
                             &expr.span,
-                            "'assert ... by' block cannot end with an expression",
+                            "`assert ... by` block cannot end with an expression",
                         ));
                     }
                     inner_body.extend(proof_stms);
@@ -2294,12 +2562,14 @@ pub(crate) fn expr_to_stm_opt(
                 AssertQueryMode::BitVector => {
                     // check if assertion block consists only of requires/ensures
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
-                    let proof_block_err =
-                        Err(error(&expr.span, "assert_bitvector_by cannot contain a proof block"));
+                    let proof_block_err = Err(error(
+                        &expr.span,
+                        "`assert ... by(bit_vector)` cannot contain a proof block",
+                    ));
                     if let Maybe::Some(Value::Exp(_)) = e {
                         return Err(error(
                             &expr.span,
-                            "assert_bitvector_by cannot contain a return value",
+                            "`assert ... by(bit_vector)` cannot contain a return value",
                         ));
                     }
                     if proof_stms.len() > 1 {
@@ -2418,33 +2688,62 @@ pub(crate) fn expr_to_stm_opt(
             loop_isolation,
             allow_complex_invariants,
             is_for_loop,
+            assume_termination,
             label,
             cond,
             body,
             invs,
             decrease,
+            atomic_call,
+            known_no_back_edge,
+            source,
         } => {
             let is_for_loop = *is_for_loop;
+            let produces_value =
+                !crate::ast_util::is_unit(&expr.typ) && !crate::ast_util::is_never(&expr.typ);
             let loop_isolation = *loop_isolation;
+            if produces_value && loop_isolation {
+                return Err(error(
+                    &expr.span,
+                    "Verus does not currently support loop isolation for loops with value-bearing `break`",
+                )
+                .help("add `#[verifier::loop_isolation(false)]` to this loop"));
+            }
             let allow_complex_invariants = *allow_complex_invariants;
             let id = state.loop_id_counter;
             state.loop_id_counter += 1;
             let invs = if is_for_loop && !loop_isolation {
                 // The syntax macro doesn't have enough context to know whether ensures is needed,
                 // so we have to fix up the invariants here.
-                Arc::new(
-                    invs.iter()
-                        .filter_map(|inv| match inv.kind {
-                            LoopInvariantKind::InvariantExceptBreak => Some(inv.clone()),
-                            LoopInvariantKind::InvariantAndEnsures => Some(inv.clone()),
-                            LoopInvariantKind::Ensures => None,
-                        })
-                        .collect(),
-                )
+                let invs = invs
+                    .iter()
+                    .filter(|inv| match inv.kind {
+                        LoopInvariantKind::InvariantExceptBreak => true,
+                        LoopInvariantKind::InvariantAndEnsures => true,
+                        LoopInvariantKind::Ensures => false,
+                    })
+                    .cloned()
+                    .collect();
+
+                Arc::new(invs)
             } else {
                 invs.clone()
             };
-            let num_breaks = loop_body_has_breaks(label, body);
+            let (num_breaks, num_iso_breaks) = loop_has_breaks(label, expr);
+            if !loop_isolation && num_iso_breaks > 0 {
+                // our encoding for loop_isolation=false requires all 'break' statements to be
+                // in the same query
+                return Err(error(
+                    &expr.span,
+                    format!(
+                        "{:} contains `break` statement inside a nested loop with `loop_isolation(true)`",
+                        match source {
+                            LoopSource::Loop => "loop with `loop_isolation(false)`",
+                            LoopSource::BreakableBlock => "breakable block",
+                        }
+                    ),
+                ));
+            }
             let has_user_break = num_breaks > if is_for_loop { 1 } else { 0 };
             let invs = if is_for_loop && has_user_break {
                 // If the user added a break statement, then we need to remove the auto-generated ensures
@@ -2477,15 +2776,15 @@ pub(crate) fn expr_to_stm_opt(
             if allow_complex_invariants && loop_isolation && !is_for_loop {
                 return Err(error(
                     &expr.span,
-                    "attribute 'allow_complex_invariants' can only be used with 'loop_isolation(false)'",
+                    "attribute `allow_complex_invariants` can only be used with `loop_isolation(false)`",
                 ));
             }
 
             if !loop_isolation && !simple_invs && !allow_complex_invariants {
                 return Err(error(
                     &expr.span,
-                    "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break \
-                        or ensures, unless #[verifier::allow_complex_invariants] is used",
+                    "loop invariants with `loop_isolation(false)` cannot be `invariant_except_break` \
+                        or `ensures`, unless `#[verifier::allow_complex_invariants]` is used",
                 ));
             }
             let mut cnd = if let Some(cond) = cond {
@@ -2506,26 +2805,56 @@ pub(crate) fn expr_to_stm_opt(
             } else {
                 None
             };
-            if decrease.len() == 0
-                && !ctx
-                    .fun
-                    .as_ref()
-                    .map(|c| {
-                        let function = &ctx.func_map[&c.current_fun];
-                        function.x.attrs.exec_assume_termination
-                            || function.x.attrs.exec_allows_no_decreases_clause
-                    })
-                    .unwrap_or(false)
+            if decrease.is_empty()
+                && !assume_termination
+                && ctx.fun.as_ref().is_none_or(|fun_ctx| {
+                    let function = &ctx.func_map[&fun_ctx.current_fun];
+                    !function.x.attrs.exec_assume_termination
+                        && !function.x.attrs.exec_allows_no_decreases_clause
+                })
             {
-                return Err(error(&expr.span, "loop must have a decreases clause")
-                    .help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function"));
+                return Err(error(&expr.span, "loop must have a `decreases` clause")
+                            .help("to disable this check, use `#[verifier::exec_allows_no_decreases_clause]` on the function"));
             }
 
-            let (mut stms1, _e1) = expr_to_stm_opt(ctx, state, body)?;
+            let mut body_prefix = Vec::new();
+            let mut au_branch_bool = None;
+            if *atomic_call {
+                let bool_typ = Arc::new(TypX::Bool);
+                let (var_id, var_exp) = state.declare_temp_var_stm(
+                    &expr.span,
+                    &bool_typ,
+                    PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
+                );
+                body_prefix.push(assume_has_typ(&var_id, &bool_typ, &expr.span));
+                au_branch_bool = Some(var_exp.clone());
+                state.branch_bool_var = Some((var_id, var_exp));
+            }
+
+            let loop_result = if !produces_value {
+                None
+            } else {
+                let (dest, result) = state.declare_temp_var_stm(
+                    &expr.span,
+                    &expr.typ,
+                    PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::LoopBreakValue)),
+                );
+                let previous = state.loop_result_dests.insert(label.clone(), dest);
+                assert!(previous.is_none());
+                Some(result)
+            };
+
+            let (mut body_stms, _val) = expr_to_stm_opt(ctx, state, body)?;
+            if loop_result.is_some() {
+                let removed = state.loop_result_dests.remove(label);
+                assert!(removed.is_some());
+            }
+            state.branch_bool_var = None;
+
             let mut check_recommends: Vec<Stm> = Vec::new();
             let mut invs1: Vec<crate::sst::LoopInv> = Vec::new();
             for inv in invs.iter() {
-                // Ensures clauses are unnecessary if loop_isolation is true,
+                // Ensures clauses are unnecessary if loop_isolation is false,
                 // since the weakest precondition already tracks all the paths through the breaks into the code after the loop
                 if !loop_isolation
                     && allow_complex_invariants
@@ -2563,18 +2892,18 @@ pub(crate) fn expr_to_stm_opt(
                 decrease1.push(exp);
             }
             if ctx.checking_spec_preconditions() {
-                stms1.splice(0..0, check_recommends);
+                body_stms.splice(0..0, check_recommends);
             }
             if !simple_while {
                 // must be "loop", not "while"
                 if let Some((c_stm, c_exp)) = cnd {
                     // convert while into loop
                     let not_c = c_exp.new_x(ExpX::Unary(UnaryOp::Not, c_exp.clone()));
-                    let break_stmx = StmX::BreakOrContinue { label: None, is_break: true };
+                    let break_stmx = StmX::BreakOrContinue { label: label.clone(), is_break: true };
                     let break_stm = Spanned::new(c_exp.span.clone(), break_stmx);
                     let if_stm = Spanned::new(c_exp.span.clone(), StmX::If(not_c, break_stm, None));
-                    stms1.insert(0, c_stm);
-                    stms1.insert(1, if_stm);
+                    body_stms.insert(0, c_stm);
+                    body_stms.insert(1, if_stm);
                     cnd = None;
                 }
             }
@@ -2582,35 +2911,57 @@ pub(crate) fn expr_to_stm_opt(
                 // !loop_isolation handling expects a "loop", not a "while"
                 assert!(cnd.is_none());
             }
+            body_stms.splice(0..0, body_prefix);
             let pre_local_decls =
                 crate::recursion::mk_decreases_at_entry_pre(ctx, Some(id), &decrease1)?;
             state.pre_local_decls.extend(pre_local_decls);
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::Loop {
+                    pre_stms: Arc::new(vec![]),
                     loop_isolation,
                     is_for_loop,
                     id,
                     label: label.clone(),
                     cond: cnd,
-                    body: stms_to_one_stm(&body.span, stms1),
+                    body: stms_to_one_stm(&body.span, body_stms),
                     invs: Arc::new(invs1),
                     decrease: Arc::new(decrease1),
+                    au_branch_bool,
                     // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
                     modified_vars: None,
-                    pre_modified_params: None,
+                    pre_modified_params_incl: None,
+                    pre_modified_params_excl: None,
+                    known_no_back_edge: *known_no_back_edge,
                 },
             );
+
             if can_control_flow_reach_after_loop(expr) {
-                let ret = Maybe::Some(Value::ImplicitUnit(expr.span.clone()));
+                let ret = Maybe::Some(match loop_result {
+                    Some(result) => Value::Exp(result),
+                    None => Value::ImplicitUnit(expr.span.clone()),
+                });
                 Ok((vec![while_stm], ret))
             } else {
+                // If it's an infinite loop, add 'assume(false)' and return Never.
+                // Note: this is usually redundant with the NeverToAny node, which usually
+                // exists outside the loop. However, the NeverToAny node is not always
+                // in the optimal place. In the following:
+                //
+                // {
+                //     loop { };     // semi-colon is necessary for this example
+                //     assert(false)
+                // }
+                //
+                // the NeverToAny node goes outside the outer block, thus it would be applied
+                // after the assert. We prefer to return Never early, immediately after the loop.
                 let stms = vec![while_stm, assume_false(&expr.span)];
                 Ok((stms, Maybe::Never))
             }
         }
-        ExprX::OpenInvariant(inv, binder, body, atomicity) => {
+        ExprX::OpenInvariant(credit, inv, binder, body, atomicity) => {
+            // credit;
             // let inv_tmp = inv;
             // OpenInvariantBlock(inv_tmp.namespace(), {
             //   let mut inner = inner_tmp;
@@ -2621,8 +2972,12 @@ pub(crate) fn expr_to_stm_opt(
             //   assert(inv_tmp.inv(inner));
             // });
 
+            let (mut stms0, credit_exp) = expr_to_stm_opt(ctx, state, credit)?;
+            let _credit_exp = to_exp_or_return_never!(credit_exp, stms0);
+
             // Evaluate `inv`
-            let (mut stms0, big_inv_exp) = expr_to_stm_opt(ctx, state, inv)?;
+            let (stms_inv, big_inv_exp) = expr_to_stm_opt(ctx, state, inv)?;
+            stms0.extend(stms_inv);
             let big_inv_exp = to_exp_or_return_never!(big_inv_exp, stms0);
 
             // Assign it to a constant tmp variable to ensure it is constant
@@ -2655,7 +3010,12 @@ pub(crate) fn expr_to_stm_opt(
             let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
 
             if !state.checking_recommends(ctx) {
-                for assertion in state.mask.as_ref().unwrap().contains(ctx, &ns_exp) {
+                for assertion in state.mask.as_ref().unwrap().contains(
+                    ctx,
+                    &ns_exp,
+                    &expr.span,
+                    MaskQueryKind::OpenInvariant,
+                ) {
                     stms1.push(Spanned::new(
                         expr.span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
@@ -2670,7 +3030,6 @@ pub(crate) fn expr_to_stm_opt(
             stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(main_inv.clone())));
 
             // Process the body
-
             state.push_scope();
             std::mem::swap(&mut state.mask, &mut inner_mask);
             let (body_stms, body_e) = expr_to_stm_opt(ctx, state, body)?;
@@ -2681,12 +3040,11 @@ pub(crate) fn expr_to_stm_opt(
             stms1.push(body_stm);
 
             // Assert the invariant at the end
-
             match body_e.to_maybe_exp() {
                 Maybe::Some(_e) => {
                     if !ctx.checking_spec_preconditions() {
                         let error =
-                            error(&expr.span, "Cannot show invariant holds at end of block");
+                            error(&expr.span, "cannot show invariant holds at end of block");
                         // Note, we re-use the `main_inv` exp here, but it contains a mutable
                         stms1.push(Spanned::new(
                             expr.span.clone(),
@@ -2704,6 +3062,631 @@ pub(crate) fn expr_to_stm_opt(
             stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(block_stm)));
             return Ok((stms0, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))));
         }
+        ExprX::TryOpenAtomicUpdate(au_expr, x_bind, body) => {
+            // This is roughtly what the generated SST looks like:
+            //
+            // ```
+            // let au = $au_expr;
+            // let x = new existential;
+            //
+            // assume(au.req(x));
+            // assert(au.outer_mask() ⊆ state.mask);
+            //
+            // let y;
+            // with state.mask = au.inner_mask() {
+            //     let $mut $x = x;
+            //     y = $body;
+            // }
+            //
+            // assert(au.ens(x, y));
+            //
+            // if branch_bool(y) {
+            //     assume(au.input() == x);
+            //     assume(au.output() == y);
+            //     assume(au.resolves());
+            //
+            //     let resolution = new existential;
+            //     assume(resolution.atomic_update() == au);
+            //     Ok(resolution)
+            // } else {
+            //     Err(au)
+            // }
+            // ```
+
+            let (mut stms, au_raw_exp) = expr_to_stm_opt(ctx, state, au_expr)?;
+            let au_raw_val = unwrap_or_return_never!(au_raw_exp, stms);
+            let au_typ = undecorate_typ(&au_expr.typ);
+            let au_var_exp = state.make_tmp_var_for_exp(&mut stms, au_raw_val.to_exp());
+
+            let TypX::Datatype(_, typ_args, _) = au_typ.as_ref() else {
+                return crate::util::err_span(
+                    expr.span.clone(),
+                    "malformed atomic update block; atomic update should be a datatype",
+                );
+            };
+
+            let [x_typ, y_typ, _pred_typ] = typ_args.as_slice() else {
+                return crate::util::err_span(
+                    expr.span.clone(),
+                    "malformed atomic update block; atomic update should have four type params",
+                );
+            };
+
+            let (x_var_id, x_var_exp) = state.declare_temp_var_stm(
+                &expr.span,
+                x_typ,
+                PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
+            );
+            stms.push(assume_has_typ(&x_var_id, x_typ, &expr.span));
+
+            // assume atomic requires
+
+            let call_req = ExpX::Call(
+                CallFun::Fun(def::fn_au_req(), None),
+                typ_args.clone(),
+                Arc::new(vec![au_var_exp.clone(), x_var_exp.clone()]),
+            );
+            let call_req = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_req);
+            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_req.clone())));
+
+            // check invariant mask
+
+            let int_typ = Arc::new(TypX::Int(IntRange::Int));
+            let int_set_typ = Arc::new(TypX::Datatype(
+                crate::ast::Dt::Path(def::iset_type_path()),
+                Arc::new(vec![int_typ]),
+                Default::default(),
+            ));
+
+            let outer_mask = MaskSet::arbitrary(&SpannedTyped::new(
+                &expr.span,
+                &int_set_typ,
+                ExpX::Call(
+                    CallFun::Fun(def::fn_au_outer_mask(), None),
+                    typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                ),
+            ));
+
+            let inner_mask = MaskSet::arbitrary(&SpannedTyped::new(
+                &expr.span,
+                &int_set_typ,
+                ExpX::Call(
+                    CallFun::Fun(def::fn_au_inner_mask(), None),
+                    typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                ),
+            ));
+
+            if !state.checking_recommends(ctx) {
+                let state_mask = state.mask.as_ref().unwrap();
+                for assertion in outer_mask.subset_of(
+                    ctx,
+                    state_mask,
+                    &expr.span,
+                    MaskQueryKind::OpenAtomicUpdate,
+                ) {
+                    stms.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
+            }
+
+            // generate binder for x
+
+            let x_bind_var_id = state.get_var_unique_id(&x_bind.name);
+            state.pre_local_decls.push(PreLocalDecl {
+                ident: x_bind_var_id.clone(),
+                typ: x_typ.clone(),
+                kind: PreLocalDeclKind::StmtLet,
+            });
+
+            stms.push(init_var(&expr.span, &x_bind_var_id, &x_var_exp));
+
+            // generate body
+
+            state.push_scope();
+            let backup_mask = std::mem::replace(&mut state.mask, Some(inner_mask));
+
+            let (body_stms, body_exp) = expr_to_stm_opt(ctx, state, body)?;
+            stms.extend(body_stms);
+
+            let body_exp = to_exp_or_return_never!(body_exp, stms);
+            let y_var_exp = state.make_tmp_var_for_exp(&mut stms, body_exp);
+
+            state.mask = backup_mask;
+            state.pop_scope();
+
+            // assert atomic ensures
+
+            if !state.checking_recommends(ctx) {
+                let call_ens = ExpX::Call(
+                    CallFun::Fun(def::fn_au_ens(), None),
+                    typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone(), x_var_exp.clone(), y_var_exp.clone()]),
+                );
+
+                let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
+                let error =
+                    error(&expr.span, "cannot show atomic postcondition holds at end of block");
+
+                stms.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assert(state.next_assert_id(), Some(error), call_ens),
+                ));
+            }
+
+            // generate condition
+
+            let expr_typ = undecorate_typ(&expr.typ);
+            let TypX::Datatype(res_dt, res_ty_args, _) = expr_typ.as_ref() else {
+                panic!("Result should be a datatype");
+            };
+
+            let [resolution_typ, _au_typ] = res_ty_args.as_slice() else {
+                panic!("Result should have two type arguments");
+            };
+
+            let ok_variant = Arc::new("Ok".to_owned());
+            let err_variant = Arc::new("Err".to_owned());
+            let variant_field = Arc::new("0".to_owned());
+
+            let branch_bool = SpannedTyped::new(
+                &expr.span,
+                &Arc::new(TypX::Bool),
+                ExpX::Call(
+                    CallFun::Fun(def::fn_branch_bool(), None),
+                    Arc::new(vec![y_typ.clone()]),
+                    Arc::new(vec![y_var_exp.clone()]),
+                ),
+            );
+
+            let cond = Maybe::Some(Value::Exp(branch_bool));
+
+            let (ok_arm_stms, ok_arm_ret_val) = {
+                let mut stms = Vec::new();
+
+                atomic_update_bind_and_resolve(
+                    expr,
+                    typ_args,
+                    &au_var_exp,
+                    &x_var_exp,
+                    &y_var_exp,
+                    &mut stms,
+                );
+
+                let (resolution_var_id, resolution_var_exp) = state.declare_temp_var_stm(
+                    &expr.span,
+                    &resolution_typ,
+                    PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
+                );
+
+                stms.push(assume_has_typ(&resolution_var_id, &resolution_typ, &expr.span));
+                stms.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assume(sst_equal(
+                        &expr.span,
+                        &SpannedTyped::new(
+                            &expr.span,
+                            &au_typ,
+                            ExpX::Call(
+                                CallFun::Fun(def::fn_resolution_atomic_update(), None),
+                                typ_args.clone(),
+                                Arc::new(vec![resolution_var_exp.clone()]),
+                            ),
+                        ),
+                        &au_var_exp,
+                    )),
+                ));
+
+                let out_exp = SpannedTyped::new(
+                    &expr.span,
+                    &expr.typ,
+                    ExpX::Ctor(
+                        res_dt.clone(),
+                        ok_variant.clone(),
+                        Arc::new(vec![Arc::new(BinderX {
+                            name: variant_field.clone(),
+                            a: resolution_var_exp,
+                        })]),
+                    ),
+                );
+
+                (stms, Maybe::Some(Value::Exp(out_exp)))
+            };
+
+            let (err_arm_stms, err_arm_ret_val) = {
+                let stms = Vec::new();
+
+                let out_exp = SpannedTyped::new(
+                    &expr.span,
+                    &expr.typ,
+                    ExpX::Ctor(
+                        res_dt.clone(),
+                        err_variant.clone(),
+                        Arc::new(vec![Arc::new(BinderX {
+                            name: variant_field.clone(),
+                            a: au_var_exp,
+                        })]),
+                    ),
+                );
+
+                (stms, Maybe::Some(Value::Exp(out_exp)))
+            };
+
+            return Ok(if_to_stm(
+                state,
+                expr,
+                stms,
+                &cond,
+                ok_arm_stms,
+                &ok_arm_ret_val,
+                err_arm_stms,
+                &err_arm_ret_val,
+            ));
+        }
+        ExprX::AtomicUpdateInitDummy => {
+            let mut stms = Vec::<Stm>::new();
+
+            let au_typ = undecorate_typ(&expr.typ);
+            let TypX::Datatype(_, au_typ_args, _) = au_typ.as_ref() else {
+                panic!("atomic update type should have type arguments")
+            };
+
+            let [_x_typ, _y_typ, pred_typ] = au_typ_args.as_slice() else {
+                panic!("atomic update type should have exactly three type arguments")
+            };
+
+            let au_pred_args = std::mem::take(&mut state.au_pred_args);
+            let args_exp = match <[_; 1]>::try_from(au_pred_args) {
+                Ok([single]) => single.clone(),
+                Err(exps) => crate::sst_util::sst_tuple(&expr.span, &Arc::new(exps)),
+            };
+
+            // construct predicate type
+            let (pred_var_id, pred_var_exp) = state.declare_temp_var_stm(
+                &expr.span,
+                pred_typ,
+                PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
+            );
+            stms.push(assume_has_typ(&pred_var_id, pred_typ, &expr.span));
+
+            let call_pred_args = SpannedTyped::new(
+                &expr.span,
+                &args_exp.typ,
+                ExpX::Call(
+                    CallFun::Fun(def::fn_pred_args(), None),
+                    Arc::new(vec![pred_typ.clone(), args_exp.typ.clone()]),
+                    Arc::new(vec![pred_var_exp.clone()]),
+                ),
+            );
+
+            stms.push(Spanned::new(
+                expr.span.clone(),
+                StmX::Assume(sst_equal(&expr.span, &call_pred_args, &args_exp)),
+            ));
+
+            // construct atomic update
+            let (au_var_id, au_var_exp) =
+                state.declare_temp_var_stm(&expr.span, &au_typ, PreLocalDeclKind::Param);
+            stms.push(assume_has_typ(&au_var_id, &au_typ, &expr.span));
+
+            let call_au_pred = SpannedTyped::new(
+                &expr.span,
+                pred_typ,
+                ExpX::Call(
+                    CallFun::Fun(def::fn_au_pred(), None),
+                    au_typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                ),
+            );
+
+            stms.push(Spanned::new(
+                expr.span.clone(),
+                StmX::Assume(sst_equal(&expr.span, &call_au_pred, &pred_var_exp)),
+            ));
+
+            state.au_var_exp = Some(au_var_exp.clone());
+
+            Ok((stms, Maybe::Some(Value::Exp(au_var_exp))))
+        }
+        ExprX::Atomically(kind, ghost_au_var_id, body_expr) => {
+            // ```
+            // let pred = $pred_expr;
+            // let au = new existential;
+            // assume(pred(au) == pred);
+            //
+            // with state.mask = outer_mask(au) {
+            //     () = $body;
+            // }
+            //
+            // au
+            // ```
+
+            let au_typ = undecorate_typ(&expr.typ);
+            let TypX::Datatype(_, au_typ_args, _) = au_typ.as_ref() else {
+                panic!("atomic update should be a datatype")
+            };
+
+            let mut stms = Vec::<Stm>::new();
+
+            // rebind atomic update
+            state.pre_local_decls.push(PreLocalDecl {
+                ident: ghost_au_var_id.clone(),
+                typ: au_typ.clone(),
+                kind: PreLocalDeclKind::Param,
+            });
+
+            let Some(temp_au_var_exp) = &state.au_var_exp else {
+                panic!("atomic update should have been created by ExprX::AtomicUpdateInitDummy")
+            };
+
+            stms.push(init_var(&expr.span, &ghost_au_var_id, temp_au_var_exp));
+            let au_var_exp =
+                SpannedTyped::new(&expr.span, &au_typ, ExpX::Var(ghost_au_var_id.clone()));
+            state.au_var_exp = Some(au_var_exp.clone());
+
+            // check invariant mask
+            let int_typ = Arc::new(TypX::Int(IntRange::Int));
+            let int_set_typ = Arc::new(TypX::Datatype(
+                Dt::Path(def::iset_type_path()),
+                Arc::new(vec![int_typ]),
+                Default::default(),
+            ));
+
+            let outer_mask = MaskSet::arbitrary(&SpannedTyped::new(
+                &expr.span,
+                &int_set_typ,
+                ExpX::Call(
+                    CallFun::Fun(def::fn_au_outer_mask(), None),
+                    au_typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                ),
+            ));
+
+            // generate branch bool
+            let mut branch_bool_exp = None;
+            if let AtomicallyKind::Simple = kind {
+                let bool_typ = Arc::new(TypX::Bool);
+                let (var_id, var_exp) = state.declare_temp_var_stm(
+                    &expr.span,
+                    &bool_typ,
+                    PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
+                );
+                stms.push(assume_has_typ(&var_id, &bool_typ, &expr.span));
+                branch_bool_exp = Some(var_exp.clone());
+                state.branch_bool_var = Some((var_id, var_exp));
+            }
+
+            // generate body
+            let backup_mask = std::mem::replace(&mut state.mask, Some(outer_mask));
+            let (body_stms, exp) = expr_to_stm_opt(ctx, state, body_expr)?;
+            stms.extend(body_stms);
+            state.mask = backup_mask;
+
+            let value = exp.expect_exp();
+            let TypX::Datatype(Dt::Tuple(0), ..) = value.typ.as_ref() else {
+                panic!("malformed atomic function call; body does not return unit");
+            };
+
+            // check branch bool
+            if !state.checking_recommends(ctx)
+                && let Some(exp) = branch_bool_exp
+            {
+                let msg = error(&expr.span, "cannot show atomic update was committed").help(
+                    "if the atomic update has an abort case, please use `atomically loop` instead",
+                );
+                stms.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assert(state.next_assert_id(), Some(msg), exp),
+                ));
+            }
+
+            // return atomic update
+            Ok((stms, Maybe::Some(Value::Exp(au_var_exp))))
+        }
+        ExprX::Update(x_expr) => {
+            // ```
+            // let x = $x_expr;
+            // let y = new existential;
+            //
+            // recommend(inner_mask(au) ⊆ outer_mask(au));
+            // assert(inner_mask(au) ⊆ state.mask);
+            //
+            // assert(req(au, x));
+            // assume(ens(au, x, y));
+            //
+            // if branch_bool(y) {
+            //     assume(input(au, x));
+            //     assume(output(au, y));
+            //     assume(resolves(au));
+            // }
+            //
+            // y
+            // ```
+
+            let Some(au_var_exp) = state.au_var_exp.clone() else {
+                panic!("update function outside of atomically block");
+            };
+
+            let TypX::Datatype(_, au_typ_args, _) = au_var_exp.typ.as_ref() else {
+                panic!("atomic update should be a datatype")
+            };
+
+            let [x_typ, y_typ, _pred_typ] = au_typ_args.as_slice() else {
+                panic!("atomic update type should have exactly three type arguments")
+            };
+
+            let (mut stms, x_raw_exp) = expr_to_stm_opt(ctx, state, x_expr)?;
+            let x_raw_exp = unwrap_or_return_never!(x_raw_exp, stms).to_exp();
+            let (x_var_id, x_var_exp) = state.declare_temp_assign(&x_expr.span, x_typ);
+            stms.push(init_var(&x_expr.span, &x_var_id, &x_raw_exp));
+
+            let (y_var_id, y_var_exp) = state.declare_temp_var_stm(
+                &expr.span,
+                y_typ,
+                PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
+            );
+            stms.push(assume_has_typ(&y_var_id, y_typ, &expr.span));
+
+            // check invariant mask
+
+            let int_typ = Arc::new(TypX::Int(IntRange::Int));
+            let int_set_typ = Arc::new(TypX::Datatype(
+                Dt::Path(def::iset_type_path()),
+                Arc::new(vec![int_typ]),
+                Default::default(),
+            ));
+
+            let inner_mask = MaskSet::arbitrary(&SpannedTyped::new(
+                &expr.span,
+                &int_set_typ,
+                ExpX::Call(
+                    CallFun::Fun(def::fn_au_inner_mask(), None),
+                    au_typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                ),
+            ));
+
+            if state.checking_recommends(ctx) {
+                let outer_mask = MaskSet::arbitrary(&SpannedTyped::new(
+                    &expr.span,
+                    &int_set_typ,
+                    ExpX::Call(
+                        CallFun::Fun(def::fn_au_outer_mask(), None),
+                        au_typ_args.clone(),
+                        Arc::new(vec![au_var_exp.clone()]),
+                    ),
+                ));
+
+                for assertion in inner_mask.subset_of(
+                    ctx,
+                    &outer_mask,
+                    &au_var_exp.span,
+                    MaskQueryKind::AtomicUpdateWellFormed,
+                ) {
+                    stms.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
+            } else {
+                let state_mask = state.mask.as_ref().unwrap();
+                for assertion in inner_mask.subset_of(
+                    ctx,
+                    state_mask,
+                    &expr.span,
+                    MaskQueryKind::UpdateFunctionCall,
+                ) {
+                    stms.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
+            }
+
+            // assert atomic requires
+
+            let call_req = ExpX::Call(
+                CallFun::Fun(def::fn_au_req(), None),
+                au_typ_args.clone(),
+                Arc::new(vec![au_var_exp.clone(), x_var_exp.clone()]),
+            );
+
+            let call_req = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_req);
+            if !state.checking_recommends(ctx) {
+                stms.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assert(
+                        state.next_assert_id(),
+                        Some(error(
+                            &expr.span,
+                            "cannot show atomic precondition holds before update function",
+                        )),
+                        call_req,
+                    ),
+                ));
+            }
+
+            // assume atomic ensures
+
+            let call_ens = SpannedTyped::new(
+                &expr.span,
+                &Arc::new(TypX::Bool),
+                ExpX::Call(
+                    CallFun::Fun(def::fn_au_ens(), None),
+                    au_typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone(), x_var_exp.clone(), y_var_exp.clone()]),
+                ),
+            );
+
+            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_ens)));
+
+            // generate conditional
+
+            let branch_bool_exp = SpannedTyped::new(
+                &expr.span,
+                &Arc::new(TypX::Bool),
+                ExpX::Call(
+                    CallFun::Fun(def::fn_branch_bool(), None),
+                    Arc::new(vec![y_typ.clone()]),
+                    Arc::new(vec![y_var_exp.clone()]),
+                ),
+            );
+
+            let Some((branch_bool_var_id, branch_bool_var_exp)) = &state.branch_bool_var else {
+                panic!("must be inside atomic function call loop")
+            };
+
+            stms.push(init_var(&expr.span, branch_bool_var_id, &branch_bool_exp));
+            let cond = branch_bool_var_exp.clone();
+
+            let if_body_stm = {
+                let mut stms = Vec::new();
+                atomic_update_bind_and_resolve(
+                    expr,
+                    au_typ_args,
+                    &au_var_exp,
+                    &x_var_exp,
+                    &y_var_exp,
+                    &mut stms,
+                );
+
+                stms_to_one_stm(&expr.span, stms)
+            };
+
+            stms.push(Spanned::new(expr.span.clone(), StmX::If(cond, if_body_stm, None)));
+
+            let ret_val = Maybe::Some(Value::Exp(y_var_exp.clone()));
+            return Ok((stms, ret_val));
+        }
+        ExprX::InvMask(mask_spec) => {
+            let (span, exprs, compl) = match mask_spec {
+                MaskSpec::InvariantOpens(span, exprs) => (span, exprs, false),
+                MaskSpec::InvariantOpensExcept(span, exprs) => (span, exprs, true),
+                MaskSpec::InvariantOpensSet(expr) => return expr_to_stm_opt(ctx, state, expr),
+            };
+
+            let mut sequr = Sequencer::new();
+            for expr in exprs.as_ref() {
+                let (exp_stms, ret_val) = expr_to_stm_opt(ctx, state, expr)?;
+                push_or_return_never!(sequr.push(
+                    exp_stms,
+                    ret_val,
+                    Immutable(LocalDeclKind::TempViaAssign)
+                ));
+            }
+
+            let (stms, exps) = sequr.into_stms_exps(state)?;
+            let mask = match compl {
+                false => MaskSet::from_list(&exps, span),
+                true => MaskSet::from_list_complement(&exps, span),
+            };
+
+            let exp = mask.to_exp(ctx);
+            Ok((stms, Maybe::Some(Value::Exp(exp))))
+        }
         ExprX::Return(e1) => {
             let (mut stms, ret_exp) = match e1 {
                 None => (vec![], sst_unit_value(&expr.span)),
@@ -2720,9 +3703,13 @@ pub(crate) fn expr_to_stm_opt(
                 None => {
                     let base_error = error_with_secondary_label(
                         &expr.span,
-                        crate::def::POSTCONDITION_FAILURE.to_string(),
+                        def::POSTCONDITION_FAILURE.to_string(),
                         "at this exit".to_string(),
                     );
+
+                    assert_atomic_update_resolves(ctx, state, &mut stms, |base| {
+                        base.secondary_label(&expr.span, "at this exit")
+                    });
 
                     stms.push(Spanned::new(
                         expr.span.clone(),
@@ -2741,10 +3728,25 @@ pub(crate) fn expr_to_stm_opt(
             stms.push(assume_false(&expr.span));
             Ok((stms, Maybe::Never))
         }
-        ExprX::BreakOrContinue { label, is_break } => {
+        ExprX::BreakOrContinue { label, is_break, value } => {
+            let mut stms = Vec::new();
+            if let Some(value) = value {
+                assert!(*is_break);
+                let (mut value_stms, value) = expr_to_stm_opt(ctx, state, value)?;
+                stms.append(&mut value_stms);
+                let value = match value {
+                    Maybe::Some(value) => value.to_exp(),
+                    Maybe::Never => return Ok((stms, Maybe::Never)),
+                };
+                // Unit-typed loops do not have a result destination.
+                if let Some(dest) = state.loop_result_dests.get(label) {
+                    stms.push(init_var(&expr.span, dest, &value));
+                }
+            }
             let stmx = StmX::BreakOrContinue { label: label.clone(), is_break: *is_break };
             let stm = Spanned::new(expr.span.clone(), stmx);
-            Ok((vec![stm], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
+            stms.push(stm);
+            Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
         ExprX::NeverToAny(e) => {
             let (mut stms, _e) = expr_to_stm_opt(ctx, state, e)?;
@@ -2864,17 +3866,18 @@ pub(crate) fn expr_to_stm_opt(
             let call_expr = SpannedTyped::new(
                 &expr.span,
                 &expr.typ,
-                ExprX::Call(
-                    CallTarget::Fun(
+                ExprX::Call {
+                    target: CallTarget::Fun(
                         crate::ast::CallTargetKind::Static,
-                        fun!(CrateId::Vstd => "future", "exec_await"),
+                        fun!(CrateId::Vstd => "future"; "exec_await"),
                         Arc::new(vec![e.typ.clone()]),
                         Arc::new(vec![]),
                         attrs,
                     ),
-                    Arc::new(vec![e.clone()]),
-                    None,
-                ),
+                    args: Arc::new(vec![e.clone()]),
+                    post_args: None,
+                    body: None,
+                },
             );
             let rewritten = expr_to_stm_opt(ctx, state, &call_expr)?;
             Ok(rewritten)
@@ -2933,6 +3936,7 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, Maybe::Some(Value::Exp(exp1))))
         }
         ExprX::Old(e) => expr_to_stm_opt(ctx, state, e),
+        ExprX::ProphecyDisallowed(_, e) => expr_to_stm_opt(ctx, state, e),
         ExprX::MatchGuardFreeze(scrutinee, body) => {
             let (stms, e) = expr_to_stm_opt(ctx, state, body)?;
             let (stms0, scrutinee) = place_to_exp_pair(ctx, state, scrutinee)?;
@@ -2945,7 +3949,7 @@ pub(crate) fn expr_to_stm_opt(
                 if let Some(span) = crate::sst_vars::find_overlapping_assignment(stm, &loc) {
                     return Err(error(
                         &span,
-                        "Verus doesn't support assigning to scrutinee during match guard",
+                        "Verus does not currently support assigning to the scrutinee during a match guard",
                     ));
                 }
             }
@@ -2990,6 +3994,15 @@ fn expr_to_stm_opt_with_delayed_obligations(
             stms.append(&mut stms2);
             Ok((stms, Maybe::Some((exp1, obligations))))
         }
+        ExprX::UnaryOpr(op @ UnaryOpr::ToDyn(..), e1)
+            if matches!(&*undecorate_typ(&expr.typ), TypX::MutRef(_)) =>
+        {
+            let (mut stms, exp1) = expr_to_stm_opt_with_delayed_obligations(ctx, state, e1)?;
+            let (exp1, obligations) = unwrap_or_return_never!(exp1, stms);
+            let exp1 = exp1.to_exp();
+            let out = mut_ref_to_dyn_sst(state, &expr.span, &mut stms, &exp1, op, &expr.typ);
+            Ok((stms, Maybe::Some((Value::Exp(out), obligations))))
+        }
         _ => {
             let (stms, e) = expr_to_stm_opt(ctx, state, expr)?;
             match e {
@@ -2998,6 +4011,40 @@ fn expr_to_stm_opt_with_delayed_obligations(
             }
         }
     }
+}
+
+fn atomic_update_bind_and_resolve(
+    expr: &Expr,
+    typ_args: &Typs,
+    au_exp: &Exp,
+    x_exp: &Exp,
+    y_exp: &Exp,
+    stms: &mut Vec<Stm>,
+) {
+    for (fun, var_exp) in [(def::fn_au_input(), x_exp), (def::fn_au_output(), y_exp)] {
+        let call_exp = SpannedTyped::new(
+            &expr.span,
+            &var_exp.typ,
+            ExpX::Call(CallFun::Fun(fun, None), typ_args.clone(), Arc::new(vec![au_exp.clone()])),
+        );
+
+        stms.push(Spanned::new(
+            expr.span.clone(),
+            StmX::Assume(sst_equal(&expr.span, &call_exp, var_exp)),
+        ));
+    }
+
+    let call_resolves = SpannedTyped::new(
+        &expr.span,
+        &Arc::new(TypX::Bool),
+        ExpX::Call(
+            CallFun::Fun(def::fn_au_resolves(), None),
+            typ_args.clone(),
+            Arc::new(vec![au_exp.clone()]),
+        ),
+    );
+
+    stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_resolves)));
 }
 
 /// Translate the given binary op given its two arguments as Exps.
@@ -3012,48 +4059,155 @@ fn binary_op_exp(
     e1: &Exp,
     e2: &Exp,
 ) -> (Vec<Stm>, Exp) {
-    let pure_op = match op {
-        BinaryOp::Arith(ArithOp::Add(_)) => BinaryOp::Arith(ArithOp::Add(OverflowBehavior::Allow)),
-        BinaryOp::Arith(ArithOp::Sub(_)) => BinaryOp::Arith(ArithOp::Sub(OverflowBehavior::Allow)),
-        BinaryOp::Arith(ArithOp::Mul(_)) => BinaryOp::Arith(ArithOp::Mul(OverflowBehavior::Allow)),
-        BinaryOp::Arith(ArithOp::EuclideanDiv(_)) => {
-            BinaryOp::Arith(ArithOp::EuclideanDiv(Div0Behavior::Allow))
-        }
-        BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
-            BinaryOp::Arith(ArithOp::EuclideanMod(Div0Behavior::Allow))
-        }
-        BinaryOp::Index(kind, _) => BinaryOp::Index(kind, BoundsCheck::Allow),
-        op => op,
+    let bin = if matches!(
+        op,
+        BinaryOp::Arith(ArithOp::TruncatingDiv(_, _))
+            | BinaryOp::Arith(ArithOp::TruncatingMod(_, _))
+    ) {
+        let f = match op {
+            BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => crate::def::fn_truncating_div(),
+            BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => crate::def::fn_truncating_mod(),
+            _ => unreachable!(),
+        };
+        let call_fun = CallFun::Fun(f, None);
+        let expx = ExpX::Call(call_fun, Arc::new(vec![]), Arc::new(vec![e1.clone(), e2.clone()]));
+        SpannedTyped::new(span, typ, expx)
+    } else if let BinaryOp::UninterpretedFloat(op) = op {
+        let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic));
+        let (var_ident, exp) = state.declare_temp_var_stm(span, typ, kind);
+        let stms = vec![
+            assume_has_typ(&var_ident, typ, span),
+            assume_fp_postcondition(&var_ident, e1, e2, op, &e1.typ, typ, span),
+        ];
+        return (stms, exp);
+    } else if let BinaryOp::BoolInequality(ineq_op) = op {
+        // (a < b) == (!a && b)
+        let (neg_l, neg_r, bin_op) = match ineq_op {
+            crate::ast::InequalityOp::Lt => (Some(UnaryOp::Not), None, sst::BinaryOp::And),
+            crate::ast::InequalityOp::Gt => (None, Some(UnaryOp::Not), sst::BinaryOp::And),
+            crate::ast::InequalityOp::Le => (Some(UnaryOp::Not), None, sst::BinaryOp::Or),
+            crate::ast::InequalityOp::Ge => (None, Some(UnaryOp::Not), sst::BinaryOp::Or),
+        };
+        let l = match neg_l {
+            Some(op) => SpannedTyped::new(&e1.span, &bool_typ(), ExpX::Unary(op, e1.clone())),
+            None => e1.clone(),
+        };
+        let r = match neg_r {
+            Some(op) => SpannedTyped::new(&e2.span, &bool_typ(), ExpX::Unary(op, e2.clone())),
+            None => e2.clone(),
+        };
+        SpannedTyped::new(span, &bool_typ(), ExpX::Binary(bin_op, l, r))
+    } else {
+        let pure_op = match op {
+            // Ops with side-effects are turned into sst ops without side-effects
+            BinaryOp::Arith(ArithOp::Add(_)) => sst::BinaryOp::Arith(sst::ArithOp::Add),
+            BinaryOp::Arith(ArithOp::Sub(_)) => sst::BinaryOp::Arith(sst::ArithOp::Sub),
+            BinaryOp::Arith(ArithOp::Mul(_)) => sst::BinaryOp::Arith(sst::ArithOp::Mul),
+            BinaryOp::Arith(ArithOp::EuclideanDiv(_)) => {
+                sst::BinaryOp::Arith(sst::ArithOp::EuclideanDiv)
+            }
+            BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
+                sst::BinaryOp::Arith(sst::ArithOp::EuclideanMod)
+            }
+            BinaryOp::Bitwise(op, _) => sst::BinaryOp::Bitwise(op),
+            BinaryOp::Index(kind, _) => sst::BinaryOp::Index(kind),
+
+            // Handled in earlier case
+            BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => unreachable!(),
+            BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => unreachable!(),
+            BinaryOp::UninterpretedFloat(..) => unreachable!(),
+            BinaryOp::BoolInequality(..) => unreachable!(),
+
+            // Pure ops
+            BinaryOp::BoolOrNoSC => sst::BinaryOp::Or,
+            BinaryOp::BoolAndNoSC => sst::BinaryOp::And,
+            BinaryOp::BoolXor => sst::BinaryOp::Xor,
+            BinaryOp::HeightCompare { strictly_lt, recursive_function_field } => {
+                sst::BinaryOp::HeightCompare { strictly_lt, recursive_function_field }
+            }
+            BinaryOp::Eq(_) => sst::BinaryOp::Eq,
+            BinaryOp::Ne => sst::BinaryOp::Ne,
+            BinaryOp::Inequality(op) => sst::BinaryOp::Inequality(op),
+            BinaryOp::RealArith(op) => sst::BinaryOp::RealArith(op),
+            BinaryOp::IeeeFloat(op) => sst::BinaryOp::IeeeFloat(op),
+            BinaryOp::StrGetChar => sst::BinaryOp::StrGetChar,
+        };
+        SpannedTyped::new(span, typ, ExpX::Binary(pure_op, e1.clone(), e2.clone()))
     };
-    let bin = SpannedTyped::new(span, typ, ExpX::Binary(pure_op, e1.clone(), e2.clone()));
 
     // Insert bounds check
-    let check = match op {
-        _ if state.view_as_spec => None,
-        BinaryOp::Arith(arith) => match arith {
-            ArithOp::Add(ob) | ArithOp::Sub(ob) | ArithOp::Mul(ob) => match ob {
-                OverflowBehavior::Allow => None,
-                OverflowBehavior::Truncate(_) => None,
-                OverflowBehavior::Error(range) => {
-                    let unary = UnaryOpr::HasType(Arc::new(TypX::Int(range)));
-                    let has_type = ExpX::UnaryOpr(unary, bin.clone());
-                    let has_type = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_type);
-                    Some((has_type, error(span, "possible arithmetic underflow/overflow")))
-                }
-            },
-            ArithOp::EuclideanDiv(d0b) | ArithOp::EuclideanMod(d0b) => match d0b {
-                Div0Behavior::Allow => None,
-                Div0Behavior::Error => {
-                    let zero = ExpX::Const(Constant::Int(BigInt::zero()));
-                    let ne = ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
-                    let ne = SpannedTyped::new(span, &Arc::new(TypX::Bool), ne);
-                    Some((ne, error(span, "possible division by zero")))
-                }
-            },
-        },
+    let checks = match op {
+        _ if state.view_as_spec => [None, None],
+        BinaryOp::Arith(arith) => {
+            let c1 = match arith {
+                ArithOp::Add(ob) | ArithOp::Sub(ob) | ArithOp::Mul(ob) => match ob {
+                    OverflowBehavior::Allow => None,
+                    OverflowBehavior::Truncate(_) => None,
+                    OverflowBehavior::Error(range) => {
+                        let unary = UnaryOpr::HasType(Arc::new(TypX::Int(range)));
+                        let has_type = ExpX::UnaryOpr(unary, bin.clone());
+                        let has_type = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_type);
+                        Some((has_type, error(span, "possible arithmetic underflow/overflow")))
+                    }
+                },
+                ArithOp::TruncatingDiv(_, sb) | ArithOp::TruncatingMod(_, sb) => match sb {
+                    SignedDivEdgeCaseBehavior::Allow => None,
+                    SignedDivEdgeCaseBehavior::Error(bitwidth) => {
+                        let signed_type_min_x = ExpX::UnaryOpr(
+                            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMin),
+                            sst_bitwidth(span, &bitwidth, &ctx.global.arch),
+                        );
+                        let signed_type_min =
+                            SpannedTyped::new(span, &int_typ(), signed_type_min_x);
+                        let ne1x = ExpX::Binary(sst::BinaryOp::Ne, e1.clone(), signed_type_min);
+                        let ne1 = SpannedTyped::new(span, &bool_typ(), ne1x);
+
+                        let negative1_const = crate::ast_util::const_int_from_i128(-1);
+                        let negative1_x = ExpX::Const(negative1_const);
+                        let negative1 = SpannedTyped::new(span, &int_typ(), negative1_x);
+                        let ne2x = ExpX::Binary(sst::BinaryOp::Ne, e2.clone(), negative1);
+                        let ne2 = SpannedTyped::new(span, &bool_typ(), ne2x);
+
+                        let cond = sst_disjoin(span, &[ne1, ne2]);
+                        Some((
+                            cond,
+                            error(
+                                span,
+                                format!(
+                                    "possible overflow case for signed {:}: cannot prove that (lhs, rhs) != ({:}::MIN, -1)",
+                                    match arith {
+                                        ArithOp::TruncatingDiv(..) => "division",
+                                        ArithOp::TruncatingMod(..) => "remainder",
+                                        _ => unreachable!(),
+                                    },
+                                    bitwidth_to_signed_type_string(&bitwidth)
+                                ),
+                            ),
+                        ))
+                    }
+                },
+                _ => None,
+            };
+            let c2 = match arith {
+                ArithOp::EuclideanDiv(d0b)
+                | ArithOp::EuclideanMod(d0b)
+                | ArithOp::TruncatingDiv(d0b, _)
+                | ArithOp::TruncatingMod(d0b, _) => match d0b {
+                    Div0Behavior::Allow => None,
+                    Div0Behavior::Error => {
+                        let zero = ExpX::Const(Constant::Int(BigInt::zero()));
+                        let ne = ExpX::Binary(sst::BinaryOp::Ne, e2.clone(), e2.new_x(zero));
+                        let ne = SpannedTyped::new(span, &Arc::new(TypX::Bool), ne);
+                        Some((ne, error(span, "possible division by zero")))
+                    }
+                },
+                _ => None,
+            };
+            [c1, c2]
+        }
         BinaryOp::Bitwise(bitwise, mode) => {
             match (mode, bitwise) {
-                (BitshiftBehavior::Error, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
+                (BitshiftBehavior::Error(w), BitwiseOp::Shr | BitwiseOp::Shl(_, _)) => {
                     // Add overflow checks for bit shifts
                     // For a shift `a << b` or `a >> b`, Rust requires that
                     //    0 <= b < (bitsize of a)
@@ -3070,27 +4224,27 @@ fn binary_op_exp(
                     );
 
                     let msg = "possible bit shift underflow/overflow";
-                    Some((assert_exp, error(span, msg)))
+                    [Some((assert_exp, error(span, msg))), None]
                 }
-                (BitshiftBehavior::Allow, BitwiseOp::Shr(..) | BitwiseOp::Shl(..)) => None,
+                (BitshiftBehavior::Allow, BitwiseOp::Shr | BitwiseOp::Shl(..)) => [None, None],
                 (_, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                     // no overflow check needed
-                    None
+                    [None, None]
                 }
             }
         }
         BinaryOp::Index(kind, bounds_check) => match bounds_check {
-            BoundsCheck::Allow => None,
+            BoundsCheck::Allow => [None, None],
             BoundsCheck::Error => {
-                Some(crate::place_preconditions::sst_index_bound(span, e1, e2, kind))
+                [Some(crate::place_preconditions::sst_index_bound(span, e1, e2, kind)), None]
             }
         },
-        _ => None,
+        _ => [None, None],
     };
 
     let mut stms = vec![];
 
-    if let Some((assert_exp, msg)) = check {
+    for (assert_exp, msg) in checks.into_iter().flatten() {
         if !state.checking_spec_preconditions(ctx) {
             let assert = StmX::Assert(state.next_assert_id(), Some(msg), assert_exp.clone());
             let assert = Spanned::new(span.clone(), assert);
@@ -3127,6 +4281,29 @@ fn binary_op_exp(
     };
 
     (stms, bin)
+}
+
+/// assume(add_ensures(e1, e2, x)); (specific function depends on the op)
+pub(crate) fn assume_fp_postcondition(
+    x: &UniqueIdent,
+    e1: &Exp,
+    e2: &Exp,
+    op: UninterpretedFloatBinaryOp,
+    float_typ: &Typ,
+    out_typ: &Typ,
+    span: &Span,
+) -> Stm {
+    let float_typ = undecorate_typ(float_typ);
+    assert!(matches!(*float_typ, TypX::Float(..)));
+
+    let xvarx = ExpX::Var(x.clone());
+    let xvar = SpannedTyped::new(span, out_typ, xvarx);
+    let name = def::fn_fp_postcondition_name(op);
+    let call_fun = CallFun::Fun(name, None);
+    let typ_args = Arc::new(vec![float_typ.clone()]);
+    let expx = ExpX::Call(call_fun, typ_args, Arc::new(vec![e1.clone(), e2.clone(), xvar.clone()]));
+    let exp = SpannedTyped::new(span, &Arc::new(TypX::Bool), expx);
+    Spanned::new(span.clone(), StmX::Assume(exp))
 }
 
 /// Stms and Exps needed to execute a 2-phase borrow.
@@ -3199,7 +4376,7 @@ fn borrow_mut_to_sst(
     if let PlaceX::DerefMut(p_inner) = &place.x
         && types_equal(&expr.typ, &p_inner.typ)
         && let ExpX::Unary(crate::ast::UnaryOp::MutRefCurrent, inner_exp) = &normal_exp.x
-        && ctx.func_map.contains_key(&crate::fun!(CrateId::Vstd => "raw_ptr", "spec_ptr_addr"))
+        && ctx.func_map.contains_key(&crate::fun!(CrateId::Vstd => "raw_ptr"; "spec_ptr_addr"))
     {
         // Add assumption about addr being preserved for `&mut *r`
         let new_ptr_exp = sst_mut_ref_ptr(&expr.span, &mut_ref_exp);
@@ -3238,10 +4415,43 @@ fn borrow_mut_to_sst(
     ))
 }
 
+/// Lowers the coercion of `src: &mut T` to `&mut dyn Trait` to a new reference `out` with
+///   mut_ref_current(out) == to_dyn(mut_ref_current(src))
+///   mut_ref_future(out) == to_dyn(mut_ref_future(src))
+fn mut_ref_to_dyn_sst(
+    state: &mut State,
+    span: &Span,
+    stms: &mut Vec<Stm>,
+    src: &Exp,
+    to_dyn_op: &UnaryOpr,
+    out_typ: &Typ,
+) -> Exp {
+    let TypX::MutRef(dyn_typ) = &*undecorate_typ(out_typ) else {
+        panic!("mut_ref_to_dyn_sst expected MutRef type");
+    };
+    let (var_ident, out) = state.declare_temp_var_stm(
+        span,
+        out_typ,
+        PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::BorrowMut)),
+    );
+    stms.push(assume_has_typ(&var_ident, out_typ, span));
+    let to_dyn = |e: Exp| SpannedTyped::new(span, dyn_typ, ExpX::UnaryOpr(to_dyn_op.clone(), e));
+    let cur =
+        sst_equal(span, &sst_mut_ref_current(span, &out), &to_dyn(sst_mut_ref_current(span, src)));
+    let fut =
+        sst_equal(span, &sst_mut_ref_future(span, &out), &to_dyn(sst_mut_ref_future(span, src)));
+    stms.push(Spanned::new(span.clone(), StmX::Assume(cur)));
+    stms.push(Spanned::new(span.clone(), StmX::Assume(fut)));
+    out
+}
+
 #[derive(Clone, Debug)]
 struct Obligation {
     fun: Fun,
     exp: Exp,
+    /// The field of `exp` the mutable reference goes into, if it is a field of a struct
+    /// (one-variant datatype): `field` of `exp`, with nothing else of `exp` borrowed
+    field: Option<FieldOpr>,
 }
 
 /// Compute the place expression and read from the place
@@ -3259,9 +4469,9 @@ fn place_to_exp_for_read(
     let (_lhs, rhs, obligations) = unwrap_or_return_never!(res, stms);
     if obligations.len() > 0 {
         // Shouldn't have these for reads
-        return Err(error(
+        return Err(crate::messages::internal_error(
             &place.span,
-            "Verus internal error: place_to_expr_for_read does not expect any UserDefinedTypInvariantObligation",
+            "`place_to_expr_for_read` does not expect any UserDefinedTypInvariantObligation",
         ));
     }
     Ok((stms, Maybe::Some(rhs)))
@@ -3333,7 +4543,7 @@ fn place_to_exp_simple(
             let (stms, e) = place_to_exp_simple(ctx, state, p)?;
             let e = unwrap_or_return_never!(e, stms);
             let i = expr_to_pure_exp_skip_checks(ctx, state, i)?;
-            let op = BinaryOp::Index(*kind, BoundsCheck::Allow);
+            let op = sst::BinaryOp::Index(*kind);
             let e = mk_exp(ExpX::Binary(op, e, i));
             Ok((stms, Maybe::Some(e)))
         }
@@ -3383,25 +4593,40 @@ fn place_to_exp_pair_rec(
     match &place.x {
         PlaceX::Field(field_opr, p) => {
             let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
-            let (e1, e2, obligations, mut wf) = unwrap_or_return_never!(exps, stms);
+            let (e1, e2, mut obligations, mut wf) = unwrap_or_return_never!(exps, stms);
+            if matches!(&p.x, PlaceX::UserDefinedTypInvariantObligation(..)) {
+                // the obligation `p` pushed last is about the datatype this field belongs to
+                if let Some(o) = obligations.last_mut() {
+                    o.field = Some(field_opr.clone());
+                }
+            }
 
             let check = match field_opr.check {
                 VariantCheck::Union => {
                     let (condition, msg) =
                         crate::place_preconditions::sst_field_check(&place.span, &e2, field_opr);
-                    Some((condition, msg))
+                    Some((condition, msg, true))
+                }
+                // `get_variant` accessors are total - just give a recommends-only hint.
+                VariantCheck::Recommends => {
+                    let (condition, msg) = crate::place_preconditions::sst_field_recommends_check(
+                        &place.span,
+                        &e2,
+                        field_opr,
+                    );
+                    Some((condition, msg, false))
                 }
                 VariantCheck::None => None,
             };
-            if let Some((condition, msg)) = check {
-                if !state.checking_recommends(ctx) {
-                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
-                    let assert = Spanned::new(place.span.clone(), assert);
-                    wf.push(assert);
-                }
-                let assume = StmX::Assume(condition);
-                let assume = Spanned::new(place.span.clone(), assume);
-                wf.push(assume);
+            if let Some((condition, msg, is_hard_requirement)) = check {
+                wf.extend(field_check_stms(
+                    state,
+                    ctx,
+                    &place.span,
+                    condition,
+                    msg,
+                    is_hard_requirement,
+                ));
             }
 
             let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
@@ -3481,7 +4706,7 @@ fn place_to_exp_pair_rec(
                 }
             }
 
-            let op = BinaryOp::Index(*kind, BoundsCheck::Allow);
+            let op = sst::BinaryOp::Index(*kind);
             let e_l = mk_exp(ExpX::Binary(op, e1, idx_exp.clone()));
             let e_r = mk_exp(ExpX::Binary(op, e2, idx_exp));
 
@@ -3490,7 +4715,7 @@ fn place_to_exp_pair_rec(
         PlaceX::UserDefinedTypInvariantObligation(p, fun) => {
             let (stms, mut exps) = place_to_exp_pair_rec(ctx, state, p)?;
             if let Maybe::Some((_e1, e2, obligations, _wf)) = &mut exps {
-                obligations.push(Obligation { fun: fun.clone(), exp: e2.clone() });
+                obligations.push(Obligation { fun: fun.clone(), exp: e2.clone(), field: None });
             }
             Ok((stms, exps))
         }
@@ -3517,7 +4742,7 @@ fn stmt_to_stm(
             let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
             Ok((stms, exp, None))
         }
-        StmtX::Decl { pattern, mode: _, init, els } => {
+        StmtX::Decl { pattern, mode: _, init, els, assert_irrefutable: _ } => {
             if els.is_some() {
                 panic!("let-else should be simplified in ast_simpllify {:?}.", stmt)
             }
@@ -3528,6 +4753,7 @@ fn stmt_to_stm(
                     by_ref: ByRef::No,
                     typ,
                     copy: _,
+                    move_exec_to_proof_okay: _,
                 }) => (name, typ),
                 _ => panic!("internal error: Decl should have been simplified by ast_simplify"),
             };
@@ -3554,6 +4780,7 @@ fn stmt_to_stm(
                             args,
                             obligations,
                             may_unwind,
+                            body,
                         }),
                     )) => {
                         // Special case: convert to a Call
@@ -3572,6 +4799,7 @@ fn stmt_to_stm(
                             typs,
                             args,
                             vec![dest],
+                            body,
                         )?);
                         // REVIEW: for a similar case in `ExprX::Call` we emit a StmX::Assign to set the
                         // value of the destination when, in recommends checking, the StmX::Call is used
@@ -3637,15 +4865,12 @@ fn exec_closure_body_stms(
     body: &Expr,
     requires: &Exprs,
     ensures: &Exprs,
+    mask_spec: &Option<MaskSpec>,
+    is_proof: bool,
 ) -> Result<(Vec<Stm>, Arc<Vec<(UniqueIdent, Typ)>>), VirErr> {
     let mut typ_inv_vars = vec![];
 
     state.push_scope();
-
-    // Right now there is no way to specify an invariant mask on a closure function
-    // All closure funcs are assumed to have mask set 'full'
-    let mut mask = Some(MaskSet::full(&body.span));
-    std::mem::swap(&mut state.mask, &mut mask);
 
     let mut param_set = HashSet::<VarIdent>::new();
 
@@ -3666,9 +4891,29 @@ fn exec_closure_body_stms(
         stms.push(stm);
     }
 
+    // Inv mask
+    let mut mask = if is_proof {
+        if let Some(mask_spec) = mask_spec {
+            let mask_sst = mask_spec.map_to_sst(&mut |expr| {
+                let (check_stms, exp) = expr_to_pure_exp_check(ctx, state, expr)?;
+                stms.extend(check_stms);
+                Ok(exp)
+            })?;
+            Some(mask_sst)
+        } else {
+            Some(MaskSet::empty(&body.span))
+        }
+    } else {
+        // Right now there is no way to specify an invariant mask on an exec closure function
+        // All exec closure funcs are assumed to have mask set 'full'
+        assert!(mask_spec.is_none());
+        Some(MaskSet::full(&body.span))
+    };
+    std::mem::swap(&mut state.mask, &mut mask);
+
     let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ExecClosureRet));
     state.declare_var_stm(&ret.name, &ret.a, kind, false);
-    let dest = unique_local(&ret.name);
+    let dest = def::unique_local(&ret.name);
 
     let mut ens_exps = Vec::new();
     let mut ens_checks = Vec::new();
@@ -3728,7 +4973,7 @@ fn closure_emit_postconditions(
                 "unable to prove post-condition of closure",
                 "returning this expression",
             )
-            .primary_label(&ens.span, crate::def::THIS_POST_FAILED);
+            .primary_label(&ens.span, def::THIS_POST_FAILED);
             let stm = Spanned::new(
                 ens.span.clone(),
                 StmX::Assert(state.next_assert_id(), Some(er), ens.clone()),
@@ -3749,15 +4994,65 @@ fn get_inv_typ_args(typ: &Typ) -> Typs {
 }
 
 fn call_inv(_ctx: &Ctx, outer: &Exp, inner: &Exp, typ_args: &Typs, atomicity: InvAtomicity) -> Exp {
-    let call_fun = CallFun::Fun(crate::def::fn_inv_name(atomicity), None);
+    let call_fun = CallFun::Fun(def::fn_inv_name(atomicity), None);
     let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![outer.clone(), inner.clone()]));
     SpannedTyped::new(&outer.span, &Arc::new(TypX::Bool), expx)
 }
 
 fn call_namespace(_ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicity) -> Exp {
-    let call_fun = CallFun::Fun(crate::def::fn_namespace_name(atomicity), None);
+    let call_fun = CallFun::Fun(def::fn_namespace_name(atomicity), None);
     let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![arg.clone()]));
     SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
+}
+
+/// Whether the type invariant `inv` may depend on field `f` of its argument: false only if the
+/// datatype is a struct (one variant) and every use of the parameter in the invariant's body is
+/// a read of another field of it (so a call that passes the parameter on, matches on it or
+/// reads it whole counts as a read of every field). Conservatively true without a body.
+fn typ_inv_may_read_field(ctx: &Ctx, inv: &Fun, f: &FieldOpr) -> bool {
+    let one_variant = ctx.datatype_map.get(&f.datatype).map_or(false, |d| d.x.variants.len() == 1);
+    let Some(function) = ctx.func_map.get(inv) else { return true };
+    let (Some(body), Some(param)) = (&function.x.body, function.x.params.first()) else {
+        return true;
+    };
+    if !one_variant {
+        return true;
+    }
+    let param = param.x.name.clone();
+    let other_field = |opr: &FieldOpr| opr.datatype == f.datatype && opr.field != f.field;
+    let mut counts = (0usize, 0usize); // (uses of the parameter, reads of other fields)
+    let _ = crate::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
+        body,
+        &mut counts,
+        &mut |c: &mut (usize, usize), _, e: &Expr| {
+            match &e.x {
+                ExprX::Var(x) if *x == param => c.0 += 1,
+                ExprX::UnaryOpr(crate::ast::UnaryOpr::Field(opr), inner)
+                    if matches!(&inner.x, ExprX::Var(x) if *x == param) && other_field(opr) =>
+                {
+                    c.1 += 1
+                }
+                _ => {}
+            }
+            Ok(())
+        },
+        &mut |_, _, _| Ok(()),
+        &mut |_, _, _| Ok(()),
+        &mut |_, _, _, _| Ok(()),
+        &mut |c: &mut (usize, usize), _, pl: &Place| {
+            match &pl.x {
+                PlaceX::Local(x) if *x == param => c.0 += 1,
+                PlaceX::Field(opr, inner)
+                    if matches!(&inner.x, PlaceX::Local(x) if *x == param) && other_field(opr) =>
+                {
+                    c.1 += 1
+                }
+                _ => {}
+            }
+            Ok(())
+        },
+    );
+    counts.0 != counts.1
 }
 
 #[derive(PartialEq, Eq, Clone)]
@@ -3778,7 +5073,15 @@ fn typ_inv_obligations(
     typ_inv: TypInv,
 ) -> Result<(), VirErr> {
     for obligation in obligations.into_iter().rev() {
-        let Obligation { fun, exp } = obligation;
+        let Obligation { fun, exp, field } = obligation;
+        // A call that may unwind leaves the datatype with whatever the callee wrote into the
+        // borrowed field. When the invariant cannot read that field, the rest of the value is
+        // unchanged and the invariant still holds, so there is nothing to check.
+        if typ_inv == TypInv::UnwindError
+            && field.as_ref().is_some_and(|f| !typ_inv_may_read_field(ctx, &fun, f))
+        {
+            continue;
+        }
         assert_assume_satisfies_user_defined_type_invariant(
             ctx,
             state,
@@ -3812,14 +5115,14 @@ fn assert_assume_satisfies_user_defined_type_invariant(
     if typ_inv == TypInv::UnwindError {
         return Err(crate::messages::error_with_label(
             &exp.span,
-            "this function call takes a &mut ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked no_unwind (note: this check is currently implemented overly-conservatively and requires the function to be marked no_unwind in its signature)",
+            "this function call takes a mutable reference to a field of a datatype with a user-defined type invariant; thus, this function should be marked `no_unwind` (note: this check is currently implemented overly-conservatively and requires the function to be marked `no_unwind` in its signature)",
             "mutable reference to this place",
         ).secondary_label(&function.span, "type invariant declared here"));
     }
     if typ_inv == TypInv::BareMutRefError {
         return Err(crate::messages::error_with_label(
             &exp.span,
-            "not supported: taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)",
+            "Verus does not currently support taking a mutable reference to a field of a datatype with a user-defined type invariant (except as an argument of a function call)",
             "mutable reference to this place",
         ).secondary_label(&function.span, "type invariant declared here"));
     }
@@ -3850,4 +5153,37 @@ fn assert_assume_satisfies_user_defined_type_invariant(
         stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
     }
     Ok(())
+}
+
+fn find_loop_in_stms(stms: &[Stm], label: &Label) -> Option<(Vec<Stm>, Stm, Vec<Stm>)> {
+    for i in 0..stms.len() {
+        if let Some((prefix, the_loop, suffix)) = find_loop_in_stm(&stms[i], label) {
+            let mut new_prefix = stms[..i].to_vec();
+            new_prefix.extend(prefix);
+            let mut new_suffix = suffix;
+            new_suffix.extend(stms[i + 1..].to_vec());
+            return Some((new_prefix, the_loop, new_suffix));
+        }
+    }
+    None
+}
+
+fn find_loop_in_stm(stm: &Stm, label: &Label) -> Option<(Vec<Stm>, Stm, Vec<Stm>)> {
+    match &stm.x {
+        StmX::Block(stms) => find_loop_in_stms(stms, label),
+        StmX::Loop { label: l, .. } if l == label => Some((vec![], stm.clone(), vec![])),
+        _ => None,
+    }
+}
+
+fn loop_set_pre_stms(the_loop: Stm, new_pre_stms: Stms) -> Stm {
+    let mut the_loop = the_loop;
+    match Arc::make_mut(&mut the_loop).x {
+        StmX::Loop { ref mut pre_stms, .. } => {
+            assert!(pre_stms.len() == 0);
+            *pre_stms = new_pre_stms;
+        }
+        _ => panic!("loop_set_pre_stms expects Loop"),
+    }
+    the_loop
 }

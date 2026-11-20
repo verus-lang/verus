@@ -1115,13 +1115,14 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] two_phase_with_overloaded_compound_assignment_operator verus_code! {
         use vstd::seq::*;
+        use vstd::std_specs::ops::AddAssignSpec;
 
-        struct X {
+        pub struct X {
             u: u64,
         }
 
         impl X {
-            uninterp spec fn seq(&self) -> Seq<u64>;
+            pub uninterp spec fn seq(&self) -> Seq<u64>;
 
             #[verifier::external_body]
             fn len(&self) -> (l: u64)
@@ -1143,6 +1144,7 @@ test_verify_one_file! {
         fn test(x: X) {
             let mut x = x;
             let ghost x1 = x.seq();
+            assume(x.add_assign_req(x1.len() as u64));
             x += x.len();
             assert(x.seq() == x1.push(x1.len() as u64));
         }
@@ -1150,14 +1152,12 @@ test_verify_one_file! {
         fn test_fail(x: X) {
             let mut x = x;
             let ghost x1 = x.seq();
+            assume(x.add_assign_req(x1.len() as u64));
             x += x.len();
             assert(x.seq() == x1.push(x1.len() as u64));
             assert(false); // FAILS
         }
-    } => Err(err) => assert_vir_error_msgs(err, &[
-        "The verifier does not yet support the following Rust feature: overloaded op-assignment operator",
-        "The verifier does not yet support the following Rust feature: overloaded op-assignment operator"
-    ])
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -1312,16 +1312,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_ghost_fields verus_code! {
-        struct X {
-            u: u64,
+    #[test] tracked_struct_ghost_fields verus_code! {
+        tracked struct X {
+            tracked u: u64,
         }
 
-        // REVIEW: consider requiring structs to be marked 'tracked' or 'ghost' to have
-        // tracked/ghost fields
-        // (note: the reason this test works is that, even though the struct is exec,
-        // it is used in a tracked-mode way)
-        struct S {
+        tracked struct S {
             ghost x: X,
             ghost y: X,
         }
@@ -1334,12 +1330,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_tracked_fields verus_code! {
-        struct X {
-            u: u64,
+    #[test] tracked_struct_tracked_fields verus_code! {
+        tracked struct X {
+            tracked u: u64,
         }
 
-        struct S {
+        tracked struct S {
             tracked x: X,
             tracked y: X,
         }
@@ -1352,17 +1348,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_ghost_fields_2 verus_code! {
-        struct Y {
-            u: u64,
+    #[test] tracked_struct_ghost_fields_2 verus_code! {
+        tracked struct Y {
+            tracked u: u64,
         }
 
-        struct X {
-            u: u64,
-            y: Y,
+        tracked struct X {
+            tracked u: u64,
+            tracked y: Y,
         }
 
-        struct S {
+        tracked struct S {
             ghost x: Y,
             ghost y: Y,
         }
@@ -1375,17 +1371,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_tracked_fields_2 verus_code! {
-        struct Y {
-            u: u64,
+    #[test] tracked_struct_tracked_fields_2 verus_code! {
+        tracked struct Y {
+            tracked u: u64,
         }
 
-        struct X {
-            u: u64,
-            y: Y,
+        tracked struct X {
+            tracked u: u64,
+            tracked y: Y,
         }
 
-        struct S {
+        tracked struct S {
             tracked x: Y,
             tracked y: Y,
         }
@@ -1401,17 +1397,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_ghost_fields_fn_style verus_code! {
-        struct Y {
-            u: u64,
+    #[test] tracked_struct_ghost_fields_fn_style verus_code! {
+        tracked struct Y {
+            tracked u: u64,
         }
 
-        struct X {
-            u: u64,
-            y: Y,
+        tracked struct X {
+            tracked u: u64,
+            tracked y: Y,
         }
 
-        struct S(ghost Y, ghost Y);
+        tracked struct S(ghost Y, ghost Y);
 
         proof fn test(tracked x: &X) {
             // this is ok, both uses of x are in ghost position
@@ -1421,20 +1417,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_tracked_fields_fn_style verus_code! {
-        struct Y {
-            u: u64,
+    #[test] tracked_struct_tracked_fields_fn_style verus_code! {
+        tracked struct Y {
+            tracked u: u64,
         }
 
-        struct X {
-            u: u64,
-            y: Y,
+        tracked struct X {
+            tracked u: u64,
+            tracked y: Y,
         }
 
-        struct S(tracked Y, tracked Y);
+        tracked struct S(tracked Y, tracked Y);
 
         proof fn test(tracked x: &X) {
-            // this is ok, both uses of x are in ghost position
             let tracked s = S(x.y, x.y);
         }
     } => Err(err) => assert_rust_error_msgs(err, &[
@@ -1556,10 +1551,7 @@ test_verify_one_file! {
                     forall |v:V,r:bool| f.ensures((&v,), r) ==> f_spec(v) == r,
             {
                 let ghost pre_r = r@.to_multiset();
-                assert(
-                    v@.subrange(0, i as int + 1)
-                    =~=
-                    v@.subrange(0, i as int).push(v@[i as int]));
+                assert(v@[..i + 1] =~= v@[..i].push(v@[i as int]));
                 if f(&v[i]) {
                     r.push(v[i].verus_clone());
                 }

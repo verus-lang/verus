@@ -764,15 +764,29 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_self_disallowed verus_code! {
-        struct T{}
+    #[test] test_mut_self verus_code! {
+        struct T { i: u64 }
 
         impl T {
-            fn test(mut self) {
-                self = T{};
+            fn test(mut self) -> (u: u64)
+                requires self.i == 0,
+                ensures u == self.i
+            {
+                self.i = 20;
+                assert(self.i == 20);
+                0
+            }
+
+            fn test2(mut self) -> (s: Self)
+                requires self.i == 0,
+                ensures self.i == 0 && s.i == 20
+            {
+                self.i = 20;
+                assert(self.i == 20);
+                self
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: mut self")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -817,7 +831,7 @@ test_verify_one_file! {
             let mut b = 0;
             (a, b) = (1, 2);
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: destructuring assignment")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support destructuring assignment")
 }
 
 test_verify_one_file! {
@@ -828,4 +842,52 @@ test_verify_one_file! {
             1
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_bitwise_bool_ops verus_code! {
+        fn test_or(a: bool, b: bool) {
+            let x = a | b;
+            assert(x <==> (a || b));
+
+            let mut y = a;
+            y |= b;
+            assert(y <==> (a || b));
+        }
+
+        fn test_and(a: bool, b: bool) {
+            let x = a & b;
+            assert(x <==> (a && b));
+
+            let mut y = a;
+            y &= b;
+            assert(y <==> (a && b));
+        }
+
+        fn test_or_with_side_effect(a: bool, b: bool) {
+            let mut side_tester = 0;
+
+            let x = a | ({ side_tester = 1; b });
+            assert(x <==> (a || b));
+            assert(side_tester == 1);
+
+            let mut y = a;
+            y |= ({ side_tester = 2; b });
+            assert(y <==> (a || b));
+            assert(side_tester == 2);
+        }
+
+        fn test_and_with_side_effect(a: bool, b: bool) {
+            let mut side_tester = 0;
+
+            let x = a & ({ side_tester = 1; b });
+            assert(x <==> (a && b));
+            assert(side_tester == 1);
+
+            let mut y = a;
+            y &= ({ side_tester = 2; b });
+            assert(y <==> (a && b));
+            assert(side_tester == 2);
+        }
+    } => Ok(())
 }

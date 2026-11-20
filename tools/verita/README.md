@@ -19,16 +19,12 @@ cargo run -- --help
 A typical invocation looks like:
 
 ```bash
-cargo run -- --verus-repo /path/to/verus --label my-experiment run_configuration_all.toml 
+cargo run -- --verus-repo /path/to/verus --label my-experiment run_configuration_all.toml
 ```
 
 ## Output
 
-Each run produces a directory under `output/` named by timestamp and label:
-
-```
-output/YYYY-MM-DD-HH-MM-SS-msec-LABEL/
-```
+Output is written to `output/<date>-<label>` by default, or to `--output-dir DIR` if provided.
 
 Inside that directory there is one JSON file per project (or per crate root, for projects with multiple crate roots). Each JSON file contains the raw Verus verification output augmented with a `runner` object that records metadata such as:
 
@@ -39,6 +35,16 @@ Inside that directory there is one JSON file per project (or per crate root, for
 - The label and date of the run
 
 If a project has verification errors, `verita` also preserves a copy of the cloned repository in a temporary directory for debugging purposes.
+
+## Verus logs
+
+Verus is invoked with a per-project `--log-dir` set to `<output-dir>/logs/<name>/`.  To gather Verus logs across all projects, provide `--log` Verus arguments either via the configuration file (below) or directly on the command-line after `--`.
+
+For example, to collect SMT files from all projects:
+
+```bash
+cargo run -- --verus-repo /path/to/verus --label smt-harvest run_configuration_all.toml -- --log smt
+```
 
 ## Summarizing results
 
@@ -77,4 +83,3 @@ NOTE: At present, when running with `cargo verus`, we use `cargo verus focus` to
 | `cargo_verus` | boolean | `false` | When `true`, use `cargo verus focus` instead of invoking `verus` directly. The crate roots are treated as package directories rather than `.rs` file paths. |
 | `requires_singular` | boolean | `false` | Indicates whether this project depends on Singular functionality in Verus. When `true`, `verita` requires `--singular` (or `VERUS_SINGULAR_PATH`) to be set; the run is aborted early if neither is provided. |
 | `ignore` | boolean | `false` | When `true`, the project is skipped unless `--run-ignored` is passed on the command line. Useful for projects that are known to be broken. |
-

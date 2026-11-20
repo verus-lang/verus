@@ -1,9 +1,8 @@
 use super::super::prelude::*;
 use core::marker::PointeeSized;
 
-use verus as verus_;
-
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 #[verifier::external_trait_specification]
 pub trait ExTuple {
@@ -47,7 +46,7 @@ pub trait ExDerefMut: core::ops::Deref + PointeeSized {
 }
 
 #[cfg(not(verus_verify_core))]
-verus_! {
+verus_skip_verusfmt! {
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IndexSpec via IndexSpecImpl)]
@@ -56,20 +55,28 @@ pub trait ExIndex<Idx> where Idx: ?Sized {
 
     type Output: ?Sized;
 
+    // NOTE: this used as a precondition for both `Index` and `IndexMut`,
+    // since both share the same `s[i]` syntax.
     spec fn index_req(&self, index: &Idx) -> bool;
 
     fn index(&self, index: Idx) -> (output: &Self::Output) where Idx: Sized
         requires
-            self.index_req(&index);
+            self.index_req(&index),
+    ;
 }
 
 #[verifier::external_trait_specification]
 pub trait ExIndexMut<Idx>: core::ops::Index<Idx> where Idx: ?Sized {
     type ExternalTraitSpecificationFor: core::ops::IndexMut<Idx>;
+
+    fn index_mut(&mut self, index: Idx) -> (output: &mut Self::Output) where Idx: Sized
+        requires
+            self.index_req(&index),
+    ;
 }
 }
 
-verus_! {
+verus_skip_verusfmt! {
 #[verifier::external_trait_specification]
 pub trait ExInteger: Copy {
     type ExternalTraitSpecificationFor: Integer;
@@ -86,24 +93,62 @@ pub trait ExAllocator {
     type ExternalTraitSpecificationFor: core::alloc::Allocator;
 }
 
+#[cfg(not(verus_verify_core))]
+#[verifier::external_trait_specification]
+pub trait ExAllocatorClone: core::alloc::Allocator + Clone {
+    type ExternalTraitSpecificationFor: core::alloc::AllocatorClone;
+}
+
 #[verifier::external_trait_specification]
 pub trait ExFreeze: PointeeSized {
     type ExternalTraitSpecificationFor: core::marker::Freeze;
 }
 
+// Declaring the methods means an impl of `Hasher` cannot add a `requires` clause, which
+// std's callers (such as the `Hash` impls) would not satisfy. The unstable `write_str` and
+// `write_length_prefix` are not declared.
 #[verifier::external_trait_specification]
-pub trait ExDebug: PointeeSized {
-    type ExternalTraitSpecificationFor: core::fmt::Debug;
+pub trait ExHasher {
+    type ExternalTraitSpecificationFor: core::hash::Hasher;
+
+    fn finish(&self) -> u64;
+
+    fn write(&mut self, bytes: &[u8]);
+
+    fn write_u8(&mut self, i: u8);
+
+    fn write_u16(&mut self, i: u16);
+
+    fn write_u32(&mut self, i: u32);
+
+    fn write_u64(&mut self, i: u64);
+
+    fn write_u128(&mut self, i: u128);
+
+    fn write_usize(&mut self, i: usize);
+
+    fn write_i8(&mut self, i: i8);
+
+    fn write_i16(&mut self, i: i16);
+
+    fn write_i32(&mut self, i: i32);
+
+    fn write_i64(&mut self, i: i64);
+
+    fn write_i128(&mut self, i: i128);
+
+    fn write_isize(&mut self, i: isize);
 }
 
-#[verifier::external_trait_specification]
-pub trait ExDisplay: PointeeSized {
-    type ExternalTraitSpecificationFor: core::fmt::Display;
-}
-
+// Declaring the methods means an impl of `Hash` cannot add a `requires` clause, which
+// std's callers (such as `HashMap::insert`) would not satisfy.
 #[verifier::external_trait_specification]
 pub trait ExHash: PointeeSized {
     type ExternalTraitSpecificationFor: core::hash::Hash;
+
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H);
+
+    fn hash_slice<H: core::hash::Hasher>(data: &[Self], state: &mut H) where Self: Sized;
 }
 
 #[verifier::external_trait_specification]
@@ -188,6 +233,8 @@ pub assume_specification[ core::intrinsics::unlikely ](b: bool) -> (c: bool)
 ;
 
 pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (ret: Option<T>)
+    requires
+        b ==> f.requires(()),
     ensures
         if b {
             ret.is_some() && f.ensures((), ret.unwrap())
@@ -196,42 +243,37 @@ pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (r
         },
 ;
 
-// A private seal trait to prevent a trait from being implemented outside of vstd.
-pub(crate) trait TrustedSpecSealed {}
-
-#[cfg(not(verus_verify_core))]
-#[allow(private_bounds)]
-pub trait IndexSetTrustedSpec<Idx>: core::ops::IndexMut<Idx> + TrustedSpecSealed {
-    spec fn spec_index_set_requires(&self, index: Idx) -> bool;
-
-    spec fn spec_index_set_ensures(
-        &self,
-        new_container: &Self,
-        index: Idx,
-        val: Self::Output,
-    ) -> bool where Self::Output: Sized;
-}
-
-// TODO(uutaal): Do not need index_set once mutable reference support lands.
-// Use index_set to replace IndexMut in assign-operator.
-// Users must provide IndexSetTrustedSpec to use it.
-// It could be replaced after mutable reference is fully supported
-// Avoid call it explicitly.
-#[cfg(not(verus_verify_core))]
-#[verifier(external_body)]
-pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
-    T: ?Sized + core::ops::IndexMut<Idx> + core::ops::Index<Idx, Output = E> + IndexSetTrustedSpec<
-        Idx,
-    >,
-
-    requires
-        old(container).spec_index_set_requires(index),
+pub assume_specification<T> [core::hint::must_use] (value: T) -> (ret: T)
     ensures
-        old(container).spec_index_set_ensures(final(container), index, val),
-    no_unwind
-{
-    container[index] = val;
-}
+        ret == value,
+;
+
+pub assume_specification [core::panicking::panic] (s: &'static str) -> !
+    requires
+        false,
+;
+
+pub assume_specification [core::panicking::panic_fmt] (s: core::fmt::Arguments<'_>) -> !
+    requires
+        false,
+;
+
+// Called by `assert_eq!` and `assert_ne!`; not external_body, since the macros construct an `AssertKind`
+#[verifier::external_type_specification]
+pub struct ExAssertKind(core::panicking::AssertKind);
+
+pub assume_specification<T, U>[ core::panicking::assert_failed::<T, U> ](
+    kind: core::panicking::AssertKind,
+    left: &T,
+    right: &U,
+    args: Option<core::fmt::Arguments<'_>>,
+) -> !
+    where
+        T: core::fmt::Debug + ?Sized,
+        U: core::fmt::Debug + ?Sized,
+    requires
+        false,
+;
 
 } // verus!
 

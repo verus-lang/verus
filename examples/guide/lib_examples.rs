@@ -9,10 +9,18 @@ proof fn test_seq1() {
     assert(s.len() == 5);
     assert(s[2] == 20);
     assert(s[3] == 30);
+    assert(s[2..4] == seq![20, 30]);
+    assert(s[2..] == seq![20, 30, 40]);
+    assert(s[..4] == seq![0, 10, 20, 30]);
 }
 
 proof fn test_set1() {
     let s: Set<int> = set![0, 10, 20, 30, 40];
+    assert(s.contains(20));
+    assert(s.contains(30));
+    assert(!s.contains(60));
+
+    let s: ISet<int> = iset![0, 10, 20, 30, 40];
     assert(s.finite());
     assert(s.contains(20));
     assert(s.contains(30));
@@ -39,6 +47,9 @@ proof fn test_seq2() {
     assert(s.len() == 5);
     assert(s[2] == 20);
     assert(s[3] == 30);
+    assert(s[2..4] == seq![20, 30]);
+    assert(s[2..] == seq![20, 30, 40]);
+    assert(s[..4] == seq![0, 10, 20, 30]);
 }
 // ANCHOR_END: new0
 }
@@ -52,26 +63,35 @@ proof fn test_seq2() {
 }
 
 proof fn test_set2() {
-    let s: Set<int> = Set::new(|i: int| 0 <= i <= 40 && i % 10 == 0);
+    let s_finite: Set<int> = Set::range(0, 41).filter(|i: int| i % 10 == 0);
+    assert(s_finite.contains(20));
+    assert(s_finite.contains(30));
+    assert(!s_finite.contains(60));
+
+    let s: ISet<int> = ISet::new(|i: int| 0 <= i <= 40 && i % 10 == 0);
     assert(s.contains(20));
     assert(s.contains(30));
     assert(!s.contains(60));
 
-    let s_infinite: Set<int> = Set::new(|i: int| i % 10 == 0);
+    let s_infinite: ISet<int> = ISet::new(|i: int| i % 10 == 0);
     assert(s_infinite.contains(20));
     assert(s_infinite.contains(30));
     assert(!s_infinite.contains(35));
 }
 
 proof fn test_map2() {
-    let m: Map<int, int> = Map::new(|i: int| 0 <= i <= 40 && i % 10 == 0, |i: int| 10 * i);
+    let m: IMap<int, int> = IMap::new(|i: int| 0 <= i <= 40 && i % 10 == 0, |i: int| 10 * i);
     assert(m[20] == 200);
     assert(m[30] == 300);
 
-    let m_infinite: Map<int, int> = Map::new(|i: int| i % 10 == 0, |i: int| 10 * i);
+    let m_infinite: IMap<int, int> = IMap::new(|i: int| i % 10 == 0, |i: int| 10 * i);
     assert(m_infinite[20] == 200);
     assert(m_infinite[30] == 300);
     assert(m_infinite[90] == 900);
+
+    let m_finite: Map<int, int> = Map::new(Set::range(0, 41), |i: int| 10 * i);
+    assert(m_finite[20] == 200);
+    assert(m_finite[30] == 300);
 }
 // ANCHOR_END: new
 
@@ -130,8 +150,6 @@ proof fn test_eq2() {
 /*
 // ANCHOR: lemma_len_intersect_fail
 pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
-    requires
-        s1.finite(),
     ensures
         s1.intersect(s2).len() <= s1.len(),
     decreases
@@ -149,8 +167,6 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
 
 // ANCHOR: lemma_len_intersect_sketch
 pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
-    requires
-        s1.finite(),
     ensures
         s1.intersect(s2).len() <= s1.len(),
     decreases
@@ -187,8 +203,6 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
 
 // ANCHOR: lemma_len_intersect
 pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
-    requires
-        s1.finite(),
     ensures
         s1.intersect(s2).len() <= s1.len(),
     decreases
@@ -207,8 +221,6 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
 
 // ANCHOR: lemma_len_intersect_commented
 pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
-    requires
-        s1.finite(),
     ensures
         s1.intersect(s2).len() <= s1.len(),
     decreases s1.len(),
@@ -264,7 +276,7 @@ fn test_vec2() {
     assert(v@ =~= seq![0, 10] + seq![21] + seq![30, 40]);
     assert(v@[2] == 21);
     assert(v@[3] == 30);
-    assert(v@.subrange(2, 4) =~= seq![21, 30]);
+    assert(v@[2..4] =~= seq![21, 30]);
     assert(has_five_sorted_numbers(v@));
 }
 // ANCHOR_END: test_vec2

@@ -1224,11 +1224,10 @@ test_verify_one_file_with_options! {
         {
             loop {
                 *a.0 = 5;
-                // our analysis isn't precise enough to get this:
-                return; // FAILS
+                return;
             }
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -1281,7 +1280,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] future_preserved_in_loop_needs_inv [] => verus_code! {
+    #[test] future_preserved_in_loop_no_back_edge [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn leak_ref<'a>() -> &'a mut u64 { loop{} }
 
@@ -1294,12 +1293,10 @@ test_verify_one_file_with_options! {
                 *a = 5;
                 a = leak_ref();
 
-                // this would be okay but doesn't work without an invariant
-                // because our analyis isn't precise enough
-                return; // FAILS
+                return;
             }
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -1549,11 +1546,10 @@ test_verify_one_file_with_options! {
         {
             loop {
                 *a.0 = 5;
-                // our analysis isn't precise enough to get this:
-                return; // FAILS
+                return;
             }
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -1588,7 +1584,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_iso_future_preserved_in_loop_needs_inv [] => verus_code! {
+    #[test] no_iso_future_preserved_in_loop_no_back_edge [] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn leak_ref<'a>() -> &'a mut u64 { loop{} }
 
@@ -1601,12 +1597,10 @@ test_verify_one_file_with_options! {
                 *a = 5;
                 a = leak_ref();
 
-                // this would be okay but doesn't work without an invariant
-                // because our analyis isn't precise enough
-                return; // FAILS
+                return;
             }
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {

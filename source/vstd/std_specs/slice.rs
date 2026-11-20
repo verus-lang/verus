@@ -1,500 +1,514 @@
 use super::super::prelude::*;
-use super::super::utf8::is_char_boundary;
-#[cfg(verus_verify_core)]
-use super::core::TrustedSpecSealed;
 #[cfg(not(verus_verify_core))]
-use super::core::{IndexSetTrustedSpec, IndexSpec, TrustedSpecSealed};
+use super::super::slice::SliceIndexSpec;
+use super::cmp::OrdSpec;
+#[cfg(not(verus_verify_core))]
+use super::core::IndexSpec;
 use super::iter::IteratorSpec;
+use super::range::{
+    ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid,
+    spec_range_inclusive_is_empty,
+};
 
+use core::cmp::Ordering;
+use core::ops::{
+    Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
+};
+use core::slice::{Chunks, Iter, IterMut, SliceIndex};
+
+use verus as verus_skip_verusfmt;
+
+// SliceIndex and Index specs, and specs for `[T]` methods verified in rustlib.
+// rustlib's core defines and verifies these itself.
 #[cfg(not(verus_verify_core))]
-use super::super::string::StringSliceAdditionalSpecFns;
-#[cfg(not(verus_verify_core))]
-use core::ops::Index;
-use core::slice::{Iter, SliceIndex};
+verus_skip_verusfmt! {
 
-use core::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
-
-use verus as verus_;
-
-verus_! {
-
-impl<T, const N: usize> TrustedSpecSealed for [T; N] {}
-
-#[cfg(not(verus_verify_core))]
-impl<T, const N: usize> IndexSetTrustedSpec<usize> for [T; N] {
-    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
-        0 <= index < N
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for usize {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
+        *self < slice@.len()
     }
 
-    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ == self@.update(index as int, val)
+    open spec fn index_postcondition(&self, slice: &[T], r: &T) -> bool {
+        r == slice@[self as int]
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &T,
+        final_output: &T,
+    ) -> bool {
+        &&& *immediate_output == old_slice@[*self as int]
+        &&& final_slice@ == old_slice@.update(*self as int, *final_output)
     }
 }
 
-impl<T> TrustedSpecSealed for [T] {}
+pub assume_specification<T>[ <usize as SliceIndex<[T]>>::get ](i: usize, slice: &[T]) -> Option<&T>;
 
-#[cfg(not(verus_verify_core))]
-impl<T> IndexSetTrustedSpec<usize> for [T] {
-    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
-        0 <= index < self@.len()
+pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index ](i: usize, slice: &[T]) -> &T
+;
+
+pub assume_specification<T>[ <usize as SliceIndex<[T]>>::get_mut ](i: usize, slice: &mut [T]) -> Option<&mut T>;
+
+pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index_mut ](i: usize, slice: &mut [T]) -> (output: &mut T)
+;
+
+pub open spec fn generic_slice_in_bounds<R: RangeBoundsSpec<usize>, T>(
+    range: &R,
+    s: Seq<T>
+) -> bool {
+    slice_range_valid(range, s.len())
+}
+
+pub open spec fn generic_slice_index_postcondition<R: RangeBoundsSpec<usize>, T>(
+    range: &R,
+    slice: Seq<T>,
+    r: Seq<T>,
+) -> bool {
+    r == slice[slice_range_start(range)..slice_range_end(range, slice.len())]
+}
+
+pub open spec fn generic_slice_index_mut_postcondition<R: RangeBoundsSpec<usize>, T>(
+    range: &R,
+    old_slice: Seq<T>,
+    final_slice: Seq<T>,
+    immediate_output: Seq<T>,
+    final_output: Seq<T>,
+) -> bool {
+    &&& immediate_output == old_slice[slice_range_start(range)..slice_range_end(range, old_slice.len())]
+    &&& final_slice.len() == old_slice.len()
+    &&& final_slice[..slice_range_start(range)] == old_slice[..slice_range_start(range)]
+    &&& final_slice[slice_range_start(range)..slice_range_end(range, old_slice.len())] == final_output
+    &&& final_slice[slice_range_end(range, old_slice.len())..old_slice.len()] ==
+        old_slice[slice_range_end(range, old_slice.len())..old_slice.len()]
+    // The following conjunct can be derived from the above four, but
+    // it's useful to include anyway.
+    &&& final_slice == old_slice[..slice_range_start(range)] + final_output + old_slice[
+           slice_range_end(range, old_slice.len())..old_slice.len()]
+}
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for Range<usize> {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
+        generic_slice_in_bounds(self, slice@)
     }
 
-    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ == self@.update(index as int, val)
+    open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
+        generic_slice_index_postcondition(self, slice@, r@)
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &[T],
+        final_output: &[T]
+    ) -> bool {
+        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
     }
 }
 
-#[cfg(not(verus_verify_core))]
+pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::get ](i: Range<usize>, slice: &[T]) -> Option<&[T]>;
+
+pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index ](i: Range<usize>, slice: &[T]) -> (r: &[T])
+;
+
+pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::get_mut ](i: Range<usize>, slice: &mut [T]) -> Option<&mut [T]>;
+
+pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index_mut ](i: Range<usize>, slice: &mut [T]) -> (r: &mut [T])
+;
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeTo<usize> {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
+        generic_slice_in_bounds(self, slice@)
+    }
+
+    open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
+        generic_slice_index_postcondition(self, slice@, r@)
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &[T],
+        final_output: &[T]
+    ) -> bool {
+        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+    }
+}
+
+pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::get ](i: RangeTo<usize>, slice: &[T]) -> Option<&[T]>;
+
+pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::index ](i: RangeTo<usize>, slice: &[T]) -> (r: &[T])
+;
+
+pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::get_mut ](i: RangeTo<usize>, slice: &mut [T]) -> Option<&mut [T]>;
+
+pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::index_mut ](i: RangeTo<usize>, slice: &mut [T]) -> (r: &mut [T])
+;
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeFrom<usize> {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
+        generic_slice_in_bounds(self, slice@)
+    }
+
+    open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
+        generic_slice_index_postcondition(self, slice@, r@)
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &[T],
+        final_output: &[T]
+    ) -> bool {
+        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+    }
+}
+
+pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::get ](i: RangeFrom<usize>, slice: &[T]) -> Option<&[T]>;
+
+pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::index ](i: RangeFrom<usize>, slice: &[T]) -> (r: &[T])
+;
+
+pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::get_mut ](i: RangeFrom<usize>, slice: &mut [T]) -> Option<&mut [T]>;
+
+pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::index_mut ](i: RangeFrom<usize>, slice: &mut [T]) -> (r: &mut [T])
+;
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeToInclusive<usize> {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
+        generic_slice_in_bounds(self, slice@)
+    }
+
+    open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
+        generic_slice_index_postcondition(self, slice@, r@)
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &[T],
+        final_output: &[T]
+    ) -> bool {
+        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+    }
+}
+
+pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::get ](i: RangeToInclusive<usize>, slice: &[T]) -> Option<&[T]>;
+
+pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::index ](i: RangeToInclusive<usize>, slice: &[T]) -> (r: &[T])
+;
+
+pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::get_mut ](i: RangeToInclusive<usize>, slice: &mut [T]) -> Option<&mut [T]>;
+
+pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::index_mut ](i: RangeToInclusive<usize>, slice: &mut [T]) -> (r: &mut [T])
+;
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeFull {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
+        generic_slice_in_bounds(self, slice@)
+    }
+
+    open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
+        generic_slice_index_postcondition(self, slice@, r@)
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &[T],
+        final_output: &[T]
+    ) -> bool {
+        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+    }
+}
+
+pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::get ](i: RangeFull, slice: &[T]) -> Option<&[T]>;
+
+pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index ](i: RangeFull, slice: &[T]) -> (r: &[T])
+;
+
+pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::get_mut ](i: RangeFull, slice: &mut [T]) -> Option<&mut [T]>;
+
+pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index_mut ](i: RangeFull, slice: &mut [T]) -> (r: &mut [T])
+;
+
+// Indexing with an empty range doesn't verify, since std doesn't say whether it
+// panics. `get` still verifies and returns `None` or an empty slice.
+pub uninterp spec fn spec_range_inclusive_unspecified_slice_in_bounds<T>(
+    range: &RangeInclusive<usize>,
+    slice: &[T],
+) -> bool;
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
+        if spec_range_inclusive_is_empty(self) {
+            spec_range_inclusive_unspecified_slice_in_bounds(self, slice)
+        } else {
+            generic_slice_in_bounds(self, slice@)
+        }
+    }
+
+    open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
+        if spec_range_inclusive_is_empty(self) {
+            r@.len() == 0
+        } else {
+            generic_slice_index_postcondition(self, slice@, r@)
+        }
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &[T],
+        final_output: &[T]
+    ) -> bool {
+        if spec_range_inclusive_is_empty(self) {
+            &&& immediate_output@.len() == 0
+            &&& final_slice@ == old_slice@
+        } else {
+            generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+        }
+    }
+}
+
+pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::get ](i: RangeInclusive<usize>, slice: &[T]) -> Option<&[T]>;
+
+pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index ](i: RangeInclusive<usize>, slice: &[T]) -> (r: &[T])
+;
+
+pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::get_mut ](i: RangeInclusive<usize>, slice: &mut [T]) -> Option<&mut [T]>;
+
+pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index_mut ](i: RangeInclusive<usize>, slice: &mut [T]) -> (r: &mut [T])
+;
+
+// starts_with
+// Rust compares `needle == &slice[..needle.len()]`
+pub open spec fn spec_slice_starts_with<T: PartialEq>(slice: &[T], needle: &[T]) -> bool {
+    &&& needle@.len() <= slice@.len()
+    &&& forall|i: int| #![auto]
+        0 <= i < needle@.len() ==>
+            <T as super::cmp::PartialEqSpec<T>>::eq_spec(
+                &needle@[i],
+                &slice@[i],
+            )
+}
+
+#[verifier::when_used_as_spec(spec_slice_starts_with)]
+pub assume_specification<T: PartialEq>[ <[T]>::starts_with ](
+    slice: &[T],
+    needle: &[T],
+) -> (result: bool)
+    ensures
+        needle@.len() > slice@.len() ==> !result,
+        <T as super::cmp::PartialEqSpec<T>>::obeys_eq_spec() ==> (result == spec_slice_starts_with(
+            slice,
+            needle,
+        )),
+;
+
+// ends_with
+// Rust compares `needle == &slice[slice.len() - needle.len()..]`.
+pub open spec fn spec_slice_ends_with<T: PartialEq>(slice: &[T], needle: &[T]) -> bool {
+    &&& needle@.len() <= slice@.len()
+    &&& forall|i: int| #![auto]
+        0 <= i < needle@.len() ==>
+            <T as super::cmp::PartialEqSpec<T>>::eq_spec(
+                &needle@[i],
+                &slice@[slice@.len() - needle@.len() + i],
+            )
+}
+
+#[verifier::when_used_as_spec(spec_slice_ends_with)]
+pub assume_specification<T: PartialEq>[ <[T]>::ends_with ](
+    slice: &[T],
+    needle: &[T],
+) -> (result: bool)
+    ensures
+        needle@.len() > slice@.len() ==> !result,
+        <T as super::cmp::PartialEqSpec<T>>::obeys_eq_spec() ==> (result == spec_slice_ends_with(
+            slice,
+            needle,
+        )),
+;
+
 impl<T, I: SliceIndex<[T]>> super::core::IndexSpecImpl<I> for [T] {
     open spec fn index_req(&self, index: &I) -> bool {
-        valid_indices_slice(index.spec_start(self), index.spec_end(self), self)
+        index.in_bounds(self)
     }
 }
 
-#[cfg(not(verus_verify_core))]
+pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Option<
+    &<I as SliceIndex<[T]>>::Output,
+>) where I: SliceIndex<[T]>
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::get, (i, slice), b),
+;
+
+pub assume_specification<T, I>[ <[T]>::get_mut::<I> ](slice: &mut [T], i: I) -> (b: Option<
+    &mut <I as SliceIndex<[T]>>::Output,
+>) where I: SliceIndex<[T]>
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::get_mut, (i, slice), b),
+;
+
+pub assume_specification<T, I: SliceIndex<[T]>>[ <[T] as Index<I>>::index ](
+    slice: &[T],
+    index: I,
+) -> (output: &<I as SliceIndex<[T]>>::Output)
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::index, (index, slice), output),
+;
+
+pub assume_specification<T, I: SliceIndex<[T]>>[ <[T] as IndexMut<I>>::index_mut ](
+    slice: &mut [T],
+    index: I,
+) -> (output: &mut <I as SliceIndex<[T]>>::Output)
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::index_mut, (index, slice), output),
+;
+
+// `get_unchecked(i)`/`get_unchecked_mut(i)` share the contract of `index`/`index_mut`, with
+// the in-bounds check as a safety precondition (UB if violated) rather than a panic.
+pub assume_specification<T, I>[ <[T]>::get_unchecked::<I> ](
+    slice: &[T],
+    index: I,
+) -> (output: &<I as SliceIndex<[T]>>::Output) where I: SliceIndex<[T]>
+    requires
+        index.in_bounds(slice),
+    ensures
+        index.index_postcondition(slice, output),
+;
+
+pub assume_specification<T, I>[ <[T]>::get_unchecked_mut::<I> ](
+    slice: &mut [T],
+    index: I,
+) -> (output: &mut <I as SliceIndex<[T]>>::Output) where I: SliceIndex<[T]>
+    requires
+        index.in_bounds(&*old(slice)),
+    ensures
+        index.index_mut_postcondition(&*old(slice), &*final(slice), output, &*final(output)),
+;
+
 impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
-    where [T]: Index<I>
+where
+    [T]: Index<I>,
 {
     open spec fn index_req(&self, index: &I) -> bool {
         <[T] as IndexSpec<I>>::index_req(self, index)
     }
 }
 
-#[cfg(not(verus_verify_core))]
-pub assume_specification<T, I: SliceIndex<[T]>> [<[T] as Index<I>>::index] (
-    slice: &[T],
-    index: I,
-) -> (output: &<I as core::slice::SliceIndex<[T]>>::Output)
+pub assume_specification<T, I, const N: usize>[ <[T; N]>::index ](array: &[T; N], index: I) -> (output: &<[T; N] as Index<I>>::Output)
+    where
+        [T]: Index<I>,
     ensures
-        call_ensures(<I as SliceIndex<[T]>>::index, (index, slice), output),
+        call_ensures(<[T]>::index, (array, index), output),
 ;
 
-#[cfg(not(verus_verify_core))]
-pub assume_specification<T, I, const N: usize> [<[T; N] as Index<I>>::index] (
-    array: &[T; N],
-    index: I,
-) -> (output: &<[T; N] as core::ops::Index<I>>::Output)
-    where [T]: Index<I>,
+pub assume_specification<T, I, const N: usize>[ <[T; N]>::index_mut ](array: &mut [T; N], index: I) -> (output: &mut <[T; N] as Index<I>>::Output)
+    where
+        [T]: IndexMut<I>,
     ensures
-        call_ensures(<[T] as Index<I>>::index, (array, index), output),
+        exists|slice: &mut [T]| {
+            &&& #[trigger] slice@ == old(array)@
+            &&& final(slice)@ == final(array)@
+            &&& call_ensures(<[T]>::index_mut, (slice, index), output)
+        },
 ;
+
+} // verus!
+
+verus_skip_verusfmt! {
 
 pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
     requires
         false,
 ;
-}
-
-#[cfg(not(verus_verify_core))]
-verus! {
-
-/* SliceIndex */
-/// True when the indices `start` and `end` (exclusive) are considered valid indices for `slice`.
-pub uninterp spec fn valid_indices<T: ?Sized>(start: int, end: int, slice: &T) -> bool;
-
-/// For `[T]`, the indices must be in bounds.
-pub open spec fn valid_indices_slice<T>(start: int, end: int, slice: &[T]) -> bool {
-    start <= end <= slice@.len()
-}
-
-pub broadcast axiom fn def_valid_indices_slice<T>(start: int, end: int, slice: &[T])
-    ensures
-        valid_indices_slice(start, end, slice) <==> #[trigger] valid_indices(start, end, slice),
-;
-
-/// For `str`, the indices must be in bounds and on a char boundary.
-pub open spec fn valid_indices_str(start: int, end: int, slice: &str) -> bool {
-    start <= end <= slice.spec_bytes().len() && is_char_boundary(slice.spec_bytes(), start)
-        && is_char_boundary(slice.spec_bytes(), end)
-}
-
-pub broadcast axiom fn def_valid_indices_str(start: int, end: int, slice: &str)
-    ensures
-        valid_indices_str(start, end, slice) <==> #[trigger] valid_indices(start, end, slice),
-;
-
-/// True when `output` is the result of slicing `slice` from `start` to `end` (exclusive) indices.
-// This is written as a relation because `Output` is an exec type (e.g. [T]),
-// and so we cannot necessarily return it from a spec function.
-pub uninterp spec fn index_result<T: ?Sized, Output: ?Sized>(
-    start: int,
-    end: int,
-    slice: &T,
-    output: &Output,
-) -> bool;
-
-/// For `[T]`, the result of slicing to a single `T` will be the element at the given index.
-pub open spec fn index_result_slice_usize<T>(
-    start: int,
-    end: int,
-    slice: &[T],
-    output: &T,
-) -> bool {
-    *output =~= slice@[start]
-}
-
-pub broadcast axiom fn def_index_result_slice_usize<T>(
-    start: int,
-    end: int,
-    slice: &[T],
-    output: &T,
-)
-    ensures
-        #[trigger] index_result::<[T], T>(start, end, slice, output) <==> index_result_slice_usize(
-            start,
-            end,
-            slice,
-            output,
-        ),
-;
-
-/// For `[T]`, the result of slicing to another `[T]` will be a subsequence of the original sequence.
-pub open spec fn index_result_slice<T>(start: int, end: int, slice: &[T], output: &[T]) -> bool {
-    output@ =~= slice@.subrange(start, end)
-}
-
-pub broadcast axiom fn def_index_result_slice<T>(start: int, end: int, slice: &[T], output: &[T])
-    ensures
-        #[trigger] index_result::<[T], [T]>(start, end, slice, output) <==> index_result_slice(
-            start,
-            end,
-            slice,
-            output,
-        ),
-;
-
-/// For `str`, the result of slicing to another `str` will be a sub-string of the original string.
-pub open spec fn index_result_str(start: int, end: int, slice: &str, output: &str) -> bool {
-    output.spec_bytes() == slice.spec_bytes().subrange(start, end)
-}
-
-pub broadcast axiom fn def_index_result_str(start: int, end: int, slice: &str, output: &str)
-    ensures
-        #[trigger] index_result::<str, str>(start, end, slice, output) <==> index_result_str(
-            start,
-            end,
-            slice,
-            output,
-        ),
-;
-
-/// True when the final value of the slice (`final_slice`) will be the result of
-/// mutating the original slice (`old_slice`) between the indices `start` and `end`,
-/// where the final value between those indices is given by `final_output`.
-pub uninterp spec fn index_mut_result<T: ?Sized, Output: ?Sized>(
-    start: int,
-    end: int,
-    old_slice: &T,
-    final_slice: &T,
-    final_output: &Output,
-) -> bool;
-
-/// For `[T]` sliced to a single `T`, the final `[T]` will be updated at the corresponding index
-/// with the final value of the single element.
-pub open spec fn index_mut_result_slice_usize<T>(
-    start: int,
-    end: int,
-    old_slice: &[T],
-    final_slice: &[T],
-    final_output: &T,
-) -> bool {
-    final_slice@ =~= old_slice@.update(start, *final_output)
-}
-
-pub broadcast axiom fn def_index_mut_result_slice_usize<T>(
-    start: int,
-    end: int,
-    old_slice: &[T],
-    final_slice: &[T],
-    final_output: &T,
-)
-    ensures
-        #[trigger] index_mut_result::<[T], T>(start, end, old_slice, final_slice, final_output)
-            <==> index_mut_result_slice_usize(start, end, old_slice, final_slice, final_output),
-;
-
-/// For `[T]` sliced to another slice `[T]`, the final `[T]` will be updated at the corresponding subrange
-/// with the final value of the subslice.
-pub open spec fn index_mut_result_slice<T>(
-    start: int,
-    end: int,
-    old_slice: &[T],
-    final_slice: &[T],
-    final_output: &[T],
-) -> bool {
-    final_slice@ =~= old_slice@.subrange(0, start) + final_output@ + old_slice@.subrange(
-        end,
-        old_slice@.len() as int,
-    )
-}
-
-pub broadcast axiom fn def_index_mut_result_slice<T>(
-    start: int,
-    end: int,
-    old_slice: &[T],
-    final_slice: &[T],
-    final_output: &[T],
-)
-    ensures
-        #[trigger] index_mut_result::<[T], [T]>(start, end, old_slice, final_slice, final_output)
-            <==> index_mut_result_slice(start, end, old_slice, final_slice, final_output),
-;
-
-/// For `str` sliced to another `str`, the final `str` will be updated at the corresponding subrange
-/// with the final value of the sub-string.
-pub open spec fn index_mut_result_str(
-    start: int,
-    end: int,
-    old_slice: &str,
-    final_slice: &str,
-    final_output: &str,
-) -> bool {
-    final_slice.spec_bytes() =~= old_slice.spec_bytes().subrange(0, start)
-        + final_output.spec_bytes() + old_slice.spec_bytes().subrange(
-        end,
-        old_slice.spec_bytes().len() as int,
-    )
-}
-
-pub broadcast axiom fn def_index_mut_result_str(
-    start: int,
-    end: int,
-    old_slice: &str,
-    final_slice: &str,
-    final_output: &str,
-)
-    ensures
-        #[trigger] index_mut_result::<str, str>(start, end, old_slice, final_slice, final_output)
-            <==> index_mut_result_str(start, end, old_slice, final_slice, final_output),
-;
-
-// Version for outside of `core`, where we add an external_trait private bound
-#[verifier::external_trait_specification]
-#[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
-#[verifier::external_trait_private_bound(core::slice::index::private_slice_index::Sealed)]
-pub trait ExSliceIndex<T: ?Sized> {
-    type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
-
-    type Output: ?Sized;
-
-    /// Start index of this slice index on the given slice.
-    spec fn spec_start(&self, slice: &T) -> int;
-
-    /// End index (exclusive) of this slice index on the given slice.
-    spec fn spec_end(&self, slice: &T) -> int;
-
-    fn get(self, slice: &T) -> (out: Option<&Self::Output>)
-        ensures
-            out.is_some() <==> valid_indices(self.spec_start(slice), self.spec_end(slice), slice),
-            out.is_some() ==> index_result(
-                self.spec_start(slice),
-                self.spec_end(slice),
-                slice,
-                out.unwrap(),
-            ),
-    ;
-
-    fn get_mut(self, slice: &mut T) -> (out: Option<&mut Self::Output>)
-        ensures
-            out.is_some() <==> valid_indices(
-                self.spec_start(old(slice)),
-                self.spec_end(old(slice)),
-                old(slice),
-            ),
-            out.is_some() ==> {
-                &&& index_result(
-                    self.spec_start(old(slice)),
-                    self.spec_end(old(slice)),
-                    old(slice),
-                    out.unwrap(),
-                )
-                &&& index_mut_result(
-                    self.spec_start(old(slice)),
-                    self.spec_end(old(slice)),
-                    old(slice),
-                    final(slice),
-                    final(out.unwrap()),
-                )
-            },
-    ;
-
-    fn index(self, slice: &T) -> (out: &Self::Output)
-        requires
-            valid_indices(self.spec_start(slice), self.spec_end(slice), slice),
-        ensures
-            index_result(self.spec_start(slice), self.spec_end(slice), slice, out),
-    ;
-
-    fn index_mut(self, slice: &mut T) -> (out: &mut Self::Output)
-        requires
-            valid_indices(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice)),
-        ensures
-            index_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), out),
-            index_mut_result(
-                self.spec_start(old(slice)),
-                self.spec_end(old(slice)),
-                old(slice),
-                final(slice),
-                final(out),
-            ),
-    ;
-}
-
-impl<T> SliceIndexSpecImpl<[T]> for usize {
-    open spec fn spec_start(&self, slice: &[T]) -> int {
-        self as int
-    }
-
-    open spec fn spec_end(&self, slice: &[T]) -> int {
-        self as int + 1
-    }
-}
-
-// describes range: start..end
-impl<T> SliceIndexSpecImpl<[T]> for Range<usize> {
-    open spec fn spec_start(&self, slice: &[T]) -> int {
-        self.start as int
-    }
-
-    open spec fn spec_end(&self, slice: &[T]) -> int {
-        self.end as int
-    }
-}
-
-// describes range: start..
-impl<T> SliceIndexSpecImpl<[T]> for RangeFrom<usize> {
-    open spec fn spec_start(&self, slice: &[T]) -> int {
-        self.start as int
-    }
-
-    open spec fn spec_end(&self, slice: &[T]) -> int {
-        slice@.len() as int
-    }
-}
-
-// describes full range: ..
-impl<T> SliceIndexSpecImpl<[T]> for RangeFull {
-    open spec fn spec_start(&self, slice: &[T]) -> int {
-        0
-    }
-
-    open spec fn spec_end(&self, slice: &[T]) -> int {
-        slice@.len() as int
-    }
-}
-
-// describes range: start..=end
-impl<T> SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
-    open spec fn spec_start(&self, slice: &[T]) -> int {
-        self@.start as int
-    }
-
-    open spec fn spec_end(&self, slice: &[T]) -> int {
-        self@.end as int + 1
-    }
-}
-
-// describes range: ..end
-impl<T> SliceIndexSpecImpl<[T]> for RangeTo<usize> {
-    open spec fn spec_start(&self, slice: &[T]) -> int {
-        0
-    }
-
-    open spec fn spec_end(&self, slice: &[T]) -> int {
-        self.end as int
-    }
-}
-
-// describes range: ..=end
-impl<T> SliceIndexSpecImpl<[T]> for RangeToInclusive<usize> {
-    open spec fn spec_start(&self, slice: &[T]) -> int {
-        0
-    }
-
-    open spec fn spec_end(&self, slice: &[T]) -> int {
-        self.end as int + 1
-    }
-}
-
-// describes range: start..end
-impl SliceIndexSpecImpl<str> for Range<usize> {
-    open spec fn spec_start(&self, slice: &str) -> int {
-        self.start as int
-    }
-
-    open spec fn spec_end(&self, slice: &str) -> int {
-        self.end as int
-    }
-}
-
-// describes range: start..
-impl SliceIndexSpecImpl<str> for RangeFrom<usize> {
-    open spec fn spec_start(&self, slice: &str) -> int {
-        self.start as int
-    }
-
-    open spec fn spec_end(&self, slice: &str) -> int {
-        slice.spec_bytes().len() as int
-    }
-}
-
-// describes full range: ..
-impl SliceIndexSpecImpl<str> for RangeFull {
-    open spec fn spec_start(&self, slice: &str) -> int {
-        0
-    }
-
-    open spec fn spec_end(&self, slice: &str) -> int {
-        slice.spec_bytes().len() as int
-    }
-}
-
-// describes range: start..=end
-impl SliceIndexSpecImpl<str> for RangeInclusive<usize> {
-    open spec fn spec_start(&self, slice: &str) -> int {
-        self@.start as int
-    }
-
-    open spec fn spec_end(&self, slice: &str) -> int {
-        self@.end as int + 1
-    }
-}
-
-// describes range: ..end
-impl SliceIndexSpecImpl<str> for RangeTo<usize> {
-    open spec fn spec_start(&self, slice: &str) -> int {
-        0
-    }
-
-    open spec fn spec_end(&self, slice: &str) -> int {
-        self.end as int
-    }
-}
-
-// describes range: ..=end
-impl SliceIndexSpecImpl<str> for RangeToInclusive<usize> {
-    open spec fn spec_start(&self, slice: &str) -> int {
-        0
-    }
-
-    open spec fn spec_end(&self, slice: &str) -> int {
-        self.end as int + 1
-    }
-}
-
-pub broadcast group group_slice_index_specs {
-    def_valid_indices_slice,
-    def_valid_indices_str,
-    def_index_result_slice,
-    def_index_result_slice_usize,
-    def_index_result_str,
-    def_index_mut_result_slice,
-    def_index_mut_result_slice_usize,
-    def_index_mut_result_str,
-}
 
 } // verus!
-verus! {
+
+// Specs for `[T]` methods, which rustlib's core defines itself.
+#[cfg(not(verus_verify_core))]
+verus_skip_verusfmt! {
+
+// slice == slice
+pub assume_specification<T: PartialEq<U>, U>[ <[T] as PartialEq<[U]>>::eq ](
+    left: &[T],
+    right: &[U],
+) -> bool
+;
+
+impl<T, U> super::cmp::PartialEqSpecImpl<[U]> for [T] where T: PartialEq<U> + super::cmp::PartialEqSpec<U> {
+    open spec fn obeys_eq_spec() -> bool {
+        <T as super::cmp::PartialEqSpec<U>>::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &[U]) -> bool {
+        &&& self@.len() == other@.len()
+        &&& forall|i: int|
+            #![auto]
+            0 <= i < self@.len() ==> <T as super::cmp::PartialEqSpec<U>>::eq_spec(&self@[i], &other@[i])
+    }
+}
+
+// contains
+pub open spec fn spec_slice_contains<T: PartialEq<T>>(slice: &[T], value: &T) -> bool {
+    exists |i: int| #![auto] 0 <= i < slice@.len()
+        && <T as super::cmp::PartialEqSpec<T>>::eq_spec(&slice[i], value)
+}
+
+#[verifier::when_used_as_spec(spec_slice_contains)]
+pub assume_specification<T>[ <[T]>::contains ] (slice: &[T], value: &T) -> (result: bool)
+    where
+        T: PartialEq<T>,
+        ensures
+            <T as super::cmp::PartialEqSpec<T>>::obeys_eq_spec() ==> result == spec_slice_contains(slice, value),
+;
+
+// reverse
+pub assume_specification<T>[ <[T]>::reverse ](slice: &mut [T])
+    ensures
+        final(slice)@ == old(slice)@.reverse(),
+;
+
+// swap
+pub assume_specification<T>[ <[T]>::swap ](slice: &mut [T], a: usize, b: usize)
+    requires
+        a < old(slice)@.len(),
+        b < old(slice)@.len(),
+    ensures
+        final(slice)@ == old(slice)@.update(a as int, old(slice)@[b as int]).update(b as int, old(slice)@[a as int]),
+    no_unwind
+;
+
+// rotate_left
+pub assume_specification<T>[ <[T]>::rotate_left ](slice: &mut [T], mid: usize)
+    requires
+        mid <= old(slice)@.len(),
+    ensures
+        final(slice)@ == old(slice)@[mid as int..] + old(slice)@[..mid as int],
+    no_unwind
+;
+
+// rotate_right
+pub assume_specification<T>[ <[T]>::rotate_right ](slice: &mut [T], k: usize)
+    requires
+        k <= old(slice)@.len(),
+    ensures
+        final(slice)@ == old(slice)@[old(slice)@.len() - k..] + old(slice)@[..old(slice)@.len() - k],
+    no_unwind
+;
+
+} // verus!
+
+verus_skip_verusfmt! {
 
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,
 // so we specify that type here.
@@ -507,21 +521,16 @@ pub struct ExIter<'a, T: 'a>(Iter<'a, T>);
 // a prophecy, we need a function that gives us the underlying sequence of the original slice.
 pub uninterp spec fn into_iter_elts<'a, T: 'a>(i: Iter<'a, T>) -> Seq<T>;
 
-impl<'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
+impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-
-    uninterp spec fn will_return_none(&self) -> bool;
-
     #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_elts(*self) == IteratorSpec::remaining(self).unref()
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
     }
-
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -533,103 +542,427 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     }
 }
 
-// To allow reasoning about the returned iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: s.iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_slice_iter)` to the specification for
-// the executable `into_iter` method and define that spec function here.
-pub uninterp spec fn spec_slice_iter<'a, T>(s: &'a [T]) -> (iter: Iter<'a, T>);
-
-pub broadcast proof fn axiom_spec_slice_iter<'a, T>(s: &'a [T])
-    ensures
-        #[trigger] spec_slice_iter(s).remaining() == s@.as_ref(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_slice_iter)]
 pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>)
     ensures
-        iter == spec_slice_iter(s),
+        IteratorSpec::remaining(&iter) == s@.as_ref(),
+        // Stated via `len()` so callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() == s.len(),
+        into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
-#[verifier::when_used_as_spec(spec_slice_iter)]
-pub assume_specification<'a, T>[ <&'a [T] as core::iter::IntoIterator>::into_iter ](
-    s: &'a [T],
-) -> (iter: Iter<'a, T>)
+pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_iter] (s: &'a [T]) ->
+    (iter: Iter<'a, T>)
     ensures
-        iter == spec_slice_iter(s),
+        IteratorSpec::remaining(&iter) == s@.as_ref(),
+        IteratorSpec::remaining(&iter).len() == s.len(),
+        into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
+;
+
+/***********************************************************************************************
+ * Definitions for `slice::IterMut` (the iterator behind `<[T]>::iter_mut` and `Vec::iter_mut`)
+ ***********************************************************************************************/
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExIterMut<'a, T: 'a>(IterMut<'a, T>);
+
+// See exampes/iterators/slice_iter_mut.rs for a verified implementation of this interface.
+// Any changes here should first be verified over there.
+impl<'a, T: 'a> super::iter::IteratorSpecImpl for IterMut<'a, T> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> { None }
+}
+
+// Also covers `vec.iter_mut(), which reaches this slice fn through `Vec`'s `DerefMut`
+pub assume_specification<'a, T>[ <[T]>::iter_mut ](slice: &'a mut [T]) -> (iter: IterMut<'a, T>)
+    ensures
+        IteratorSpec::remaining(&iter).len() == old(slice)@.len() == final(slice)@.len(),
+        IteratorSpec::remaining(&iter).len() == old(slice).len(),
+        // Each yielded reference initially points at the corresponding element...
+        forall|i: int| #![trigger IteratorSpec::remaining(&iter)[i]]
+            0 <= i < old(slice)@.len() ==> *(IteratorSpec::remaining(&iter)[i]) == old(slice)@[i],
+        // ...and its eventual value flows back to the corresponding element.
+        forall|i: int|
+            #![trigger IteratorSpec::remaining(&iter)[i]]
+            #![trigger final(slice)@[i]]
+            0 <= i < old(slice)@.len() ==> *final(IteratorSpec::remaining(&iter)[i]) == final(slice)@[i],
+        IteratorSpec::obeys_prophetic_iter_laws(&iter),
+        IteratorSpec::produces(&iter).all(|p: bool| p),
+        IteratorSpec::decrease(&iter) is Some,
 ;
 
 #[cfg(not(verus_verify_core))]
-pub assume_specification<T>[ <[T]>::first ](slice: &[T]) -> (res: Option<&T>)
+pub assume_specification<T> [ <[T]>::first ](slice: &[T]) -> (res: Option<&T>)
     ensures
         slice.len() == 0 ==> res.is_none(),
-        slice.len() != 0 ==> res.is_some() && res.unwrap() == slice[0],
+        slice.len() != 0 ==> res.is_some() && res.unwrap() == slice[0]
+    no_unwind
 ;
 
 #[cfg(not(verus_verify_core))]
-pub assume_specification<T>[ <[T]>::last ](slice: &[T]) -> (res: Option<&T>)
+pub assume_specification<T> [ <[T]>::last ](slice: &[T]) -> (res: Option<&T>)
     ensures
         slice.len() == 0 ==> res.is_none(),
-        slice.len() != 0 ==> res.is_some() && res.unwrap() == slice@.last(),
+        slice.len() != 0 ==> res.is_some() && res.unwrap() == slice@.last()
+    no_unwind
 ;
 
 #[cfg(not(verus_verify_core))]
 #[doc(hidden)]
-pub assume_specification<T>[ <[T]>::first_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
+pub assume_specification<T> [ <[T]>::first_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
     ensures
         old(slice).len() == 0 ==> res.is_none() && final(slice)@ == seq![],
-        old(slice).len() != 0 ==> res.is_some() && *res.unwrap() == old(slice)[0] && final(slice)@
-            == old(slice)@.update(0, *final(res.unwrap())),
+        old(slice).len() != 0 ==> res.is_some() && *res.unwrap() == old(slice)[0]
+            && final(slice)@ == old(slice)@.update(0, *final(res.unwrap()))
+    no_unwind
 ;
 
 #[cfg(not(verus_verify_core))]
 #[doc(hidden)]
-pub assume_specification<T>[ <[T]>::last_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
+pub assume_specification<T> [ <[T]>::last_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
     ensures
         old(slice).len() == 0 ==> res.is_none() && final(slice)@ == seq![],
         old(slice).len() != 0 ==> res.is_some() && *res.unwrap() == old(slice)@.last()
-            && final(slice)@ == old(slice)@.update(old(slice).len() - 1, *final(res.unwrap())),
+            && final(slice)@ == old(slice)@.update(old(slice).len() - 1, *final(res.unwrap()))
+    no_unwind
 ;
 
 #[cfg(not(verus_verify_core))]
-pub assume_specification<T>[ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))
+pub assume_specification<T> [ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))
     requires
         0 <= mid <= slice.len(),
     ensures
-        ret.0@ == slice@.subrange(0, mid as int),
-        ret.1@ == slice@.subrange(mid as int, slice@.len() as int),
+        ret.0@ == slice@[..mid],
+        ret.1@ == slice@[mid..],
+    no_unwind
+;
+
+#[cfg(not(verus_verify_core))]
+#[doc(hidden)]
+pub assume_specification<T> [ <[T]>::split_at_mut ](slice: &mut [T], mid: usize) -> (ret: (&mut [T], &mut [T]))
+    requires
+        0 <= mid <= slice.len(),
+    ensures
+        ret.0@ == old(slice)@[..mid],
+        ret.1@ == old(slice)@[mid..],
+        final(slice)@ == final(ret.0)@ + final(ret.1)@,
+    no_unwind
+;
+
+} // verus!
+
+// Specs for `[T]` methods, which rustlib's core defines itself.
+#[cfg(not(verus_verify_core))]
+verus_skip_verusfmt! {
+
+// The non-panicking (`Option`-returning) form of `split_at`: `Some((a, b))` split at `mid`
+// when `mid <= len`, else `None`.
+pub assume_specification<T> [ <[T]>::split_at_checked ](slice: &[T], mid: usize) -> (ret: Option<(&[T], &[T])>)
+    ensures
+        mid <= slice.len() ==> (ret matches Some((a, b))
+            && a@ == slice@[..mid]
+            && b@ == slice@[mid..]),
+        mid > slice.len() ==> ret is None,
+    no_unwind
+;
+
+pub assume_specification<T> [ <[T]>::split_at_unchecked ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))
+    requires
+        0 <= mid <= slice.len(),
+    ensures
+        ret.0@ == slice@[..mid],
+        ret.1@ == slice@[mid..],
+    no_unwind
 ;
 
 #[doc(hidden)]
-#[cfg(not(verus_verify_core))]
-pub assume_specification<T>[ <[T]>::split_at_mut ](slice: &mut [T], mid: usize) -> (ret: (
-    &mut [T],
-    &mut [T],
-))
+pub assume_specification<T> [ <[T]>::split_at_mut_unchecked ](slice: &mut [T], mid: usize) -> (ret: (&mut [T], &mut [T]))
     requires
         0 <= mid <= slice.len(),
     ensures
-        ret.0@ == old(slice)@.subrange(0, mid as int),
-        ret.1@ == old(slice)@.subrange(mid as int, old(slice)@.len() as int),
+        ret.0@ == old(slice)@[..mid],
+        ret.1@ == old(slice)@[mid..],
         final(slice)@ == final(ret.0)@ + final(ret.1)@,
+    no_unwind
 ;
 
-#[cfg(not(verus_verify_core))]
-pub broadcast group group_slice_axioms {
-    axiom_spec_slice_iter,
-    group_slice_index_specs,
+pub assume_specification<T> [ <[T]>::split_first ](slice: &[T]) -> (ret: Option<(&T, &[T])>)
+    ensures
+        slice.len() == 0 ==> ret.is_none(),
+        slice.len() > 0 ==> (ret matches Some((a, b)) && a == slice[0] && b@ == slice@[1..])
+    no_unwind
+;
+
+pub assume_specification<T> [ <[T]>::split_first_mut ](slice: &mut [T]) -> (ret: Option<(&mut T, &mut [T])>)
+    ensures
+        old(slice).len() == 0 ==> ret.is_none() && final(slice)@ == seq![],
+        old(slice).len() > 0 ==> (ret matches Some((a, b))
+            && *a == old(slice)[0]
+            && b@ == old(slice)@[1..]
+            && b@.len() == final(b)@.len()
+            && final(slice)@ == seq![*final(a)] + final(b)@
+        )
+    no_unwind
+;
+
+/// Copy the contents of `src` into `dst`, which must have the same length.
+pub assume_specification<T: Copy>[ <[T]>::copy_from_slice ](dst: &mut [T], src: &[T])
+    requires
+        old(dst)@.len() == src@.len(),
+    ensures
+        final(dst)@ == src@,
+;
+
+/// The sequence resulting from copying `old_slice[src_start..src_end]` to start
+/// at index `dest`, leaving all other positions unchanged. Reads are taken from
+/// `old_slice`, so overlapping source and destination ranges are handled like
+/// std's `<[T]>::copy_within` (which uses `ptr::copy`).
+pub open spec fn copy_within_result<T>(
+    old_slice: Seq<T>,
+    src_start: int,
+    src_end: int,
+    dest: int,
+) -> Seq<T> {
+    let count = src_end - src_start;
+    Seq::new(
+        old_slice.len(),
+        |i: int|
+            if dest <= i && i < dest + count {
+                old_slice[src_start + (i - dest)]
+            } else {
+                old_slice[i]
+            },
+    )
 }
 
-#[cfg(verus_verify_core)]
-pub broadcast group group_slice_axioms {
-    axiom_spec_slice_iter,
+/// Copy the elements in range `src` within the slice to start at index `dest`.
+pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy_within::<R> ](
+    slice: &mut [T],
+    src: R,
+    dest: usize,
+)
+    requires
+        slice_range_valid(&src, old(slice)@.len()),
+        (dest as int) + (slice_range_end(&src, old(slice)@.len()) - slice_range_start(&src))
+            <= old(slice)@.len(),
+    ensures
+        final(slice)@ == copy_within_result(
+            old(slice)@,
+            slice_range_start(&src),
+            slice_range_end(&src, old(slice)@.len()),
+            dest as int,
+        ),
+;
+
+// The `chunks` method of a `[T]` returns an iterator of type `Chunks<'_, T>`,
+// so we specify that type here.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExChunks<'a, T: 'a>(Chunks<'a, T>);
+
+// To allow reasoning about the "chunks" of the slice iterator, without using
+// a prophecy, we need a function that gives us the the sequence of chunk slices
+// remaining in the iterator.
+pub uninterp spec fn after_chunks_elts<'a, T: 'a>(i: Chunks<'a, T>) -> Seq<&'a [T]>;
+
+impl<'a, T: 'a> super::iter::IteratorSpecImpl for Chunks<'a, T> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
+
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < after_chunks_elts(*self).len() {
+            Some(after_chunks_elts(*self)[index])
+        } else {
+            None
+        }
+    }
 }
+
+pub assume_specification<'a, T>[ <[T]>::chunks ](s: &'a [T], chunk_size: usize) -> (iter: Chunks<
+    'a,
+    T,
+>)
+    requires
+        chunk_size > 0,
+    ensures
+        IteratorSpec::remaining(&iter) == after_chunks_elts(iter),
+        IteratorSpec::remaining(&iter).len() == (s@.len() + chunk_size as int - 1) / (
+        chunk_size as int),
+        // Each chunk is non-empty, so there are at most `s.len()` of them.
+        // This lets callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() <= s.len(),
+        forall|i: int|
+            #![trigger IteratorSpec::remaining(&iter)[i]]
+            0 <= i < IteratorSpec::remaining(&iter).len() ==> {
+                let start = i * chunk_size as int;
+                let end = if start + chunk_size as int <= s@.len() {
+                    start + chunk_size as int
+                } else {
+                    s@.len() as int
+                };
+
+                IteratorSpec::remaining(&iter)[i]@ == s@.subrange(start, end)
+            },
+        IteratorSpec::decrease(&iter) is Some,
+;
+
+
+// ------------------------------------------------------------------ sorting
+//
+// Since Rust 1.81, std's sorts may panic if the order is not total ("user-provided comparison
+// function does not correctly implement a total order"), so each sort requires one.
+
+/// `a` is not after `b` in `Ord`'s order
+pub open spec fn cmp_le<T: Ord>(a: T, b: T) -> bool {
+    OrdSpec::cmp_spec(&a, &b) != Ordering::Greater
+}
+
+/// `s` is sorted by `le` (as `relations::sorted_by`, with triggers on the elements, so that a
+/// fact about `s[i]` and `s[j]` is enough to learn their order)
+pub open spec fn sorted_by_le<T>(s: Seq<T>, le: spec_fn(T, T) -> bool) -> bool {
+    &&& forall|i: int, j: int| #![trigger s[i], s[j]] 0 <= i < j < s.len() ==> le(s[i], s[j])
+    &&& super::super::relations::sorted_by(s, le)
+}
+
+/// `a` is not after `b` in `compare`'s order (for an element pair `compare` was called on)
+pub open spec fn compare_le<T, F: FnMut(&T, &T) -> Ordering>(compare: F, a: T, b: T) -> bool {
+    forall|o: Ordering| #[trigger] call_ensures(compare, (&a, &b), o) ==> o != Ordering::Greater
+}
+
+/// `a`'s key is not after `b`'s in `K`'s order
+pub open spec fn key_le<T, K: Ord, F: FnMut(&T) -> K>(f: F, a: T, b: T) -> bool {
+    forall|ka: K, kb: K|
+        #[trigger] call_ensures(f, (&a,), ka) && #[trigger] call_ensures(f, (&b,), kb)
+            ==> OrdSpec::cmp_spec(&ka, &kb) != Ordering::Greater
+}
+
+/// `compare` is a total order on the elements of `s` (antisymmetric, transitive, and
+/// deterministic), which std's sorts require: since Rust 1.81 they may panic otherwise
+/// ("user-provided comparison function does not correctly implement a total order").
+pub open spec fn cmp_fn_total_on<T, F: FnMut(&T, &T) -> Ordering>(compare: F, s: Seq<T>) -> bool {
+    &&& forall |i: int, j: int, o1: Ordering, o2: Ordering|
+        #![trigger call_ensures(compare, (&s[i], &s[j]), o1), call_ensures(compare, (&s[j], &s[i]), o2)]
+        0 <= i < s.len() && 0 <= j < s.len()
+            && call_ensures(compare, (&s[i], &s[j]), o1) && call_ensures(compare, (&s[j], &s[i]), o2)
+            ==> o2 == match o1 { Ordering::Less => Ordering::Greater, Ordering::Equal => Ordering::Equal, Ordering::Greater => Ordering::Less }
+    &&& forall |i: int, j: int, o1: Ordering, o2: Ordering|
+        #![trigger call_ensures(compare, (&s[i], &s[j]), o1), call_ensures(compare, (&s[i], &s[j]), o2)]
+        0 <= i < s.len() && 0 <= j < s.len()
+            && call_ensures(compare, (&s[i], &s[j]), o1) && call_ensures(compare, (&s[i], &s[j]), o2)
+            ==> o1 == o2
+    &&& forall |i: int, j: int, k: int, o1: Ordering, o2: Ordering, o3: Ordering|
+        #![trigger call_ensures(compare, (&s[i], &s[j]), o1), call_ensures(compare, (&s[j], &s[k]), o2), call_ensures(compare, (&s[i], &s[k]), o3)]
+        0 <= i < s.len() && 0 <= j < s.len() && 0 <= k < s.len()
+            && call_ensures(compare, (&s[i], &s[j]), o1) && call_ensures(compare, (&s[j], &s[k]), o2)
+            && call_ensures(compare, (&s[i], &s[k]), o3)
+            && o1 != Ordering::Greater && o2 != Ordering::Greater
+            ==> o3 != Ordering::Greater && (o1 == Ordering::Less || o2 == Ordering::Less ==> o3 == Ordering::Less)
+}
+
+/// `f` returns the same key for the same element (std's `sort_by_key` calls it more than once)
+pub open spec fn key_fn_deterministic_on<T, K, F: FnMut(&T) -> K>(f: F, s: Seq<T>) -> bool {
+    forall |i: int, k1: K, k2: K| #![trigger call_ensures(f, (&s[i],), k1), call_ensures(f, (&s[i],), k2)]
+        0 <= i < s.len() && call_ensures(f, (&s[i],), k1) && call_ensures(f, (&s[i],), k2) ==> k1 == k2
+}
+
+#[cfg(feature = "alloc")]
+pub assume_specification<T: Ord>[ <[T]>::sort ](s: &mut [T])
+    requires
+        // std may panic if `Ord` is not a total order (Rust >= 1.81)
+        super::super::laws_cmp::obeys_cmp::<T>(),
+    ensures
+        final(s)@.len() == old(s)@.len(),
+        final(s)@.to_multiset() == old(s)@.to_multiset(),
+        <T as OrdSpec>::obeys_cmp_spec() ==> sorted_by_le(final(s)@, |a: T, b: T| cmp_le(a, b)),
+;
+
+pub assume_specification<T: Ord>[ <[T]>::sort_unstable ](s: &mut [T])
+    requires
+        // std may panic if `Ord` is not a total order (Rust >= 1.81)
+        super::super::laws_cmp::obeys_cmp::<T>(),
+    ensures
+        final(s)@.len() == old(s)@.len(),
+        final(s)@.to_multiset() == old(s)@.to_multiset(),
+        <T as OrdSpec>::obeys_cmp_spec() ==> sorted_by_le(final(s)@, |a: T, b: T| cmp_le(a, b)),
+;
+
+/// The comparator may be called on any two elements.
+#[cfg(feature = "alloc")]
+pub assume_specification<T, F: FnMut(&T, &T) -> Ordering>[ <[T]>::sort_by::<F> ](s: &mut [T], compare: F)
+    requires
+        forall |i: int, j: int| 0 <= i < old(s)@.len() && 0 <= j < old(s)@.len() ==>
+            call_requires(compare, (#[trigger] &old(s)@[i], #[trigger] &old(s)@[j])),
+        // std may panic if `compare` is not a total order (Rust >= 1.81)
+        cmp_fn_total_on(compare, old(s)@),
+    ensures
+        final(s)@.len() == old(s)@.len(),
+        final(s)@.to_multiset() == old(s)@.to_multiset(),
+        sorted_by_le(final(s)@, |a: T, b: T| compare_le(compare, a, b)),
+;
+
+pub assume_specification<T, F: FnMut(&T, &T) -> Ordering>[ <[T]>::sort_unstable_by::<F> ](s: &mut [T], compare: F)
+    requires
+        forall |i: int, j: int| 0 <= i < old(s)@.len() && 0 <= j < old(s)@.len() ==>
+            call_requires(compare, (#[trigger] &old(s)@[i], #[trigger] &old(s)@[j])),
+        // std may panic if `compare` is not a total order (Rust >= 1.81)
+        cmp_fn_total_on(compare, old(s)@),
+    ensures
+        final(s)@.len() == old(s)@.len(),
+        final(s)@.to_multiset() == old(s)@.to_multiset(),
+        sorted_by_le(final(s)@, |a: T, b: T| compare_le(compare, a, b)),
+;
+
+#[cfg(feature = "alloc")]
+pub assume_specification<T, K: Ord, F: FnMut(&T) -> K>[ <[T]>::sort_by_key::<K, F> ](s: &mut [T], f: F)
+    requires
+        forall |i: int| 0 <= i < old(s)@.len() ==> call_requires(f, (#[trigger] &old(s)@[i],)),
+        // std may panic if the keys' `Ord` is not a total order, or if `f` is not deterministic
+        super::super::laws_cmp::obeys_cmp::<K>(),
+        key_fn_deterministic_on(f, old(s)@),
+    ensures
+        final(s)@.len() == old(s)@.len(),
+        final(s)@.to_multiset() == old(s)@.to_multiset(),
+        <K as OrdSpec>::obeys_cmp_spec() ==> sorted_by_le(final(s)@, |a: T, b: T| key_le(f, a, b)),
+;
+
+pub assume_specification<T, K: Ord, F: FnMut(&T) -> K>[ <[T]>::sort_unstable_by_key::<K, F> ](s: &mut [T], f: F)
+    requires
+        forall |i: int| 0 <= i < old(s)@.len() ==> call_requires(f, (#[trigger] &old(s)@[i],)),
+        // std may panic if the keys' `Ord` is not a total order, or if `f` is not deterministic
+        super::super::laws_cmp::obeys_cmp::<K>(),
+        key_fn_deterministic_on(f, old(s)@),
+    ensures
+        final(s)@.len() == old(s)@.len(),
+        final(s)@.to_multiset() == old(s)@.to_multiset(),
+        <K as OrdSpec>::obeys_cmp_spec() ==> sorted_by_le(final(s)@, |a: T, b: T| key_le(f, a, b)),
+;
 
 } // verus!

@@ -24,7 +24,7 @@ don't have the same power as full ownership, for example, they cannot _deallocat
 being pointed to.
 
 Though the system may seem restrictive, it has a number of compelling consequences,
-such as the enforcement of temporal memory safety and data-race-freedom. It also has signficant
+such as the enforcement of temporal memory safety and data-race-freedom. It also has significant
 advantages for Verus, greatly simplifying the verification conditions needed to prove code correct.
 
 ## Borrowing in Verus
@@ -41,7 +41,7 @@ In nearly all situations, there is no need to reason about the pointer address.
 
 ### Mutable borrows
 
-Mutable borrows are a bit more complicated—see the [next chapter](./mutable-references.md) for details.
+Mutable borrows are a bit more complicated—see the [next section](./mutable-references.md) for details.
 
 ### Lifetime variables
 

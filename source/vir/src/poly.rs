@@ -85,16 +85,17 @@ We take advantage of this to support mixed function-arithmetic triggers with Pol
 */
 
 use crate::ast::{
-    AssocTypeImpl, BinaryOp, Datatype, DatatypeX, Dt, FieldOpr, FunctionKind, IntRange, Mode,
-    NullaryOpr, Primitive, SpannedTyped, Typ, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
-    VarBinder, VarBinderX, VarBinders, VarIdent, Variant,
+    AssocTypeImpl, Datatype, DatatypeX, Dt, FieldOpr, FunctionKind, IntRange, Mode, NullaryOpr,
+    Primitive, SpannedTyped, Typ, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, VarBinder,
+    VarBinderX, VarBinders, VarIdent, Variant,
 };
+use crate::ast_util::typ_contains_opaque;
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{
-    BndX, CallFun, Dest, Exp, ExpX, Exps, FuncCheckSst, FuncDeclSst, FunctionSst, FunctionSstX,
-    InternalFun, KrateSst, KrateSstX, LocalDecl, LocalDeclKind, Par, ParX, Pars, PostConditionSst,
-    Stm, StmX, Stms, Trigs, UnwindSst,
+    BinaryOp, BndX, CallFun, Dest, Exp, ExpX, Exps, FuncCheckSst, FuncDeclSst, FunctionSst,
+    FunctionSstX, InternalFun, KrateSst, KrateSstX, LocalDecl, LocalDeclKind, Par, ParX, Pars,
+    PostConditionSst, Stm, StmX, Stms, Trigs, UnwindSst,
 };
 use crate::triggers::native_quant_vars;
 use crate::util::vec_map;
@@ -123,7 +124,10 @@ struct State {
     temp_types: HashMap<VarIdent, Typ>,
     is_trait: bool,
     in_exec_closure: bool,
-    ret: Option<Pars>,
+    // for each return value (inner_ret, then extra_rets):
+    // does its type contain an opaque type encoded as Poly?
+    // (empty outside a function)
+    rets_poly_with_opaque: Vec<bool>,
 }
 
 fn monotyps_as_mono(typs: &Typs) -> Option<Vec<MonoTyp>> {
@@ -410,7 +414,7 @@ fn visit_and_insert_pars(
     // Parameter types are made Poly for spec functions and trait methods
     let mut new_pars: Vec<Par> = Vec::new();
     for par in pars.iter() {
-        let ParX { name, typ, mode, purpose } = &par.x;
+        let ParX { name, typ, mode } = &par.x;
         let is_poly = match poly {
             InsertPars::Native => false,
             InsertPars::Poly => true,
@@ -419,14 +423,16 @@ fn visit_and_insert_pars(
         let typ =
             if is_poly { coerce_typ_to_poly(ctx, typ) } else { coerce_typ_to_native(ctx, typ) };
         let _ = types.insert(name.clone(), typ.clone());
-        let parx = ParX { name: name.clone(), typ, mode: *mode, purpose: *purpose };
+        let parx = ParX { name: name.clone(), typ, mode: *mode };
         new_pars.push(Spanned::new(par.span.clone(), parx));
     }
     Arc::new(new_pars)
 }
 
+// i == 0 is the original return value; i > 0 is extra_rets[i - 1]
 fn return_typ(ctx: &Ctx, function: &FunctionSstX, is_trait: bool, typ: &Typ, i: usize) -> Typ {
-    if (is_trait || typ_is_poly(ctx, &function.ret[i].x.typ))
+    let ret = if i == 0 { &function.outer_ret } else { &function.extra_rets[i - 1] };
+    if (is_trait || typ_is_poly(ctx, &ret.x.typ))
         && (function.ens_has_return || function.mode == Mode::Spec)
     {
         coerce_typ_to_poly(ctx, typ)
@@ -462,7 +468,18 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
     let mk_exp_typ = |t: &Typ, e: ExpX| SpannedTyped::new(&exp.span, t, e);
     match &exp.x {
         ExpX::Const(_) => exp.clone(),
-        ExpX::Var(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::Var(x.clone())),
+        ExpX::Var(x) => SpannedTyped::new(
+            &exp.span,
+            match state.types.get(x) {
+                Some(typ) => typ,
+                None => {
+                    // If you encounter this, consider giving the variable a LocalDeclKind
+                    // that is not TempViaAssign.
+                    panic!("variable is unknown or type has not been inferred: {:?}", x)
+                }
+            },
+            ExpX::Var(x.clone()),
+        ),
         ExpX::VarLoc(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarLoc(x.clone())),
         ExpX::VarAt(x, at) => {
             SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarAt(x.clone(), *at))
@@ -475,7 +492,11 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
         ExpX::Old(..) => panic!("internal error: unexpected ExpX::Old"),
         ExpX::Call(call_fun, typs, exps) => match call_fun {
             CallFun::Fun(name, _) | CallFun::Recursive(name) => {
-                let function = &ctx.func_sst_map[name].x;
+                let function = match ctx.func_sst_map.get(name) {
+                    Some(fun) => &fun.x,
+                    None => panic!("unknown function: {:?}", name),
+                };
+
                 let is_spec = function.mode == Mode::Spec;
                 let is_trait = !matches!(function.kind, FunctionKind::Static);
                 let mut args: Vec<Exp> = Vec::new();
@@ -525,6 +546,11 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 let exps = visit_exps_poly(ctx, state, exps);
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), exps))
             }
+            CallFun::InternalFun(InternalFun::ClosureOpensInvariants) => {
+                let exps = visit_exps_poly(ctx, state, exps);
+                let typ = coerce_typ_to_poly(ctx, &exp.typ);
+                mk_exp_typ(&typ, ExpX::Call(call_fun.clone(), typs.clone(), exps))
+            }
             CallFun::InternalFun(InternalFun::CheckDecreaseHeight) => {
                 assert!(exps.len() == 3);
                 let e0 = visit_exp_poly(ctx, state, &exps[0]);
@@ -540,7 +566,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
             mk_exp_typ(&typ, ExpX::CallLambda(callee, args))
         }
         ExpX::Ctor(path, variant, binders) => {
-            let fields = &ctx.datatype_map[path].x.get_variant(variant).fields;
+            let Some(dt) = ctx.datatype_map.get(path) else {
+                panic!("failed to find {path:?} in datatype map");
+            };
+            let fields = &dt.x.get_variant(variant).fields;
             let mut bs: Vec<Binder<Exp>> = Vec::new();
             for binder in binders.iter() {
                 let field = crate::ast_util::get_field(fields, &binder.name);
@@ -559,7 +588,6 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
         ExpX::NullaryOpr(NullaryOpr::TraitBound(..)) => exp.clone(),
         ExpX::NullaryOpr(NullaryOpr::TypEqualityBound(..)) => exp.clone(),
         ExpX::NullaryOpr(NullaryOpr::ConstTypBound(..)) => exp.clone(),
-        ExpX::NullaryOpr(NullaryOpr::NoInferSpecForLoopIter) => exp.clone(),
         ExpX::Unary(op, e1) => {
             let e1 = visit_exp(ctx, state, e1);
             match op {
@@ -574,13 +602,9 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 | UnaryOp::FloatToBits
                 | UnaryOp::IeeeFloat(..)
                 | UnaryOp::BitNot(_)
+                | UnaryOp::NewStrLit
                 | UnaryOp::StrLen => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
-                    mk_exp(ExpX::Unary(*op, e1))
-                }
-                UnaryOp::InferSpecForLoopIter { .. } => {
-                    // e1 will be the argument to spec Option::Some(...)
-                    let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
                 UnaryOp::HeightTrigger | UnaryOp::Length(_) => {
@@ -593,10 +617,15 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                     panic!("internal error: MustBeFinalized in SST")
                 }
-                UnaryOp::CastToInteger => {
-                    let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
-                    mk_exp(ExpX::UnaryOpr(unbox, e1.clone()))
-                }
+                UnaryOp::CastToInteger => match &*crate::ast_util::undecorate_typ(&e1.typ) {
+                    TypX::TypParam(_) => {
+                        // View as boxed integer rather than type parameter
+                        // (e.g. so that it can be unboxed if needed,
+                        // or passed as boxed int argument if needed)
+                        e1.new_typ(&Arc::new(TypX::Boxed(Arc::new(TypX::Int(IntRange::Int)))))
+                    }
+                    _ => e1.clone(),
+                },
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefPtr => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1))
@@ -631,7 +660,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 | UnaryOpr::AutoLoopEnsures => {
                     mk_exp_typ(&e1.typ, ExpX::UnaryOpr(op.clone(), e1.clone()))
                 }
-                UnaryOpr::ToDyn(_) => {
+                UnaryOpr::ToDyn(..) => {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::UnaryOpr(op.clone(), e1))
                 }
@@ -661,15 +690,18 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::UnaryOpr(op.clone(), e.clone()))
                 }
+                UnaryOpr::LoopIsolationBoundary(..) => {
+                    panic!("internal error: LoopIsolationBoundary in SST")
+                }
             }
         }
-        ExpX::Binary(BinaryOp::Index(kind, bc), e1, e2) => {
+        ExpX::Binary(BinaryOp::Index(kind), e1, e2) => {
             let e1 = visit_exp(ctx, state, e1);
             let e2 = visit_exp(ctx, state, e2);
             let e1 = coerce_exp_to_native(ctx, &e1);
             let e2 = coerce_exp_to_poly(ctx, &e2);
             let typ = coerce_typ_to_poly(ctx, &exp.typ);
-            mk_exp_typ(&typ, ExpX::Binary(BinaryOp::Index(*kind, *bc), e1, e2))
+            mk_exp_typ(&typ, ExpX::Binary(BinaryOp::Index(*kind), e1, e2))
         }
         ExpX::Binary(op, e1, e2) => {
             let e1 = visit_exp(ctx, state, e1);
@@ -680,7 +712,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 BinaryOp::HeightCompare { .. } => (false, true),
                 BinaryOp::Arith(..) => (true, false),
                 BinaryOp::RealArith(..) => (true, false),
-                BinaryOp::Eq(_) | BinaryOp::Ne => (false, false),
+                BinaryOp::Eq | BinaryOp::Ne => (false, false),
                 BinaryOp::Bitwise(..) => (true, false),
                 BinaryOp::IeeeFloat(..) => (true, false),
                 BinaryOp::StrGetChar { .. } => (true, false),
@@ -807,7 +839,7 @@ pub(crate) fn visit_exp_native_for_pure_exp(ctx: &Ctx, exp: &Exp) -> Exp {
         temp_types: HashMap::new(),
         is_trait: false,
         in_exec_closure: false,
-        ret: None,
+        rets_poly_with_opaque: vec![],
     };
     visit_exp_native(ctx, &mut state, exp)
 }
@@ -837,6 +869,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             split,
             dest,
             assert_id,
+            body,
         } => {
             let (is_polys, function) = if let crate::sst::CallTarget::Fun(fun) = fun {
                 let function = &ctx.func_sst_map[fun].x;
@@ -879,7 +912,8 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 let dst = visit_exp(ctx, state, &dest.dest);
                 dests.push(Dest { dest: dst, is_init: dest.is_init });
             }
-            let callx = StmX::Call {
+            let body = body.as_ref().map(|stm| visit_stm(ctx, state, stm));
+            mk_stm(StmX::Call {
                 fun: fun.clone(),
                 resolved_method: resolved_method.clone(),
                 is_trait_default: *is_trait_default,
@@ -889,8 +923,8 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 split: split.clone(),
                 dest: Arc::new(dests),
                 assert_id: assert_id.clone(),
-            };
-            mk_stm(callx)
+                body,
+            })
         }
         StmX::Assert(id, msg, e1) => {
             let e1 = visit_exp_native(ctx, state, e1);
@@ -942,6 +976,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
         }
         StmX::Fuel(_, _) => stm.clone(),
         StmX::RevealString(_) => stm.clone(),
+        StmX::RevealByteString(_) => stm.clone(),
         StmX::DeadEnd(stm) => {
             let stm = visit_stm(ctx, state, stm);
             mk_stm(StmX::DeadEnd(stm))
@@ -956,11 +991,12 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 };
 
                 // opaque type has to be poly
-                let mut is_ret_opaque = false;
-                if let Some(ret) = &state.ret {
-                    assert!(ret_exp.len() == ret.len());
-                    is_ret_opaque = matches!(*ret[i].x.typ, TypX::Opaque { .. });
-                }
+                let is_ret_opaque = if state.rets_poly_with_opaque.is_empty() {
+                    false
+                } else {
+                    assert!(ret_exp.len() == state.rets_poly_with_opaque.len());
+                    state.rets_poly_with_opaque[i]
+                };
                 let r = if is_ret_opaque { crate::poly::coerce_exp_to_poly(ctx, &e1) } else { e1 };
                 ret_exps.push(r);
             }
@@ -980,6 +1016,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             mk_stm(StmX::If(e, s1, s2))
         }
         StmX::Loop {
+            pre_stms,
             loop_isolation,
             is_for_loop,
             id,
@@ -990,8 +1027,12 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             decrease,
             typ_inv_vars,
             modified_vars,
-            pre_modified_params,
+            au_branch_bool,
+            pre_modified_params_excl,
+            pre_modified_params_incl,
+            known_no_back_edge,
         } => {
+            let pre_stms = visit_stms(ctx, state, pre_stms);
             let cond = cond
                 .as_ref()
                 .map(|(s, e)| (visit_stm(ctx, state, s), visit_exp_native(ctx, state, e)));
@@ -1002,7 +1043,9 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             });
             let invs = Arc::new(invs.collect());
             let decrease = visit_exps_native(ctx, state, decrease);
+            let au_branch_bool = au_branch_bool.as_ref().map(|e| visit_exp_native(ctx, state, e));
             mk_stm(StmX::Loop {
+                pre_stms: pre_stms.clone(),
                 loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
                 id: *id,
@@ -1013,7 +1056,10 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 decrease,
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
-                pre_modified_params: pre_modified_params.clone(),
+                au_branch_bool,
+                pre_modified_params_excl: pre_modified_params_excl.clone(),
+                pre_modified_params_incl: pre_modified_params_incl.clone(),
+                known_no_back_edge: *known_no_back_edge,
             })
         }
         StmX::OpenInvariant(s) => {
@@ -1113,10 +1159,12 @@ fn visit_func_check_sst(
     function: &FuncCheckSst,
     poly_pars: &InsertPars,
     poly_ret: &InsertPars,
-    ret: &Pars,
+    // types of the original return value (inner_ret) followed by extra_rets
+    ret_typs: &[Typ],
 ) -> FuncCheckSst {
     let FuncCheckSst {
         reqs,
+        return_opaque_type_eqs,
         post_condition,
         unwind,
         body,
@@ -1163,6 +1211,7 @@ fn visit_func_check_sst(
             | (LocalDeclKind::Nondeterministic, _, _)
             | (LocalDeclKind::BorrowMut, _, _)
             | (LocalDeclKind::ExecClosureRet, _, _)
+            | (LocalDeclKind::LoopBreakValue, _, _)
             | (LocalDeclKind::Decreases, _, _) => coerce_typ_to_native(ctx, &l.typ),
             (LocalDeclKind::TempViaAssign, _, _) => l.typ.clone(),
         };
@@ -1182,9 +1231,9 @@ fn visit_func_check_sst(
 
     state.types.push_scope(true);
     if post_condition.dest.len() > 0 {
-        assert!(post_condition.dest.len() == ret.len());
-        for (dest, r) in post_condition.dest.iter().zip(ret.iter()) {
-            let _ = state.types.insert(dest.clone(), r.x.typ.clone());
+        assert!(post_condition.dest.len() == ret_typs.len());
+        for (dest, typ) in post_condition.dest.iter().zip(ret_typs.iter()) {
+            let _ = state.types.insert(dest.clone(), typ.clone());
         }
     }
     let post_condition = Arc::new(PostConditionSst {
@@ -1209,6 +1258,7 @@ fn visit_func_check_sst(
 
     FuncCheckSst {
         reqs,
+        return_opaque_type_eqs: return_opaque_type_eqs.clone(),
         post_condition,
         unwind,
         body,
@@ -1230,7 +1280,9 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         ref typ_bounds,
         ref n_orig_params,
         ref pars,
-        ref ret,
+        ref outer_ret,
+        ref inner_ret,
+        ref extra_rets,
         ref ens_has_return,
         ref item_kind,
         ref attrs,
@@ -1240,7 +1292,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         ref exec_proof_check,
         ref recommends_check,
         ref safe_api_check,
-        ref async_ret,
+        ref hidden,
     } = &function.x;
 
     if attrs.is_decrease_by {
@@ -1263,7 +1315,10 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         is_trait,
         in_exec_closure: false,
         remaining_temps: HashSet::new(),
-        ret: Some(ret.clone()),
+        rets_poly_with_opaque: std::iter::once(inner_ret)
+            .chain(extra_rets.iter())
+            .map(|r| typ_contains_opaque(&r.x.typ) && typ_is_poly(ctx, &r.x.typ))
+            .collect(),
     };
 
     let decl = Arc::new(visit_func_decl_sst(ctx, &mut state, &poly_pars, decl));
@@ -1287,8 +1342,24 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
     };
 
     // Return type is left native (except for trait methods)
-    let mut rets = (**ret).clone();
-    for r in rets.iter_mut() {
+    let outer_ret_typ = match poly_ret {
+        InsertPars::Poly => coerce_typ_to_poly(ctx, &outer_ret.x.typ),
+        InsertPars::Native => coerce_typ_to_native(ctx, &outer_ret.x.typ),
+        _ => unreachable!(),
+    };
+    let outer_ret =
+        Spanned::new(outer_ret.span.clone(), ParX { typ: outer_ret_typ, ..outer_ret.x.clone() });
+
+    let inner_ret_typ = match poly_ret {
+        InsertPars::Poly => coerce_typ_to_poly(ctx, &inner_ret.x.typ),
+        InsertPars::Native => coerce_typ_to_native(ctx, &inner_ret.x.typ),
+        _ => unreachable!(),
+    };
+    let inner_ret =
+        Spanned::new(inner_ret.span.clone(), ParX { typ: inner_ret_typ, ..inner_ret.x.clone() });
+
+    let mut extra_rets = (**extra_rets).clone();
+    for r in extra_rets.iter_mut() {
         let r = Arc::make_mut(r);
         let ret_typ = match poly_ret {
             InsertPars::Poly => coerce_typ_to_poly(ctx, &r.x.typ),
@@ -1297,7 +1368,10 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         };
         r.x.typ = ret_typ;
     }
-    let ret = Arc::new(rets);
+    let extra_rets = Arc::new(extra_rets);
+    let ret_typs: Vec<Typ> = std::iter::once(inner_ret.x.typ.clone())
+        .chain(extra_rets.iter().map(|r| r.x.typ.clone()))
+        .collect();
 
     state.types.push_scope(true);
     let pars = visit_and_insert_pars(ctx, &mut state.types, &poly_pars, pars);
@@ -1308,7 +1382,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         let termination_check = spec_body
             .termination_check
             .as_ref()
-            .map(|f| visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret));
+            .map(|f| visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret_typs));
         let body_exp = if is_trait && (function.x.ens_has_return || function_mode == Mode::Spec) {
             visit_exp_poly(ctx, &mut state, &spec_body.body_exp)
         } else {
@@ -1321,15 +1395,15 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
     };
     let axioms = Arc::new(crate::sst::FuncAxiomsSst { spec_axioms, proof_exec_axioms });
 
-    let exec_proof_check = exec_proof_check
-        .as_ref()
-        .map(|f| Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret)));
-    let recommends_check = recommends_check
-        .as_ref()
-        .map(|f| Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret)));
-    let safe_api_check = safe_api_check
-        .as_ref()
-        .map(|f| Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret)));
+    let exec_proof_check = exec_proof_check.as_ref().map(|f| {
+        Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret_typs))
+    });
+    let recommends_check = recommends_check.as_ref().map(|f| {
+        Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret_typs))
+    });
+    let safe_api_check = safe_api_check.as_ref().map(|f| {
+        Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret_typs))
+    });
 
     state.types.pop_scope();
     assert_eq!(state.types.num_scopes(), 0);
@@ -1345,7 +1419,9 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         typ_bounds: typ_bounds.clone(),
         n_orig_params: *n_orig_params,
         pars,
-        ret,
+        outer_ret,
+        inner_ret: inner_ret.clone(),
+        extra_rets,
         ens_has_return: *ens_has_return,
         item_kind: *item_kind,
         attrs: attrs.clone(),
@@ -1355,7 +1431,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         exec_proof_check,
         recommends_check,
         safe_api_check,
-        async_ret: async_ret.clone(),
+        hidden: hidden.clone(),
     };
     Spanned::new(function.span.clone(), functionx)
 }
@@ -1388,6 +1464,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &KrateSst) -> KrateSst {
         trait_impls,
         assoc_type_impls,
         reveal_groups,
+        arch_word_bits,
     } = &**krate;
     let kratex = KrateSstX {
         functions: functions.iter().map(|f| visit_function(ctx, f)).collect(),
@@ -1397,6 +1474,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &KrateSst) -> KrateSst {
         trait_impls: trait_impls.clone(),
         assoc_type_impls: assoc_type_impls.iter().map(|a| visit_assoc_type_impl(ctx, a)).collect(),
         reveal_groups: reveal_groups.clone(),
+        arch_word_bits: *arch_word_bits,
     };
     ctx.func_sst_map = HashMap::new();
     for function in kratex.functions.iter() {

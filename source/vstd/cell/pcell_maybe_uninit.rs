@@ -9,8 +9,8 @@ use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
 
-use verus as verus_;
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 /**
 Variant of [`pcell::PCell<V>`](super::pcell::PCell) for potentially uninitialized data.
@@ -200,6 +200,7 @@ impl<V> PCell<V> {
             *v == old(perm).value(),
             final(perm).is_init(),
             final(perm).value() == *final(v),
+            final(perm).id() == self.id(),
         opens_invariants none
         no_unwind
     {

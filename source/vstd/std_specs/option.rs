@@ -138,6 +138,7 @@ pub open spec fn is_some<T>(option: &Option<T>) -> bool {
 pub assume_specification<T>[ Option::<T>::is_some ](option: &Option<T>) -> (b: bool)
     ensures
         b == is_some(option),
+    no_unwind
 ;
 
 // is_none
@@ -150,6 +151,7 @@ pub open spec fn is_none<T>(option: &Option<T>) -> bool {
 pub assume_specification<T>[ Option::<T>::is_none ](option: &Option<T>) -> (b: bool)
     ensures
         b == is_none(option),
+    no_unwind
 ;
 
 // as_ref
@@ -157,6 +159,7 @@ pub assume_specification<T>[ Option::<T>::as_ref ](option: &Option<T>) -> (a: Op
     ensures
         a is Some <==> option is Some,
         a is Some ==> option->0 == a->0,
+    no_unwind
 ;
 
 // unwrap
@@ -190,6 +193,7 @@ pub open spec fn spec_unwrap_or<T>(option: Option<T>, default: T) -> T {
 pub assume_specification<T>[ Option::<T>::unwrap_or ](option: Option<T>, default: T) -> (t: T)
     ensures
         t == spec_unwrap_or(option, default),
+    no_unwind
 ;
 
 // expect
@@ -214,6 +218,7 @@ pub assume_specification<T>[ Option::<T>::take ](option: &mut Option<T>) -> (t: 
     ensures
         t == *old(option),
         *final(option) is None,
+    no_unwind
 ;
 
 // map
@@ -232,6 +237,16 @@ pub assume_specification<'a, T: Clone>[ Option::<&'a T>::cloned ](opt: Option<&'
     ensures
         opt.is_none() ==> res.is_none(),
         opt.is_some() ==> res.is_some() && cloned::<T>(*opt.unwrap(), res.unwrap()),
+;
+
+// copied
+pub assume_specification<'a, T: Copy>[ Option::<&'a T>::copied ](opt: Option<&'a T>) -> (res:
+    Option<T>)
+    ensures
+        res == match opt {
+            Some(x) => Some(*x),
+            None => None::<T>,
+        },
 ;
 
 // and_then

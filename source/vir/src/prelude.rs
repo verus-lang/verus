@@ -2,14 +2,14 @@ use crate::ast::{Idents, Path};
 use crate::def::*;
 use crate::sst_to_air::path_to_air_ident;
 use air::ast::Ident;
-use air::context::SmtSolver;
+use air::context::SmtEncoding;
 use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes, nodes_vec};
-use sise::Node;
+use sise::TreeNode as Node;
 
 pub struct PreludeConfig {
     pub arch_word_bits: crate::ast::ArchWordBits,
-    pub solver: SmtSolver,
+    pub smt_encoding: SmtEncoding,
 }
 
 pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<Node> {
@@ -59,25 +59,42 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
     let resolved = str_to_node(HAS_RESOLVED);
     let closure_req = str_to_node(CLOSURE_REQ);
     let closure_ens = str_to_node(CLOSURE_ENS);
+    let closure_opens_invariants = str_to_node(CLOSURE_OPENS_INVARIANTS);
     let default_ens = str_to_node(DEFAULT_ENS);
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
     #[allow(non_snake_case)]
     let Height = str_to_node(T_HEIGHT);
-    let height_axioms = match config.solver {
-        SmtSolver::Z3 => nodes_vec!(
+    let height_axioms = match config.smt_encoding {
+        SmtEncoding::Z3 => nodes_vec!(
         (axiom (forall ((x [Height]) (y [Height])) (!
             (= ([height_lt] x y) (and ([height_le] x y) (not (= x y))))
             :pattern (([height_lt] x y))
             :qid prelude_height_lt
             :skolemid skolem_prelude_height_lt
             )))),
-        SmtSolver::Cvc5 => nodes_vec!(
-                    (declare-fun partial-order (Height Height) Bool)
-                    (axiom (forall ((x Height)) (partial-order x x)))
-                    (axiom (forall ((x Height) (y Height)) (=> (and (partial-order x y) (partial-order y x)) (= x y))))
-                    (axiom (forall ((x Height) (y Height) (z Height)) (=> (and (partial-order x y) (partial-order y z)) (partial-order x z))))
-                    (axiom (forall ((x Height) (y Height)) (= (height_lt x y) (and (partial-order x y) (not (= x y))))))),
+        SmtEncoding::Cvc5 => nodes_vec!(
+                    (declare-fun partial-order ([Height] [Height]) Bool)
+                    (axiom (forall ((x [Height])) (!
+                        (partial-order x x)
+                        :pattern ((partial-order x x))
+                        :qid prelude_partial_order_reflexive
+                        :skolemid skolem_prelude_partial_order_reflexive)))
+                    (axiom (forall ((x [Height]) (y [Height])) (!
+                        (=> (and (partial-order x y) (partial-order y x)) (= x y))
+                        :pattern ((partial-order x y) (partial-order y x))
+                        :qid prelude_partial_order_antisymmetric
+                        :skolemid skolem_prelude_partial_order_antisymmetric)))
+                    (axiom (forall ((x [Height]) (y [Height]) (z [Height])) (!
+                        (=> (and (partial-order x y) (partial-order y z)) (partial-order x z))
+                        :pattern ((partial-order x y) (partial-order y z))
+                        :qid prelude_partial_order_transitive
+                        :skolemid skolem_prelude_partial_order_transitive)))
+                    (axiom (forall ((x [Height]) (y [Height])) (!
+                        (= ([height_lt] x y) (and (partial-order x y) (not (= x y))))
+                        :pattern (([height_lt] x y))
+                        :qid prelude_height_lt
+                        :skolemid skolem_prelude_height_lt)))),
     };
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
@@ -225,7 +242,10 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-fun [has_type] ([Poly] [typ]) Bool)
         (declare-fun [sized] ([decoration]) Bool)
         (declare-fun [as_type] ([Poly] [typ]) [Poly])
-        (declare-fun [mk_fun] (Fun) Fun)
+        // Wrap the AIR lambda with the VIR SpecFn type so that the has_type axiom
+        // can trigger on the right SpecFn type (this makes sure that
+        // extensional equality is used with the correct spec_fn domain).
+        (declare-fun [mk_fun] ([typ] Fun) Fun)
         (declare-fun [const_int] ([typ]) Int)
         (declare-fun [const_bool] ([typ]) Bool)
         (declare-fun [mut_ref_current] ([Poly]) [Poly])
@@ -275,8 +295,8 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
                 (has_type ([mut_ref_future] m) t)
             )
             :pattern ((has_type m (MUTREF d t)) ([mut_ref_future] m))
-            :qid prelude_mut_ref_current_has_type
-            :skolemid skolem_prelude_mut_ref_current_has_type
+            :qid prelude_mut_ref_future_has_type
+            :skolemid skolem_prelude_mut_ref_future_has_type
         )))
         (axiom (forall ((m [Poly]) (d [decoration]) (t [typ])) (!
             (=>
@@ -404,12 +424,6 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
             :qid prelude_as_type
             :skolemid skolem_prelude_as_type
         )))
-        (axiom (forall ((x Fun)) (!
-            (= ([mk_fun] x) x)
-            :pattern (([mk_fun] x))
-            :qid prelude_mk_fun
-            :skolemid skolem_prelude_mk_fun
-        )))
         (axiom (forall ((x Bool)) (!
             (= x ([unbox_bool] ([box_bool] x)))
             :pattern (([box_bool] x))
@@ -497,8 +511,8 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
                 (= x ([box_int] ([unbox_int] x)))
             )
             :pattern (([has_type] x ([type_id_float] bits)))
-            :qid prelude_box_unbox_sint
-            :skolemid skolem_prelude_box_unbox_sint
+            :qid prelude_box_unbox_float
+            :skolemid skolem_prelude_box_unbox_float
         )))
         (axiom (forall ((x [Poly])) (!
             (=>
@@ -702,8 +716,8 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
                 ([has_type] ([box_int] x) ([type_id_float] bits))
             )
             :pattern (([has_type] ([box_int] x) ([type_id_float] bits)))
-            :qid prelude_has_type_sint
-            :skolemid skolem_prelude_has_type_sint
+            :qid prelude_has_type_float
+            :skolemid skolem_prelude_has_type_float
         )))
         (axiom (forall ((x Int)) (!
             (=>
@@ -731,6 +745,15 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
             :pattern (([has_type] x [type_id_usize]))
             :qid prelude_unbox_usize
             :skolemid skolem_prelude_unbox_usize
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_char])
+                ([char_inv] ([unbox_int] x))
+            )
+            :pattern (([has_type] x [type_id_char]))
+            :qid prelude_unbox_char
+            :skolemid skolem_prelude_unbox_char
         )))
         (axiom (forall ((x [Poly])) (!
             (=>
@@ -765,8 +788,8 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
                 ([u_inv] bits ([unbox_int] x))
             )
             :pattern (([has_type] x ([type_id_float] bits)))
-            :qid prelude_unbox_sint
-            :skolemid skolem_prelude_unbox_sint
+            :qid prelude_unbox_float
+            :skolemid skolem_prelude_unbox_float
         )))
 
         // With smt.arith.nl=false, Z3 sometimes fails to prove obvious formulas
@@ -909,6 +932,14 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-fun [bit_shl] ([Poly] [Poly]) Int)
         (declare-fun [bit_not] ([Poly]) Int)
 
+        // On unbounded ints, NOT is exactly -x - 1
+        (axiom (forall ((x [Poly])) (!
+            (= ([bit_not] x) (- (- 0 ([unbox_int] x)) 1))
+            :pattern (([bit_not] x))
+            :qid prelude_bit_not
+            :skolemid skolem_prelude_bit_not
+        )))
+
         // bounds on bit-ops
 
         // For XOR, AND, and OR:
@@ -1024,6 +1055,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
 
         (declare-fun [closure_req] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly]) Bool)
         (declare-fun [closure_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
+        (declare-fun [closure_opens_invariants] (/*[decoration] skipped */ [typ] [decoration] [typ] [decoration] [typ] [Poly] [Poly]) Poly)
         (declare-fun [default_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
 
         // Decreases
@@ -1152,6 +1184,39 @@ pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {
     )
 }
 
+pub(crate) fn bytestr_functions(box_array: &str) -> Vec<Node> {
+    let new_bytelit = str_to_node(BYTESTR_NEW_BYTELIT);
+    let from_bytelit_hash = str_to_node(BYTESTR_FROM_BYTELIT_HASH);
+    let box_array = str_to_node(box_array);
+    let has_type = str_to_node(HAS_TYPE);
+    let type_id_array = str_to_node(TYPE_ID_ARRAY);
+    let type_id_uint = str_to_node(TYPE_ID_UINT);
+    let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
+
+    nodes_vec!(
+        //Byte Strings
+        (declare-fun [new_bytelit] (Int Int) Fun)
+        (declare-fun [from_bytelit_hash] (Fun) Int)
+
+        (axiom (forall ((h Int) (n Int)) (!
+            (= ([from_bytelit_hash] ([new_bytelit] h n)) h)
+            :pattern (([new_bytelit] h n))
+            :qid prelude_bytelit_hash
+            :skolemid skolem_prelude_bytelit_hash
+        )))
+
+        (axiom (forall ((h Int) (n Int)) (!
+            ([has_type]
+                ([box_array] ([new_bytelit] h n))
+                ([type_id_array] $ ([type_id_uint] 8) $ ([type_id_const_int] n))
+            )
+            :pattern (([new_bytelit] h n))
+            :qid prelude_bytelit_has_type
+            :skolemid skolem_prelude_bytelit_has_type
+        )))
+    )
+}
+
 pub(crate) fn pointee_metadata_prelude(name_ctxt: &NameCtxt) -> Vec<Node> {
     let typ = str_to_node(TYPE);
     let decoration = str_to_node(DECORATION);
@@ -1258,30 +1323,32 @@ pub(crate) fn ieee_float_prelude() -> Vec<Node> {
     let ieee_float_lt = str_to_node(IEEE_FLOAT_LT);
     let ieee_float_gt = str_to_node(IEEE_FLOAT_GT);
 
+    // Floats are encoded as Int bit patterns. Each operation also takes its operand's float type,
+    // to distinguish values that have same bits but are of different float type (32 vs. 64).
     nodes_vec!(
         (declare-fun [ieee_float_cast] ([typ] [typ] Poly) Poly)
-        (declare-fun [ieee_float_neg] (Int) Int)
-        (declare-fun [ieee_float_floor] (Int) Int)
-        (declare-fun [ieee_float_ceil] (Int) Int)
-        (declare-fun [ieee_float_round] (Int) Int)
-        (declare-fun [ieee_float_round_ties_even] (Int) Int)
-        (declare-fun [ieee_float_trunc] (Int) Int)
-        (declare-fun [ieee_float_is_normal] (Int) Bool)
-        (declare-fun [ieee_float_is_subnormal] (Int) Bool)
-        (declare-fun [ieee_float_is_zero] (Int) Bool)
-        (declare-fun [ieee_float_is_infinite] (Int) Bool)
-        (declare-fun [ieee_float_is_nan] (Int) Bool)
-        (declare-fun [ieee_float_is_negative] (Int) Bool)
-        (declare-fun [ieee_float_is_positive] (Int) Bool)
-        (declare-fun [ieee_float_add] (Int Int) Int)
-        (declare-fun [ieee_float_sub] (Int Int) Int)
-        (declare-fun [ieee_float_mul] (Int Int) Int)
-        (declare-fun [ieee_float_div] (Int Int) Int)
-        (declare-fun [ieee_float_eq] (Int Int) Bool)
-        (declare-fun [ieee_float_le] (Int Int) Bool)
-        (declare-fun [ieee_float_ge] (Int Int) Bool)
-        (declare-fun [ieee_float_lt] (Int Int) Bool)
-        (declare-fun [ieee_float_gt] (Int Int) Bool)
+        (declare-fun [ieee_float_neg] ([typ] Int) Int)
+        (declare-fun [ieee_float_floor] ([typ] Int) Int)
+        (declare-fun [ieee_float_ceil] ([typ] Int) Int)
+        (declare-fun [ieee_float_round] ([typ] Int) Int)
+        (declare-fun [ieee_float_round_ties_even] ([typ] Int) Int)
+        (declare-fun [ieee_float_trunc] ([typ] Int) Int)
+        (declare-fun [ieee_float_is_normal] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_subnormal] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_zero] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_infinite] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_nan] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_negative] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_positive] ([typ] Int) Bool)
+        (declare-fun [ieee_float_add] ([typ] Int Int) Int)
+        (declare-fun [ieee_float_sub] ([typ] Int Int) Int)
+        (declare-fun [ieee_float_mul] ([typ] Int Int) Int)
+        (declare-fun [ieee_float_div] ([typ] Int Int) Int)
+        (declare-fun [ieee_float_eq] ([typ] Int Int) Bool)
+        (declare-fun [ieee_float_le] ([typ] Int Int) Bool)
+        (declare-fun [ieee_float_ge] ([typ] Int Int) Bool)
+        (declare-fun [ieee_float_lt] ([typ] Int Int) Bool)
+        (declare-fun [ieee_float_gt] ([typ] Int Int) Bool)
     )
 }
 
@@ -1377,4 +1444,46 @@ pub(crate) fn datatype_height_axioms(
     } else {
         vec![axiom1]
     }
+}
+
+pub(crate) fn fndef_axioms(name_ctxt: &NameCtxt, func: &crate::ast::Function) -> Node {
+    #[allow(non_snake_case)]
+    let FnDef = str_to_node(FNDEF_TYPE);
+    let type_id_fndef_str = name_ctxt.prefix_fndef_type_id(&func.x.name);
+    let type_id_fndef = str_to_node(&type_id_fndef_str);
+    let qid = str_to_node(format!("prelude_has_type_fndef_{}", type_id_fndef_str).as_str());
+    let skolem_id =
+        str_to_node(format!("skolem_prelude_has_type_fndef_{}", type_id_fndef_str).as_str());
+    let has_type = str_to_node(HAS_TYPE);
+    let box_fndef = str_to_node(BOX_FNDEF);
+
+    let mut forall_params: Vec<Node> = Vec::new();
+    forall_params.push(node!((x[FnDef])));
+
+    let mut type_id_call: Vec<Node> = Vec::new();
+    type_id_call.push(node!([type_id_fndef]));
+
+    let tparams = &func.x.typ_params;
+    for typ_param in tparams.iter() {
+        for (x, t) in crate::def::suffix_typ_param_ids_types(&typ_param) {
+            use crate::ast_util::LowerUniqueVar;
+            let x = str_to_node(&x.lower());
+            let t = str_to_node(t);
+            forall_params.push(node!(([x][t])));
+            type_id_call.push(x);
+        }
+    }
+
+    let forall_params = Node::List(forall_params);
+    let type_id_call =
+        if type_id_call.len() == 1 { type_id_call[0].clone() } else { Node::List(type_id_call) };
+
+    node!(
+        (axiom (forall [forall_params] (!
+            ([has_type] ([box_fndef] x) [type_id_call])
+            :pattern (([has_type] ([box_fndef] x) [type_id_call]))
+            :qid [qid]
+            :skolemid [skolem_id]
+        )))
+    )
 }

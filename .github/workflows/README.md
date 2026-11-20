@@ -21,25 +21,28 @@ and publishing for the Verus project.
    - Validates Rust code formatting with `rustfmt`
    - Validates `vstd` formatting with `verusfmt`
 
-2. **`change_filter`** (linux)
+1. **`change_filter`** (linux)
    - Detects whether `source/cargo-verus/**` changed
 
-3. **`cargo-verus-test`** (linux)
+1. **`create-manifest-smoke-test`** (linux)
+   - Checks that the `create-manifest` tool in `cargo-verus-toolchains` works.
+
+1. **`cargo-verus-test`** (linux)
    - Only runs on changes to `source/cargo-verus/**`
    - Runs `cargo-verus` tests (unit- and package-level)
    - Runs after `fmt` and `clippy` pass
 
-4. **`full-test`** (macOS ARM64)
+1. **`full-test`** (Linux x64)
    - Runs full test suite.
 
-5. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
+1. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
    - Runs basic tests only
 
-6. **`smoke-test`** (macOs ARM64)
+1. **`smoke-test`** (Linux x64)
    - Checks that `verus` builds with esoteric configurations
    - Runs minimal tests relevant to the configuration
 
-7. **`build-docs`** (linux)
+1. **`build-docs`** (linux)
    - Builds the `verusdoc` artifact with `--strict` (treats warnings as
      errors) as a pre-merge validation check
    - Does **not** upload the artifact; `pages.yml` builds its own copy
@@ -66,13 +69,13 @@ the commit via `ci.yml`.
 
 **Jobs:**
 
-1. **`build`** (macOS ARM64, macOS x64, Windows x64, Linux x64)
+1. **`build`** (macOS ARM64, macOS x64, Windows x64, Windows ARM64, Linux x64, Linux ARM64)
    - Builds release binary artifacts for every supported platform
    - Uploads `verus-<arch>-<os>.zip` artifacts
 
 2. **`publish`** (linux)
    - Downloads all platform artifacts
-   - Extracts version information from `version.txt`
+   - Extracts version information from `version.json`
    - Updates the existing **Rolling Release** (GitHub release ID: 163437062)
    - Tags release as `release/rolling/<version>`
    - Names release as `Rolling Release <version>`
@@ -235,11 +238,11 @@ crate-updates.yml (weekly/manual) → Updates crate versions → Publishes to cr
 
 All workflows build and test Verus on:
 
-- **Linux**: `x86_64` (ubuntu-22.04)
-- **macOS**: ARM64 (macOS 14) and `x86_64` (macOS 15)
+- **Linux**: `x86_64` (ubuntu-24.04)
+- **macOS**: ARM64 (macOS 15) and `x86_64` (macOS 15)
 - **Windows**: `x86_64` (2022)
 
-ARM64 macOS receives full testing; other platforms run smoke tests for efficiency.
+`x86_64` Linux receives full testing; other platforms run basic and smoke tests for efficiency.
 
 The general rule of thumb is that we lag one version behind the latest offered on Github.
 

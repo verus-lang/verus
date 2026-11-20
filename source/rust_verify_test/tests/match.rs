@@ -665,7 +665,7 @@ test_verify_one_file! {
 
         proof fn test_threeway_or(p: Path) {
             match p {
-                Path::Left(box q) | q | Path::Right(box q) => {
+                Path::Left(deref!(q)) | q | Path::Right(deref!(q)) => {
                     // If 'p' matches multiple, then it should be the first
                     if p.is_Left() {
                         assert(q == *p.get_Left_0());
@@ -682,7 +682,7 @@ test_verify_one_file! {
 
         proof fn test_threeway_or2(p: Path) {
             match p {
-                Path::Left(box q) | Path::Right(box q) | q => {
+                Path::Left(deref!(q)) | Path::Right(deref!(q)) | q => {
                     // If 'p' matches multiple, then it should be the first
                     if p.is_Left() {
                         assert(q == *p.get_Left_0());
@@ -701,7 +701,7 @@ test_verify_one_file! {
 
         proof fn test_threeway_or3(p: Path) {
             match p {
-                Path::Left(box q) | q | Path::Right(box q) => {
+                Path::Left(deref!(q)) | q | Path::Right(deref!(q)) => {
                     if p.is_Left() {
                         assert(p == q); // FAILS
                     }
@@ -780,6 +780,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] dot_dot_patterns verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Clone, Copy)]
         struct R { }
 
@@ -1184,6 +1186,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] pattern_ranges_unsuffixed_literals_issue2850 verus_code! {
+        spec fn m_range(x: u8) -> u8 {
+            match x {
+                0 ..= 128 => 0,
+                _ => 1,
+            }
+        }
+
+        spec fn m_range_half_open(x: u8) -> bool {
+            match x {
+                0 .. 128 => true,
+                _ => false,
+            }
+        }
+
+        proof fn test(x: u8) {
+            assert(m_range(0) == 0);
+            assert(m_range(128) == 0);
+            assert(m_range(129) == 1);
+            assert(m_range_half_open(127) == true);
+            assert(m_range_half_open(128) == false);
+        }
+
+        fn test_exec(x: u8) -> (r: u8)
+            ensures r == m_range(x)
+        {
+            match x {
+                0 ..= 128 => 0,
+                _ => 1,
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] pattern_ranges_bad_range verus_code! {
         spec fn m_range6(x: u64) -> bool {
             match x {
@@ -1231,7 +1268,7 @@ test_verify_one_file! {
             };
         }
     //} => Err(err) => assert_one_fails(err)
-    } => Err(err) => assert_vir_error_msg(err, "Not supported: match arm containing both an or-pattern (|) and a match-guard")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support a match arm containing both an or-pattern (|) and a match guard")
 }
 
 test_verify_one_file! {
@@ -1390,4 +1427,364 @@ test_verify_one_file! {
             true
         }
     } => Err(err) => assert_rust_error_msg(err, "refutable pattern in local binding")
+}
+
+test_verify_one_file! {
+    #[test] int_intrinsic_consts_in_patterns verus_code! {
+        fn example1(x: u64) {
+            let mut b = false;
+            match x {
+                u64::MIN => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0);
+        }
+
+        fn example2(x: u64) {
+            let mut b = false;
+            match x {
+                u64::MAX => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0xffff_ffff_ffff_ffff);
+        }
+
+        fn example3(x: i64) {
+            let mut b = false;
+            match x {
+                i64::MAX => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0x7fff_ffff_ffff_ffff);
+        }
+
+        fn example4(x: i64) {
+            let mut b = false;
+            match x {
+                i64::MIN => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == -0x8000_0000_0000_0000);
+        }
+
+        fn example5(x: usize) {
+            let mut b = false;
+            match x {
+                usize::MAX => { b = true; },
+                _ => ()
+            }
+            assert(usize::BITS == 64 ==> (b <==> x == 0xffff_ffff_ffff_ffff));
+            assert(usize::BITS == 32 ==> (b <==> x == 0xffff_ffff));
+        }
+
+        fn example6(x: usize) {
+            let mut b = false;
+            match x {
+                usize::MIN => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0);
+        }
+
+        fn example7(x: isize) {
+            let mut b = false;
+            match x {
+                isize::MAX => { b = true; },
+                _ => ()
+            }
+            assert(usize::BITS == 64 ==> (b <==> x == 0x7fff_ffff_ffff_ffff));
+            assert(usize::BITS == 32 ==> (b <==> x == 0x7fff_ffff));
+        }
+
+        fn example8(x: isize) {
+            let mut b = false;
+            match x {
+                isize::MIN => { b = true; },
+                _ => ()
+            }
+            assert(usize::BITS == 64 ==> (b <==> x == -0x8000_0000_0000_0000));
+            assert(usize::BITS == 32 ==> (b <==> x == -0x8000_0000));
+        }
+
+        fn example9(x: isize) {
+            let mut b = false;
+            match x {
+                isize::MIN .. isize::MAX => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x != isize::MAX);
+        }
+
+        spec fn s1(x: isize) -> bool {
+            match x {
+                isize::MIN => true,
+                _ => false,
+            }
+        }
+
+        fn spec_example1(x: isize) {
+            assert(s1(x) <==> x == isize::MIN);
+        }
+
+        spec fn s2(x: isize) -> bool {
+            match x {
+                isize::MIN .. isize::MAX => true,
+                _ => false,
+            }
+        }
+
+        fn spec_example2(x: isize) {
+            assert(s2(x) <==> x != isize::MAX);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_consts_in_patterns verus_code! {
+        struct X { }
+        impl X {
+            const SOME_CONST: u64 = 13;
+        }
+
+        fn test(x: u64) {
+            let mut b = false;
+            match x {
+                X::SOME_CONST => { b = true; }
+                _ => { }
+            }
+            assert(b <==> x == 13);
+        }
+
+        spec fn s1(x: u64) -> bool {
+            match x {
+                X::SOME_CONST => true,
+                _ => false,
+            }
+        }
+
+        fn test2(x: u64) {
+            assert(s1(x) <==> x == 13);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] let_decl_with_uninhabited_ghost_field_issue1764 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external_body]
+        tracked struct False {
+        }
+
+        axiom fn false_from_False(tracked f: False)
+            ensures false;
+
+        // Since Rust 1.100, `std::convert::Infallible` is an alias for `!`,
+        // so we use a user-defined uninhabited type instead.
+        #[verifier::external]
+        enum Uninhabited {}
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        struct ExUninhabited(Uninhabited);
+
+        tracked enum Enum {
+            GhostNvr { ghost ghost_never: Uninhabited },
+            TrackedNvr { tracked tracked_never: False },
+        }
+
+        proof fn test()
+            ensures false
+        {
+            let tracked e = Enum::GhostNvr { ghost_never: arbitrary() };
+            let tracked Enum::TrackedNvr { tracked_never } = e; // FAILS
+            false_from_False(tracked_never);
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].message.contains("unable to prove this pattern will successfully match"));
+        assert_fails(err, 1);
+    }
+}
+
+test_verify_one_file! {
+    #[test] match_with_uninhabited_ghost_field_issue1764 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external_body]
+        tracked struct False {
+        }
+
+        axiom fn false_from_False(tracked f: False)
+            ensures false;
+
+        // Since Rust 1.100, `std::convert::Infallible` is an alias for `!`,
+        // so we use a user-defined uninhabited type instead.
+        #[verifier::external]
+        enum Uninhabited {}
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        struct ExUninhabited(Uninhabited);
+
+        tracked enum Enum {
+            GhostNvr { ghost ghost_never: Uninhabited },
+            TrackedNvr { tracked tracked_never: False },
+        }
+
+        proof fn test2()
+            ensures false
+        {
+            let tracked e = Enum::GhostNvr { ghost_never: arbitrary() };
+            match e {
+                Enum::TrackedNvr { tracked_never } => { // FAILS
+                    false_from_False(tracked_never);
+                }
+            }
+        }
+} => Err(err) => {
+        assert!(err.errors[0].message.contains("unable to prove this pattern will successfully match"));
+        assert_fails(err, 1);
+    }
+}
+
+test_verify_one_file! {
+    #[test] ref_patterns verus_code! {
+        fn test(x: &u64) {
+            match x {
+                &y => { assert(x == y); }
+            }
+        }
+
+        fn test2(x: &mut u64) {
+            match x {
+                &mut y => { assert(*x == y); }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] float_patterns verus_code! {
+        const ZERO: f64 = 0.0;
+        const NEG_ZERO: f64 = -0.0;
+
+        struct X { }
+
+        impl X {
+            const ZERO: f64 = 0.0;
+        }
+
+        fn matches_zero(x: f64) -> (r: bool)
+            ensures x == NEG_ZERO ==> !r // should fail
+        {
+            match x {
+                ZERO => true,
+                _ => false,
+            }
+        }
+
+        fn matches_zero_lit(x: f64) -> (r: bool)
+            ensures x == NEG_ZERO ==> !r // should fail
+        {
+            match x {
+                0.0 => true,
+                _ => false,
+            }
+        }
+
+        fn matches_zero_assoc_const(x: f64) -> (r: bool)
+            ensures x == NEG_ZERO ==> !r // should fail
+        {
+            match x {
+                X::ZERO => true,
+                _ => false,
+            }
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "equality-testing this type in a pattern: f64",
+        "equality-testing this type in a pattern: f64",
+        "equality-testing this type in a pattern: f64",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] ghost_field_of_never_type verus_code! {
+        // Since Rust 1.100, `std::convert::Infallible` is an alias for `!`.
+        // A ghost field of type `!` must not allow us to prove false.
+        use vstd::prelude::*;
+
+        tracked enum Enum {
+            GhostNvr { ghost ghost_never: std::convert::Infallible },
+            Other,
+        }
+
+        proof fn test(tracked e: Enum)
+            ensures false
+        {
+            let tracked Enum::Other = e;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "never-to-any coercion is not allowed in spec mode")
+}
+
+test_verify_one_file! {
+    #[test] deref_patterns_box verus_code! {
+        use vstd::prelude::*;
+
+        enum Tree {
+            Leaf,
+            Node(Box<Tree>, Box<Tree>),
+        }
+
+        fn explicit_deref(t: Tree) -> (r: bool)
+            ensures r == (t matches Tree::Node(l, _) && *l == Tree::Leaf)
+        {
+            match t {
+                Tree::Node(deref!(Tree::Leaf), _) => true,
+                _ => false,
+            }
+        }
+
+        fn implicit_deref(t: Tree) -> (r: bool)
+            ensures r == (t matches Tree::Node(l, _) && *l == Tree::Leaf)
+        {
+            match t {
+                Tree::Node(Tree::Leaf, _) => true,
+                _ => false,
+            }
+        }
+
+        fn implicit_deref_fails(t: Tree) {
+            match t {
+                Tree::Node(Tree::Leaf, _) => {
+                    assert(false); // FAILS
+                }
+                _ => {}
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] explicit_deref_pattern_rc_unsupported verus_code! {
+        use std::rc::Rc;
+
+        fn test(r: Rc<u8>) {
+            match r {
+                deref!(_) => {}
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "deref patterns on types other than Box")
+}
+
+test_verify_one_file! {
+    #[test] implicit_deref_pattern_rc_unsupported verus_code! {
+        use std::rc::Rc;
+
+        fn test(r: Rc<Option<u8>>) {
+            match r {
+                Some(_) => {}
+                None => {}
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "overloaded deref in pattern")
 }

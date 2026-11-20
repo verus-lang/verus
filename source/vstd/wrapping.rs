@@ -95,6 +95,30 @@ macro_rules! wrapping_specs {
                 pub open spec fn wrapping_shr(x: $uN, shift: u32) -> $uN {
                     x >> (shift % $bits)
                 }
+
+                /// The bits of `x` shifted left by `n % BITS`, with the bits shifted out
+                /// of the top moved into the bottom. A rotation by zero is `x`; it is a
+                /// separate case so that no shift is by the full width.
+                pub open spec fn rotate_left(x: $uN, n: u32) -> $uN {
+                    let r = n % $bits;
+                    if r == 0 {
+                        x
+                    } else {
+                        (x << r) | (x >> (($bits - r) as u32))
+                    }
+                }
+
+                /// The bits of `x` shifted right by `n % BITS`, with the bits shifted out
+                /// of the bottom moved into the top.
+                pub open spec fn rotate_right(x: $uN, n: u32) -> $uN {
+                    let r = n % $bits;
+                    if r == 0 {
+                        x
+                    } else {
+                        (x >> r) | (x << (($bits - r) as u32))
+                    }
+                }
+
             }
             pub mod $modname_i {
                 use super::*;
@@ -148,6 +172,27 @@ macro_rules! wrapping_specs {
                 }
                 pub open spec fn wrapping_shr(x: $iN, shift: u32) -> $iN {
                     x >> (shift % $bits)
+                }
+
+                /// Rotates the two's-complement bits of `x`, as the unsigned
+                /// `rotate_left` does. A rotation by a multiple of `BITS` is `x`
+                /// directly, so that case needs no reasoning about the casts.
+                pub open spec fn rotate_left(x: $iN, n: u32) -> $iN {
+                    if n % $bits == 0 {
+                        x
+                    } else {
+                        $modname_u::rotate_left(x as $uN, n) as $iN
+                    }
+                }
+
+                /// Rotates the two's-complement bits of `x`, as the unsigned
+                /// `rotate_right` does.
+                pub open spec fn rotate_right(x: $iN, n: u32) -> $iN {
+                    if n % $bits == 0 {
+                        x
+                    } else {
+                        $modname_u::rotate_right(x as $uN, n) as $iN
+                    }
                 }
 
             }

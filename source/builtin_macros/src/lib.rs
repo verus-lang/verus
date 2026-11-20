@@ -1,10 +1,9 @@
 #![cfg_attr(
     verus_keep_ghost,
-    feature(proc_macro_span),
     feature(proc_macro_tracked_env),
-    feature(proc_macro_quote),
     feature(proc_macro_expand),
-    feature(proc_macro_diagnostic)
+    feature(proc_macro_diagnostic),
+    feature(proc_macro_def_site)
 )]
 
 use std::sync::OnceLock;
@@ -25,7 +24,6 @@ mod struct_decl_inv;
 mod structural;
 mod syntax_trait;
 mod topological_sort;
-mod unerased_proxies;
 
 decl_derive!([Structural] => structural::derive_structural);
 decl_derive!([StructuralEq] => structural::derive_structural_eq);
@@ -289,14 +287,24 @@ pub fn verus_exec_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::Tok
 pub fn verus_exec_inv_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // We pass `treat_elements_as_ghost: false` to treat all elements besides
     // the third ($eexpr) as ghost.
-    syntax::inv_macro_exprs(cfg_erase(), false, input)
+    syntax::inv_au_macro_exprs(cfg_erase(), false, 1, input)
 }
 
 // This is for expanding the body of an open_*_invariant in `proof` mode
 #[proc_macro]
 pub fn verus_ghost_inv_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // We pass `treat_elements_as_ghost: true` to treat all elements as ghost.
-    syntax::inv_macro_exprs(cfg_erase(), true, input)
+    syntax::inv_au_macro_exprs(cfg_erase(), true, 1, input)
+}
+
+#[proc_macro]
+pub fn verus_exec_open_au_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::inv_au_macro_exprs(cfg_erase(), false, 0, input)
+}
+
+#[proc_macro]
+pub fn verus_ghost_open_au_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::inv_au_macro_exprs(cfg_erase(), true, 0, input)
 }
 
 /// `verus_proof_macro_explicit_exprs!(f!(tts))` applies verus syntax to transform `tts` into
@@ -328,7 +336,7 @@ pub fn calc_proc_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 
 // If no #[verus_verify] on the item, it is verifier::external by default.
 // When compiling code with verus:
-// #[verus_verify] annotates the item with verifier::verify
+// #[verus_verify] annotates the item with verus::internal(verify)
 // #[verus_verify(external_body)] annotates the item with verifier::external_body
 // When compiling code with standard rust tool, the item has no verifier annotation.
 #[proc_macro_attribute]
@@ -366,7 +374,9 @@ pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// for verification.
 /// For example, declare a ghost/tracked variable.
 /// To avoid confusion, let stmts without ghost/tracked is not supported.
-/// Non-local stmts inside proof_decl! are treated similar to those in proof!
+/// Non-local stmts other than statement macros are treated similar to those in proof!
+/// Statement macros are not supported; invoke declaration macros in the surrounding
+/// scope or use proof! for proof statements.
 #[proc_macro]
 pub fn proof_decl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let erase = cfg_erase();
@@ -647,6 +657,11 @@ pub fn self_view(
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     contrib::spec_derive::self_view(attr, input)
+}
+
+#[proc_macro]
+pub fn exec_spec_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    contrib::exec_spec::exec_spec_type(input)
 }
 
 /*** End of contrib macros ***/
