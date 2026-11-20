@@ -2339,6 +2339,7 @@ dependencies = [
  "num-format",
  "regex",
  "rust_verify_test_macros",
+ "rustc-dep-info",
  "rustc_const_eval",
  "rustc_hir_analysis",
  "rustc_mir_build",
@@ -2372,6 +2373,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "rustc-dep-info"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a412ae3f291b450fc070b8f35e95b01d3823ca42804877fa97e105c173628df"
+dependencies = [
+ "hex",
+ "indexmap 2.14.0",
+ "thiserror 2.0.19",
 ]
 
 [[package]]
