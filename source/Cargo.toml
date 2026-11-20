@@ -18,6 +18,7 @@ members = [
   "tools/bump_crate_versions",
   "tools/internals_interface",
   "tools/line_count",
+  "tools/mcdc",
 ]
 exclude = [
   "vstd",
