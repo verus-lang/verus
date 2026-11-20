@@ -103,6 +103,11 @@ anywhere else.
 
 This declaration makes Verus aware of the type `SomeStruct` and all its fields (and for an enum, all its variants). If you don't want Verus to be aware of the fields/variants, you can also mark it `#[verifier::external_body]`.
 
+> [!CAUTION]
+> Due to limitations in Verus, Verus has assumes that no type has a destructor which can panic.
+> Users of `#[verifier::external_type_specification]` are required to ensure this property is
+> upheld. We intend to remove this requirement in the future.
+
 ## Adding specifications for external traits
 
 You can also add specifications to external traits using the `#[verifier::external_trait_specification]` attribute. This lets you add `requires` and `ensures` clauses to trait methods, and optionally define spec helper functions with `#[verifier::external_trait_extension]`.

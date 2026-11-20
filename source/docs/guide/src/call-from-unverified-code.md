@@ -23,7 +23,7 @@ Then, in order for **U** to safely call `f`, the developer needs to make sure th
 
 ## Requirements on the Drop trait
 
-_Note: We hope to simplify or remove this requirement in the future._
+_Note: We intend to remove this requirement in the future._
 
 Note that the [`Drop` trait](https://doc.rust-lang.org/std/ops/trait.Drop.html) has some special considerations. Specifically, Verus treats `drop`
 as if it has the following signature:
@@ -38,6 +38,10 @@ fn drop(&mut self)
 
 For any _verified_ implementation of `Drop`, Verus checks that it meets this criterion.
 For unverified implementations of `Drop`, this onus is on the user to meet this criterion.
+
+> [!CAUTION]
+> In particular, the user is responsible for not instantiating generic type parameters
+> with types whose destructor might panic.
 
 # Warning
 
