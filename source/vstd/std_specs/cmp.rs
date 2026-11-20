@@ -37,6 +37,9 @@ pub trait ExPartialEq<Rhs: PointeeSized = Self>: PointeeSized {
 #[verifier::external_trait_specification]
 pub trait ExEq: PartialEq + PointeeSized {
     type ExternalTraitSpecificationFor: Eq;
+
+    // Hidden method that `#[derive(Eq)]` implements
+    fn assert_fields_are_eq(&self);
 }
 
 #[verifier::external_type_specification]
