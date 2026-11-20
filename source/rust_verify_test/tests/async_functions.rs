@@ -332,9 +332,8 @@ test_verify_one_file! {
             consumes_opaque(f1);
         }
     } => Err(err) => {
-        assert!(err.errors.len() == 2);
+        assert!(err.errors.len() == 1);
         assert!(err.errors[0].message.contains("mismatched types"));
-        assert!(err.errors[1].message.contains("type-checking error"));
     }
 }
 

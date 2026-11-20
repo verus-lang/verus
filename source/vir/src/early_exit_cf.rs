@@ -85,6 +85,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Old(..)
             | ExprX::ForcePureAndNonProphetic(..)
             | ExprX::Block(..)
+            | ExprX::Drop(..)
             | ExprX::MatchGuardFreeze(..)
             | ExprX::ShrRefStructWrap(..)
             | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
@@ -112,7 +113,7 @@ fn expr_get_early_exits_rec(
                 expr_get_early_exits_rec(body, true, scope_map, results);
                 VisitorControlFlow::Return
             }
-            ExprX::Return(_) => {
+            ExprX::Return(..) => {
                 results.push(EarlyExitInst {
                     span: expr.span.clone(),
                     _statement: StatementType::Return,

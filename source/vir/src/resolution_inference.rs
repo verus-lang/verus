@@ -266,10 +266,10 @@ The analysis is pretty weak right now but could be improved.
 
 use crate::ast::{
     Arm, ArrayKind, BoundsCheck, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
-    FunWithVis, Function, Ident, Krate, Label, Mode, ModeWrapperMode, Params, Path, Pattern,
-    PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
-    TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate,
-    VariantCheck, VirErr,
+    FunWithVis, Function, Ident, Krate, Label, LocalOrTemp, Mode, ModeWrapperMode, Params, Path,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt,
+    StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent,
+    VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast_to_sst::Maybe;
 use crate::ast_util::{
@@ -298,10 +298,12 @@ pub struct ResolutionInfo {
     pub(crate) dual_mode: bool,
 }
 
+/// If `log_cfgs` is set, also returns the CFG built for each function (pretty-printed).
 pub fn krate_infer_resolution(
     krate: &Krate,
     infos: &HashMap<Fun, Arc<ResolutionInfo>>,
-) -> Result<Krate, Vec<VirErr>> {
+    log_cfgs: bool,
+) -> Result<(Krate, Vec<(Fun, String)>), Vec<VirErr>> {
     let mut datatypes = HashMap::new();
     for datatype in krate.datatypes.iter() {
         let Dt::Path(path) = datatype.x.name.clone() else {
@@ -320,6 +322,7 @@ pub fn krate_infer_resolution(
 
     let mut krate = krate.clone();
     let mut errors = vec![];
+    let mut cfg_logs = vec![];
     for function in &mut Arc::make_mut(&mut krate).functions {
         if let Some(res_info) = infos.get(&function.x.name) {
             let new_body = infer_resolution(
@@ -330,6 +333,7 @@ pub fn krate_infer_resolution(
                 &functions,
                 function.x.owning_module.as_ref().unwrap(),
                 &rtypes,
+                if log_cfgs { Some((&function.x.name, &mut cfg_logs)) } else { None },
             );
             match new_body {
                 Ok(new_body) => {
@@ -341,7 +345,7 @@ pub fn krate_infer_resolution(
             }
         }
     }
-    if errors.len() > 0 { Err(errors) } else { Ok(krate) }
+    if errors.len() > 0 { Err(errors) } else { Ok((krate, cfg_logs)) }
 }
 
 /// Updates the given function body to include assume(has_resolved(...)) nodes
@@ -358,6 +362,7 @@ fn infer_resolution(
     functions: &HashMap<Fun, Function>,
     module: &Path,
     rtypes: &ResolutionTypes,
+    cfg_log: Option<(&Fun, &mut Vec<(Fun, String)>)>,
 ) -> Result<Expr, VirErr> {
     let (cfg, assigns_to_resolve, typ_inv_obligations, asserts, loops_with_no_back_edges) =
         new_cfg(
@@ -370,6 +375,9 @@ fn infer_resolution(
             &info.temporary_modes,
         )?;
     //println!("{:}", pretty_cfg(&cfg));
+    if let Some((fun, cfg_log)) = cfg_log {
+        cfg_log.push((fun.clone(), pretty_cfg_for_log(&cfg)));
+    }
     let resolutions = if info.dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
     apply_resolutions(
         &cfg,
@@ -431,6 +439,8 @@ struct LocalCollection<'a> {
     /// Map AstId to temp id
     ast_id_to_temp_id: HashMap<AstId, TempId>,
     next_temp_id: u64,
+    /// The expression of each PlaceX::Temporary, indexed by TempId (only used for logging)
+    temp_exprs: Vec<Expr>,
 
     datatypes: &'a HashMap<Path, Datatype>,
     functions: &'a HashMap<Fun, Function>,
@@ -516,7 +526,12 @@ enum InstructionKind {
     /// Drop whatever is here; the place may previously be initialized, uninitialized,
     /// or partially initialized. Whatever was there before gets dropped.
     /// The place is subsequently uninitialized.
-    DropFrom(FlattenedPlace),
+    Uninitialize(FlattenedPlace),
+    /// Corresponds to an ExprX::Drop node, i.e., the point where Rust would drop the given
+    /// local or temporary when it goes out of scope.
+    /// (Not to be confused with Uninitialize, which serves an unrelated purpose.)
+    /// This is currently a no-op for the purposes of the analysis.
+    ScopeDrop(FlattenedPlace),
 }
 
 type BBIndex = usize;
@@ -654,6 +669,7 @@ fn new_cfg<'a>(
             ident_to_idx: HashMap::new(),
             ast_id_to_temp_id: HashMap::new(),
             next_temp_id: 0,
+            temp_exprs: vec![],
             datatypes,
             functions,
             var_modes,
@@ -782,7 +798,7 @@ impl<'a> Builder<'a> {
                     self.fns.last_mut().unwrap().upvars_moved.push(fp.clone());
                 }
             }
-            InstructionKind::DropFrom(_) => {}
+            InstructionKind::Uninitialize(_) | InstructionKind::ScopeDrop(_) => {}
         }
         self.push_instruction_raw(bb, post_instruction_position, instr);
     }
@@ -811,7 +827,7 @@ impl<'a> Builder<'a> {
             self.push_instruction_propagate(
                 bb,
                 post_instruction_position,
-                InstructionKind::DropFrom(fp.clone()),
+                InstructionKind::Uninitialize(fp.clone()),
             );
         }
     }
@@ -1353,6 +1369,17 @@ impl<'a> Builder<'a> {
                 }
                 Maybe::Some(bb)
             }
+            ExprX::Drop(local_or_temp) => {
+                // TODO: account for the unwinding path here
+                if let Some(fp) = self.local_or_temp_place(local_or_temp) {
+                    self.push_instruction_propagate(
+                        bb,
+                        AstPosition::After(span_id),
+                        InstructionKind::ScopeDrop(fp),
+                    );
+                }
+                Maybe::Some(bb)
+            }
             ExprX::EvalAndResolve(..) => {
                 panic!("EvalAndResolve shouldn't be created yet");
             }
@@ -1377,6 +1404,25 @@ impl<'a> Builder<'a> {
                 Maybe::Some(bb)
             }
         }
+    }
+
+    /// Get the place for the target of an ExprX::Drop, if it's a place tracked by the analysis.
+    /// (Spec-mode locals and temporaries are not tracked.)
+    fn local_or_temp_place(&mut self, local_or_temp: &LocalOrTemp) -> Option<FlattenedPlace> {
+        let name = match local_or_temp {
+            LocalOrTemp::Local(x) => LocalName::Named(x.clone()),
+            LocalOrTemp::Temp(ast_id) => {
+                let temp_id = self.locals.ast_id_to_temp_id.get(ast_id)?;
+                LocalName::Temporary(*ast_id, *temp_id)
+            }
+            // Operand temporaries of calls, constructors, and assignments,
+            // and the temporaries of unused places, aren't tracked by the analysis
+            LocalOrTemp::CallArg(..) | LocalOrTemp::AssignRhs(..) | LocalOrTemp::Unused(..) => {
+                return None;
+            }
+        };
+        let local = *self.locals.ident_to_idx.get(&name)?;
+        Some(FlattenedPlace { local, projections: vec![] })
     }
 
     fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Maybe<BBIndex> {
@@ -1561,7 +1607,7 @@ impl<'a> Builder<'a> {
                 if *mode == Mode::Spec {
                     Maybe::Some((ComputedPlaceTyped::Ghost(None), bb))
                 } else {
-                    let temp_name = self.locals.new_temp_name(place.span.id);
+                    let temp_name = self.locals.new_temp_name(place.span.id, e);
 
                     let fpt = FlattenedPlaceTyped {
                         local: temp_name,
@@ -2357,9 +2403,10 @@ fn check_illegal_muts(
 ////// Place trees
 
 impl<'a> LocalCollection<'a> {
-    fn new_temp_name(&mut self, ast_id: AstId) -> LocalName {
+    fn new_temp_name(&mut self, ast_id: AstId, expr: &Expr) -> LocalName {
         let temp_id = TempId(self.next_temp_id);
         self.next_temp_id += 1;
+        self.temp_exprs.push(expr.clone());
         if let Some(prev) = self.ast_id_to_temp_id.get(&ast_id) {
             panic!("attempt to override entry AstId({ast_id}) => {prev:?} with {temp_id:?}");
         };
@@ -2897,7 +2944,8 @@ impl FlattenedPlace {
             InstructionKind::MoveFrom(_) => false,
             InstructionKind::Overwrite(sp) => self.intersects(sp),
             InstructionKind::Mutate(sp) => self.intersects(sp),
-            InstructionKind::DropFrom(_) => false,
+            InstructionKind::Uninitialize(_) => false,
+            InstructionKind::ScopeDrop(_) => false,
         }
     }
 
@@ -3242,6 +3290,43 @@ fn pretty_cfg(cfg: &CFG) -> String {
     )
 }
 
+/// A compact representation of the CFG, for logging.
+/// (We omit the unwind edges, which are always exits, for brevity.)
+fn pretty_cfg_for_log(cfg: &CFG) -> String {
+    let is_unwind = |bb: &BasicBlock| matches!(bb.position_of_start, AstPosition::OnUnwind(_));
+    let mut v = vec![];
+    for (i, bb) in cfg.basic_blocks.iter().enumerate() {
+        if is_unwind(bb) {
+            continue;
+        }
+        let mut attrs = vec![];
+        if bb.is_entry {
+            attrs.push("entry");
+        }
+        if bb.is_exit {
+            attrs.push("exit");
+        }
+        if bb.successors.iter().any(|s| is_unwind(&cfg.basic_blocks[*s])) {
+            attrs.push("may_unwind");
+        }
+        let attrs = if attrs.len() > 0 { format!(" ({})", attrs.join(", ")) } else { "".into() };
+        v.push(format!("bb{i}{attrs}:\n"));
+        for instr in bb.instructions.iter() {
+            v.push(format!("    {}\n", pretty_instr_annotated(&cfg.locals, instr)));
+        }
+        let succs: Vec<_> = bb
+            .successors
+            .iter()
+            .filter(|s| !is_unwind(&cfg.basic_blocks[**s]))
+            .map(|s| format!("bb{s}"))
+            .collect();
+        if succs.len() > 0 {
+            v.push(format!("    -> {}\n", succs.join(", ")));
+        }
+    }
+    v.join("")
+}
+
 fn pretty_locals(locals: &LocalCollection) -> String {
     let mut v = vec![];
     for l in locals.locals.iter() {
@@ -3353,9 +3438,30 @@ fn pretty_instr(locals: &LocalCollection, instr: &Instruction) -> String {
         InstructionKind::MoveFrom(fp) => ("MoveFrom", fp),
         InstructionKind::Overwrite(fp) => ("Overwrite", fp),
         InstructionKind::Mutate(fp) => ("Mutate", fp),
-        InstructionKind::DropFrom(fp) => ("DropFrom", fp),
+        InstructionKind::Uninitialize(fp) => ("Uninitialize", fp),
+        InstructionKind::ScopeDrop(fp) => ("ScopeDrop", fp),
     };
     format!("{:}({:})", name, pretty_flattened_place(locals, fp))
+}
+
+/// Like pretty_instr, but if the instruction is on a temporary, add a comment with the
+/// temporary's expression.
+fn pretty_instr_annotated(locals: &LocalCollection, instr: &Instruction) -> String {
+    let s = pretty_instr(locals, instr);
+    let fp = match &instr.kind {
+        InstructionKind::MoveFrom(fp)
+        | InstructionKind::Overwrite(fp)
+        | InstructionKind::Mutate(fp)
+        | InstructionKind::Uninitialize(fp)
+        | InstructionKind::ScopeDrop(fp) => fp,
+    };
+    match &locals.locals[fp.local].name {
+        LocalName::Temporary(_, TempId(i)) => {
+            let e = crate::succinct_printer::succinct_expr(&locals.temp_exprs[*i as usize]);
+            format!("{s:<24} // {e}")
+        }
+        LocalName::Named(_) => s,
+    }
 }
 
 fn pretty_local_name(l: &LocalName) -> String {
@@ -3462,7 +3568,8 @@ impl DataflowState for InitializationPossibilities {
                 }
             }
             InstructionKind::Mutate(_sp) => *self,
-            InstructionKind::DropFrom(sp) => {
+            InstructionKind::ScopeDrop(_sp) => *self,
+            InstructionKind::Uninitialize(sp) => {
                 if sp.contains(place) {
                     InitializationPossibilities { can_be_uninit: true }
                 } else {
@@ -3507,7 +3614,8 @@ impl DataflowState for ResolveSafety {
                     *self
                 }
             }
-            InstructionKind::Overwrite(sp) | InstructionKind::DropFrom(sp) => {
+            InstructionKind::ScopeDrop(_sp) => *self,
+            InstructionKind::Overwrite(sp) | InstructionKind::Uninitialize(sp) => {
                 if sp.contains_and_not_separated_by_deref(place) {
                     ResolveSafety { can_resolve: true }
                 } else if sp.intersects(place) {

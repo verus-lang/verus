@@ -27,7 +27,7 @@ pub fn check_closure_well_formed(expr: &Expr, is_proof_fn: bool) -> Result<(), V
                 }
                 Ok(())
             }
-            ExprX::Return(_) if is_proof_fn => {
+            ExprX::Return(..) if is_proof_fn => {
                 // TODO: supporting return inside proof_fn requires more support in lifetime.rs
                 // because spec return values are currently erased to (),
                 // causing a type mismatch with the closure's expected return type.

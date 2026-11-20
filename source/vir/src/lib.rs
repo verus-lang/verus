@@ -73,6 +73,7 @@ pub mod sst_to_air_func;
 pub mod sst_util;
 mod sst_vars;
 mod sst_visitor;
+pub mod succinct_printer;
 pub mod traits;
 mod triggers;
 mod triggers_auto;

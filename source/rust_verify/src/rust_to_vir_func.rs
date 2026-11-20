@@ -23,7 +23,7 @@ use rustc_hir::{
 use rustc_middle::ty::consts::ConstExt;
 use rustc_middle::ty::{
     AdtDef, AliasTermKind, AliasTyKind, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind,
-    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, TyCtxt,
+    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, Ty, TyCtxt,
     TyKind, TypingEnv, ValTreeKind, Value,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
@@ -402,6 +402,7 @@ fn mk_bctx<'tcx>(
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     param_names: Vec<VarIdent>,
     external_opaque_type_map: Option<HashMap<Path, Path>>,
+    emit_drops: bool,
 ) -> BodyCtxt<'tcx> {
     BodyCtxt {
         ctxt: ctxt.clone(),
@@ -422,6 +423,8 @@ fn mk_bctx<'tcx>(
         external_opaque_type_map,
         label_map: std::rc::Rc::new(std::cell::RefCell::new((HashMap::new(), 0))),
         erasure_info: std::rc::Rc::new(std::cell::RefCell::new(ErasureInfo::new())),
+        drop_scopes: Default::default(),
+        emit_drops,
     }
 }
 
@@ -436,10 +439,12 @@ fn body_to_vir<'tcx>(
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     params: &[vir::ast::Param],
+    param_tys: &[Ty<'tcx>],
     external_opaque_type_map: Option<HashMap<Path, Path>>,
     is_async: bool,
+    emit_drops: bool,
 ) -> Result<(vir::ast::Expr, Vec<(vir::ast::Stmt, vir::ast::Stmt)>, BodyCtxt<'tcx>), VirErr> {
-    let param_names = params.iter().map(|p| p.x.name.clone()).collect();
+    let param_names: Vec<VarIdent> = params.iter().map(|p| p.x.name.clone()).collect();
     let bctx = mk_bctx(
         ctxt,
         fun_id,
@@ -448,12 +453,37 @@ fn body_to_vir<'tcx>(
         external_body,
         external_trait_from_to,
         migrate_postcondition_vars,
-        param_names,
+        param_names.clone(),
         external_opaque_type_map,
+        emit_drops,
     );
     let body_expr =
         if is_async { extract_desugared_async_body(&bctx.ctxt, body)? } else { &body.value };
-    let e = expr_to_vir_consume(&bctx, body_expr)?;
+    // As in rustc's MIR builder, the parameters are in their own scope, outside the body,
+    // so they are dropped after everything in the body.
+    let args_scope = rustc_middle::middle::region::Scope {
+        local_id: body.value.hir_id.local_id,
+        data: rustc_middle::middle::region::ScopeData::Arguments,
+    };
+    let (e, drops) = bctx.in_drop_scope(args_scope, || {
+        for ((param, hir_param), ty) in params.iter().zip(body.params.iter()).zip(param_tys.iter())
+        {
+            // Only exec parameters are dropped (not ghost or tracked parameters)
+            if param.x.mode != Mode::Exec {
+                continue;
+            }
+            crate::rust_to_vir_expr::schedule_param_drops(
+                &bctx,
+                args_scope,
+                &param.x.name,
+                peel_verus_param(hir_param.pat),
+                body.value.span,
+                *ty,
+            );
+        }
+        expr_to_vir_consume(&bctx, body_expr)
+    })?;
+    let e = crate::drop_scopes::append_drops(&bctx, e, drops);
 
     bctx.push_body_erasure(
         fun_id.expect_local(),
@@ -2018,8 +2048,10 @@ pub(crate) fn check_item_fn<'tcx>(
             &external_trait_from_to,
             None,
             &vir_params,
+            &inputs,
             assume_specification_opaque_type_map.clone(),
             false,
+            true,
         )?;
         create_reveal_group(
             ctxt,
@@ -2417,6 +2449,14 @@ pub(crate) fn finish_function<'tcx>(
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
 
+            let inputs = match &sig.sig {
+                FnOrConstSigEnum::Fn(..) => {
+                    let fn_sig = ctxt.tcx.fn_sig(def_id).skip_binder();
+                    fn_sig.inputs().skip_binder().to_vec()
+                }
+                FnOrConstSigEnum::ConstVar(..) => vec![],
+            };
+
             let (mut vir_body, param_decls, bctx) = body_to_vir(
                 ctxt,
                 def_id,
@@ -2428,8 +2468,10 @@ pub(crate) fn finish_function<'tcx>(
                 &external_trait_from_to,
                 migrate_postcondition_vars.clone(),
                 &params,
+                &inputs,
                 assume_specification_opaque_type_map.clone(),
                 is_async,
+                true,
             )?;
             let mut header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
@@ -3549,6 +3591,9 @@ pub(crate) fn finish_const_or_static<'tcx>(
     } = function.x.clone();
 
     let body = find_body(ctxt, &body_id);
+    // The body of a dual-mode const (spec function, exec body and return value)
+    // is mode-checked as spec code, so it can't contain drops
+    let dual_mode = func_mode == Mode::Spec && body_mode == Mode::Exec;
     let (mut vir_body, _, bctx) = body_to_vir(
         ctxt,
         id,
@@ -3560,8 +3605,10 @@ pub(crate) fn finish_const_or_static<'tcx>(
         &None,
         None,
         &[],
+        &[],
         None,
         false,
+        !dual_mode,
     )?;
     let header = vir::headers::read_header(
         &mut vir_body,

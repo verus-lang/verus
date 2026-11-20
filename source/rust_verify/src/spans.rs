@@ -322,6 +322,12 @@ impl<'tcx> crate::context::ContextX<'tcx> {
         self.spans.spanned_new(span, x)
     }
 
+    pub(crate) fn spanned_new_vir<X>(&self, span: &vir::messages::Span, x: X) -> Arc<Spanned<X>> {
+        let mut span = span.clone();
+        span.id = self.spans.get_next_span_id();
+        Spanned::new(span.clone(), x)
+    }
+
     pub(crate) fn spanned_typed_new<X>(&self, span: Span, typ: &Typ, x: X) -> Arc<SpannedTyped<X>> {
         self.spans.spanned_typed_new(span, typ, x)
     }
