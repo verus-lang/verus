@@ -152,6 +152,7 @@ pub(crate) fn get_crate_items<'tcx>(ctxt: &ContextX<'tcx>) -> Result<CrateItems,
         module_path: Some(root_module_path),
         errors: vec![],
         in_impl: None,
+        in_external_body: false,
     };
     let owner = ctxt.tcx.hir_owner_node(rustc_hir::CRATE_OWNER_ID);
     visitor.visit_mod(root_module, owner.span(), rustc_span::def_id::CRATE_MOD_ID);
@@ -197,6 +198,7 @@ struct VisitMod<'a, 'tcx> {
     state: VerifState,
     module_path: Option<Path>,
     in_impl: Option<InsideImpl>,
+    in_external_body: bool,
 }
 
 impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'a, 'tcx> {
@@ -327,6 +329,17 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
             return;
         }
 
+        if self.in_external_body
+            && !eattrs.external
+            && matches!(general_item, GeneralItem::Item(Item { kind: ItemKind::Impl(impll), .. }) if impll.of_trait.is_some())
+        {
+            self.errors.push(crate::util::err_span_bare(
+                span,
+                "a trait impl nested in an `external_body` item must be marked `#[verifier::external]`",
+            ));
+            return;
+        }
+
         if matches!(general_item, GeneralItem::ImplItem(_))
             && state_for_this_item == VerifState::Verify
         {
@@ -387,9 +400,13 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         let saved_state = self.state;
         let saved_mod = self.module_path.clone();
         let saved_in_impl = self.in_impl;
+        let saved_in_external_body = self.in_external_body;
 
         self.state = state_inside;
         self.in_impl = None;
+        self.in_external_body = !eattrs.external
+            && (self.in_external_body
+                || (state_for_this_item == VerifState::Verify && my_eattrs.external_body));
 
         match general_item {
             GeneralItem::Item(item) => match item.kind {
@@ -462,6 +479,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         self.state = saved_state;
         self.module_path = saved_mod;
         self.in_impl = saved_in_impl;
+        self.in_external_body = saved_in_external_body;
     }
 }
 
