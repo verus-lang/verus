@@ -1,0 +1,16 @@
+# Applies to cargo commands run from inside source/vstd, such as
+# `cargo test --features spec-check --lib` (see ../vstd_spec_check/README.md).
+#
+# Without this, ../.cargo/config.toml (the Verus development config) would compile vstd with
+# `--cfg verus_keep_ghost`, which only works when Verus is the compiler. cargo-verus doesn't need
+# those flags: its driver adds the Verus cfgs itself.
+
+# Target rustflags replace build.rustflags (merged config arrays would only be appended to),
+# and an empty list doesn't count, so this sets a cfg nothing reads.
+[target.'cfg(all())']
+rustflags = ["--cfg", "verus_vstd_cargo"]
+
+# Keep these builds out of ../target-verus, so they don't keep invalidating the Verus build.
+[build]
+target-dir = "target"
+build-dir = "target"

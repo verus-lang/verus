@@ -32,7 +32,11 @@ alloc = []
 allocator = []
 strict_provenance_atomic_ptr = []
 allow_panic = [] # code is allowed to panic.
+spec-check = ["std", "verus_builtin_macros/spec-check"]
 
+[dev-dependencies]
+verus_spec_check = { package = "verus_spec_check_runtime", git = "https://github.com/verus-lang/verus-spec-check", tag = "verus-2026-11-02" }
+vstd_spec_check = { path = "../vstd_spec_check" }
 
 [package.metadata.verus]
 verify = true

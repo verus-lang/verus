@@ -57,6 +57,7 @@ impl<T> SliceAdditionalExecFns<T> for [T] {
     }
 }
 
+#[vcheck(T = u32)]
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::slice::slice_index_get")]
 pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
@@ -100,6 +101,7 @@ pub assume_specification<T>[ <[T]>::is_empty ](slice: &[T]) -> (b: bool)
 ;
 
 #[cfg(feature = "alloc")]
+#[vcheck(T = u32)]
 #[verifier::external_body]
 pub exec fn slice_to_vec<T: Copy>(slice: &[T]) -> (out: alloc::vec::Vec<T>)
     ensures
