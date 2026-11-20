@@ -76,6 +76,7 @@ mod sst_visitor;
 pub mod traits;
 mod triggers;
 mod triggers_auto;
+mod triggers_let;
 mod unicode;
 pub mod user_defined_type_invariants;
 pub mod util;
