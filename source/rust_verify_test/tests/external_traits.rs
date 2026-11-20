@@ -1556,3 +1556,179 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_any_vir_error_msg(err, "`#[verifier::assume_compatibility_with_trait_spec]` not allowed with `--no-cheating`")
 }
+
+test_verify_one_file! {
+    #[test] trait_extension_same_name_as_trait_method verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        pub trait T {
+            fn f(&self) -> u8;
+            fn g(&self) -> u8;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait Ex {
+            type ExternalTraitSpecificationFor: T;
+            spec fn f(&self) -> bool;
+            fn g(&self) -> u8;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "spec function `f` in `external_trait_extension` has the same name as a member of trait `T`")
+}
+
+test_verify_one_file! {
+    #[test] trait_extension_same_name_as_separately_specified_method verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        pub trait T {
+            fn m(&self) -> bool { true }
+            fn n(&self) -> bool { true }
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait Ex {
+            type ExternalTraitSpecificationFor: T;
+            spec fn m(&self) -> bool;
+            fn n(&self) -> (r: bool)
+                default_ensures r == self.m();
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait Ex2 {
+            type ExternalTraitSpecificationFor: T;
+            fn m(&self) -> (r: bool)
+                default_ensures r;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "spec function `m` in `external_trait_extension` has the same name as a member of trait `T`")
+}
+
+test_verify_one_file! {
+    #[test] trait_extension_same_name_as_trait_const verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        pub trait T {
+            const C: u8;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait Ex {
+            type ExternalTraitSpecificationFor: T;
+            spec fn C() -> bool;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "spec function `C` in `external_trait_extension` has the same name as a member of trait `T`")
+}
+
+test_verify_one_file! {
+    #[test] trait_extension_same_name_as_trait_type_ok verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        pub trait T {
+            type X;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait Ex {
+            type ExternalTraitSpecificationFor: T;
+            type X;
+            #[allow(non_snake_case)]
+            spec fn X() -> bool;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] two_trait_extensions_same_trait verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        pub trait T {
+            fn g(&self) -> u8;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec1 via TSpec1Impl)]
+        pub trait Ex1 {
+            type ExternalTraitSpecificationFor: T;
+            spec fn f(&self) -> bool;
+            fn g(&self) -> (r: u8)
+                ensures self.f() ==> r == 3;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec2 via TSpec2Impl)]
+        pub trait Ex2 {
+            type ExternalTraitSpecificationFor: T;
+            spec fn h(&self) -> bool;
+            open spec fn k(&self) -> bool { !self.h() }
+        }
+
+        struct S;
+        impl T for S {
+            fn g(&self) -> u8 { 3 }
+        }
+        impl TSpec1Impl for S {
+            open spec fn f(&self) -> bool { true }
+        }
+        impl TSpec2Impl for S {
+            open spec fn h(&self) -> bool { false }
+        }
+
+        struct R;
+        impl T for R {
+            fn g(&self) -> u8 { 3 }
+        }
+
+        // A: T implies A: TSpec1 and A: TSpec2
+        proof fn generic<A: T>(a: &A) -> (b: bool)
+            ensures b == (TSpec1::f(a) && TSpec2::k(a))
+        {
+            TSpec1::f(a) && TSpec2::k(a)
+        }
+
+        fn test(s: S, r: R) {
+            let x = s.g();
+            assert(x == 3);
+            proof {
+                let b = generic(&s);
+                assert(b);
+                let _ = generic(&r);
+            }
+            assert(TSpec2::k(&s));
+            assert(TSpec2::k(&r) == !TSpec2::h(&r));
+            assert(TSpec1::f(&r)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] two_trait_extensions_same_trait_same_name verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        pub trait T {
+            fn g(&self) -> u8;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec1 via TSpec1Impl)]
+        pub trait Ex1 {
+            type ExternalTraitSpecificationFor: T;
+            spec fn f(&self) -> bool;
+            fn g(&self) -> u8;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec2 via TSpec2Impl)]
+        pub trait Ex2 {
+            type ExternalTraitSpecificationFor: T;
+            spec fn f(&self) -> bool;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "spec function `f` is declared by more than one `external_trait_extension` for trait `test_crate::T`")
+}

@@ -8,7 +8,7 @@ use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
 use crate::ast_util::undecorate_typ;
 use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
-use crate::context::{Ctx, GraphBuilder};
+use crate::context::Ctx;
 use crate::def::{
     FUEL_PARAM, FUEL_TYPE, Spanned, decrease_at_entry, rename_rec_param, unique_bound, unique_local,
 };
@@ -522,9 +522,8 @@ pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
     trait_map: &HashMap<Path, crate::ast::Trait>,
     trait_impl_map: &HashMap<(Fun, Path), Fun>,
-    trait_impl_from_extension: &HashMap<Path, Path>,
     reveal_group_set: &HashSet<Fun>,
-    call_graph: &mut GraphBuilder<Node>,
+    call_graph: &mut Graph<Node>,
     span_infos: &mut Vec<Span>,
     function: &Function,
 ) -> Result<(), VirErr> {
@@ -533,7 +532,7 @@ pub(crate) fn expand_call_graph(
 
     // Add f -> T nodes for any dyn T in f
     use crate::ast_visitor::{AstVisitor, WalkTypVisitorEnv};
-    let ft = &|call_graph: &mut GraphBuilder<Node>, t: &Typ| {
+    let ft = &|call_graph: &mut Graph<Node>, t: &Typ| {
         crate::recursive_types::add_trait_type_edges(call_graph, &f_node, t);
         Ok(())
     };
@@ -587,18 +586,6 @@ pub(crate) fn expand_call_graph(
                 bound,
             ) {
                 continue;
-            }
-            let t_node = Node::Trait(trait_path.clone());
-            if let Some(origin_trait) = call_graph.replace_with.get(&t_node) {
-                if let Node::Trait(origin_trait) = origin_trait {
-                    if crate::recursive_types::suppress_bound_in_trait_decl(
-                        origin_trait,
-                        &function.x.typ_params,
-                        bound,
-                    ) {
-                        continue;
-                    }
-                }
             }
         }
         let tr = match &**bound {
@@ -665,7 +652,6 @@ pub(crate) fn expand_call_graph(
                     func_map,
                     trait_map,
                     trait_impl_map,
-                    trait_impl_from_extension,
                     function,
                     &expr.span,
                     callee,

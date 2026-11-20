@@ -108,6 +108,7 @@ const MONOTYPE_DECORATE: &str = "$%";
 const TRAIT_DEFAULT_PREFIX: &str = "default%";
 const TRAIT_DEFAULT_SEPARATOR: &str = "%%%";
 const PREFIX_EXTENSION_IMPL: &str = "extension_impl%";
+const PREFIX_EXTENSION_UNINTERP: &str = "extension_uninterp%";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
 const DUMMY_PARAM: &str = "no%param";
@@ -452,6 +453,25 @@ pub fn trait_inherit_default_name(default_fun: &Fun, impl_path: &Path) -> Fun {
     Arc::new(crate::ast::FunX {
         path: Arc::new(crate::ast::PathX {
             krate: path.krate.clone(),
+            segments: Arc::new(segments),
+        }),
+    })
+}
+
+/// Name of the uninterpreted implementation of external_trait_extension method `method`
+/// that Verus synthesizes for an impl of T (impl_path) that doesn't implement `method`
+pub(crate) fn trait_extension_uninterp_name(method: &Fun, impl_path: &Path) -> Fun {
+    let mut segments = (*impl_path.segments).clone();
+    let last = segments.last().expect("segment").to_string();
+    assert!(!last.contains(TRAIT_DEFAULT_SEPARATOR));
+    let x = PREFIX_EXTENSION_UNINTERP.to_string()
+        + &last
+        + TRAIT_DEFAULT_SEPARATOR
+        + &method.path.segments.last().unwrap().to_string();
+    *segments.last_mut().unwrap() = Segment::V(Arc::new(x), 0);
+    Arc::new(crate::ast::FunX {
+        path: Arc::new(crate::ast::PathX {
+            krate: impl_path.krate.clone(),
             segments: Arc::new(segments),
         }),
     })
