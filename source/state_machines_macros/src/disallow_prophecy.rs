@@ -1,6 +1,6 @@
 //! For state machines marked `#![verifier::prophetic]`, prophetic expressions are only
 //! allowed in `require` and `assert` statements. To enforce this, before simplification,
-//! we wrap every other expression in a call to the `prophecy_disallowed` builtin,
+//! we wrap every other expression in a call to the `force_pure_and_nonprophetic` builtin,
 //! which is checked by Verus's mode checker.
 //!
 //! Note that this needs to happen *before* simplification, since some special statements
@@ -20,7 +20,7 @@ pub fn disallow_prophecy(sm: &SM, ts: &TransitionStmt) -> TransitionStmt {
 fn wrap(e: &mut Expr, reason: &str) {
     let span = e.span();
     *e = Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
-        #vstd::prelude::prophecy_disallowed(#reason, #e)
+        #vstd::prelude::force_pure_and_nonprophetic(#reason, #e)
     });
 }
 
@@ -31,7 +31,7 @@ fn wrap_nat(e: &mut Expr, reason: &str, expect_nat: bool) {
     if expect_nat {
         let span = e.span();
         *e = Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
-            #vstd::prelude::prophecy_disallowed::<#vstd::prelude::nat>(#reason, #e)
+            #vstd::prelude::force_pure_and_nonprophetic::<#vstd::prelude::nat>(#reason, #e)
         });
     } else {
         wrap(e, reason)

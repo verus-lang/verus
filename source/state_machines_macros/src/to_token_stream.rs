@@ -332,8 +332,8 @@ pub fn output_primary_stuff(
         // a boolean predicate between `pre` and `post`.
 
         // For prophetic state machines, prophecy is only allowed in `require` and
-        // `assert` statements; wrap all other expressions in `prophecy_disallowed`.
-        // This is useful for non-prophetic systems as well, as the `prophecy_disallowed`
+        // `assert` statements; wrap all other expressions in `force_pure_and_nonprophetic`.
+        // This is useful for non-prophetic systems as well, since the
         // builtin also forces the expression to be pure.
         let body = crate::disallow_prophecy::disallow_prophecy(sm, &trans.body);
 
