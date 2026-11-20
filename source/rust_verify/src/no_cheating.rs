@@ -138,13 +138,13 @@ pub(crate) fn check_trust<'tcx>(ctxt: &ContextX<'tcx>) -> Vec<VirErr> {
         errors: Vec::new(),
     };
     let saved = collector.enter(rustc_hir::CRATE_HIR_ID, rustc_hir::CRATE_OWNER_ID, false);
-    collector.visit_mod(root_module, root_owner.span(), rustc_hir::CRATE_HIR_ID);
+    collector.visit_mod(root_module, root_owner.span(), rustc_span::def_id::CRATE_MOD_ID);
     collector.inherited = saved;
 
     let mut errors = collector.errors;
     let policies = collector.policies;
     let mut scanner = TrustedItemScanner { ctxt, policies: &policies, errors: Vec::new() };
-    scanner.visit_mod(root_module, root_owner.span(), rustc_hir::CRATE_HIR_ID);
+    scanner.visit_mod(root_module, root_owner.span(), rustc_span::def_id::CRATE_MOD_ID);
     errors.append(&mut scanner.errors);
     errors
 }

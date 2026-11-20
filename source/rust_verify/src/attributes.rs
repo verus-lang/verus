@@ -948,7 +948,7 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, name, None) if name == "trusted" => {
                         v.push(Attr::Trust(TrustAttribute::Trusted, span))
                     }
-                    AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
+                    AttrTree::Fun(_, name, Some([AttrTree::Fun(_, arg, None)]))
                         if name == "trusted" && arg == "spec" =>
                     {
                         v.push(Attr::Trust(TrustAttribute::TrustedSpec, span))
@@ -1013,7 +1013,7 @@ pub(crate) fn get_trust_attributes(
             .map_err(|_| vir_err_span_str(attr.span(), "invalid verus trust attribute"))?;
         let trust = match &tree {
             AttrTree::Fun(_, name, None) if name == "trusted" => TrustAttribute::Trusted,
-            AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
+            AttrTree::Fun(_, name, Some([AttrTree::Fun(_, arg, None)]))
                 if name == "trusted" && arg == "spec" =>
             {
                 TrustAttribute::TrustedSpec

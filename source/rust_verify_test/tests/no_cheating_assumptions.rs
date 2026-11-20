@@ -30,7 +30,7 @@ fn untrusted_by_default() {
     let files = vec![entry("", "verus! { proof fn cheat() ensures false { assume(false); } }")];
     let err = verify_files("untrusted_by_default", files, "test.rs".to_string(), NO_CHEATING)
         .expect_err("expected an error");
-    assert_vir_error_msg(err, "assume/admit not allowed with --no-cheating");
+    assert_vir_error_msg(err, "`assume`/`admit` not allowed with `--no-cheating`");
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn untrusted_item_overrides_trusted_parent() {
         NO_CHEATING,
     )
     .expect_err("expected an error");
-    assert_vir_error_msg(err, "assume/admit not allowed with --no-cheating");
+    assert_vir_error_msg(err, "`assume`/`admit` not allowed with `--no-cheating`");
 }
 
 #[test]
@@ -148,7 +148,7 @@ fn trusted_impl_inherits_and_method_can_override() {
         NO_CHEATING,
     )
     .expect_err("expected an error");
-    assert_vir_error_msg(err, "assume/admit not allowed with --no-cheating");
+    assert_vir_error_msg(err, "`assume`/`admit` not allowed with `--no-cheating`");
 }
 
 #[test]
@@ -248,7 +248,7 @@ fn trusted_spec_body_rejects_assumptions() {
         NO_CHEATING,
     )
     .expect_err("expected an error");
-    assert_vir_error_msg(err, "assume/admit not allowed with --no-cheating");
+    assert_vir_error_msg(err, "`assume`/`admit` not allowed with `--no-cheating`");
 }
 
 #[test]
@@ -328,7 +328,10 @@ fn external_body_obeys_item_trust() {
         NO_CHEATING,
     )
     .expect_err("expected an error");
-    assert_vir_error_msg(err, "external_body/assume_specification not allowed with --no-cheating");
+    assert_vir_error_msg(
+        err,
+        "`external_body`/`assume_specification` not allowed with `--no-cheating`",
+    );
 
     let trusted_spec_files = vec![entry(
         "",
@@ -345,7 +348,10 @@ fn external_body_obeys_item_trust() {
         NO_CHEATING,
     )
     .expect_err("expected an error");
-    assert_vir_error_msg(err, "external_body/assume_specification not allowed with --no-cheating");
+    assert_vir_error_msg(
+        err,
+        "`external_body`/`assume_specification` not allowed with `--no-cheating`",
+    );
 }
 
 #[test]

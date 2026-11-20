@@ -672,7 +672,7 @@ fn check_one_expr(
             )?;
         }
         ExprX::AssertAssume { is_assume, expr: inner_expr, .. } => {
-            if ctxt.no_cheating && *is_assume  && !ctxt.assumptions_allowed(function) {
+            if ctxt.no_cheating && *is_assume && !ctxt.assumptions_allowed(function) {
                 let mut msg =
                     error(&expr.span, "`assume`/`admit` not allowed with `--no-cheating`");
                 if let Some(label) = ast_expr_get_proof_note(inner_expr) {
@@ -1372,7 +1372,7 @@ fn check_function_inner(
         ));
     }
 
-    if function.x.attrs.exec_assume_termination 
+    if function.x.attrs.exec_assume_termination
         && ctxt.no_cheating
         && !ctxt.assumptions_allowed(function)
     {
@@ -1746,7 +1746,6 @@ fn check_function_inner(
     {
         let msg = error(
             &function.span,
-            "external_body/assume_specification not allowed with --no-cheating",
             "`external_body`/`assume_specification` not allowed with `--no-cheating`",
         );
         emit.emit_deferred_err(msg);
