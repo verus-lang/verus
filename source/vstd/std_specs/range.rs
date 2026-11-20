@@ -405,6 +405,17 @@ pub trait ExRangeBounds<T: ?Sized> {
     ;
 }
 
+/// Whether `R`'s `start_bound`/`end_bound` methods and destruction cannot unwind.
+/// Numeric bounds checks are specified separately. Implementing
+/// `RangeBoundsSpecImpl` alone does not establish this property.
+/// Currently established only for the built-in `Range<usize>`.
+pub uninterp spec fn range_bounds_no_unwind<R: RangeBounds<usize>>() -> bool;
+
+pub broadcast axiom fn axiom_range_usize_no_unwind()
+    ensures
+        #[trigger] range_bounds_no_unwind::<Range<usize>>(),
+;
+
 impl<T> RangeBoundsSpecImpl<T> for Range<T> {
     open spec fn spec_start_bound(&self) -> Bound<&T> {
         Bound::Included(&self.start)
@@ -565,8 +576,9 @@ pub open spec fn slice_range_end<R: RangeBoundsSpec<usize>>(range: &R, len: nat)
     }
 }
 
-/// Whether a range normalizes to `start <= end <= len`, i.e. the condition
-/// under which std's `core::slice::range` does not panic.
+/// Whether a range normalizes to `start <= end <= len`, excluding the numeric
+/// bounds failures in std's `core::slice::range`. This does not rule out
+/// unwinding from user-defined bounds methods or destruction of the range.
 pub open spec fn slice_range_valid<R: RangeBoundsSpec<usize>>(range: &R, len: nat) -> bool {
     slice_range_start(range) <= slice_range_end(range, len) <= len
 }
@@ -654,6 +666,7 @@ step_specs!(isize, axiom_spec_range_next_isize, axiom_isize_obeys_range_step_spe
 verus! {
 
 pub broadcast group group_range_axioms {
+    axiom_range_usize_no_unwind,
     axiom_range_inclusive_out_of_order,
     axiom_range_inclusive_empty_contains,
     axiom_u8_obeys_range_step_spec,

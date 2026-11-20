@@ -731,6 +731,7 @@ test_verify_one_file! {
                 old(dst)@.len() == src@.len(),
             ensures
                 final(dst)@ == src@,
+            no_unwind
         {
             dst.copy_from_slice(src);
         }
@@ -750,10 +751,122 @@ test_verify_one_file! {
                 final(s)@[2] == old(s)@[2],
                 final(s)@[3] == old(s)@[3],
                 final(s)@[4] == old(s)@[4],
+            no_unwind
         {
             s.copy_within(1..3, 0);
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_copy_within_no_unwind ["--no-cheating"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::slice::copy_within_result;
+
+        fn move_bytes(s: &mut [u8], start: usize, end: usize, dest: usize)
+            requires
+                start <= end <= old(s).len(),
+                dest <= old(s).len() - (end - start),
+            ensures
+                final(s)@ == copy_within_result(old(s)@, start as int, end as int, dest as int),
+                final(s).len() == old(s).len(),
+                forall|i: int| dest <= i < dest + (end - start) ==>
+                    #[trigger] final(s)@[i] == old(s)@[start + i - dest],
+                forall|i: int| 0 <= i < old(s).len() && !(dest <= i < dest + (end - start)) ==>
+                    #[trigger] final(s)@[i] == old(s)@[i],
+            no_unwind
+        {
+            s.copy_within(start..end, dest);
+        }
+
+        fn overlap_both_directions()
+            no_unwind
+        {
+            let mut right: [u8; 6] = [0, 1, 2, 3, 4, 5];
+            let r: &mut [u8] = &mut right;
+            move_bytes(r, 1, 4, 2);
+            assert(r@ == seq![0u8, 1, 1, 2, 3, 5]);
+
+            let mut left: [u8; 6] = [0, 1, 2, 3, 4, 5];
+            let l: &mut [u8] = &mut left;
+            move_bytes(l, 2, 5, 1);
+            assert(l@ == seq![0u8, 2, 3, 4, 4, 5]);
+
+            let ghost before = l@;
+            move_bytes(l, 6, 6, 6);
+            assert(l@ == before);
+            move_bytes(l, 0, 6, 0);
+            assert(l@ == before);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_copy_within_no_unwind_wrong_result verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires old(s).len() == 6, old(s)@[1] != old(s)@[2],
+            ensures final(s)@[3] == old(s)@[1], // FAILS: must read the original source.
+            no_unwind
+        {
+            s.copy_within(1..4, 2);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_copy_within_no_unwind_custom_range_rejected verus_code! {
+        use vstd::prelude::*;
+        use core::ops::{Bound, RangeBounds};
+        use vstd::std_specs::range::RangeBoundsSpecImpl;
+
+        pub struct PanickingRange;
+
+        impl RangeBoundsSpecImpl<usize> for PanickingRange {
+            open spec fn spec_start_bound(&self) -> Bound<&usize> { Bound::Included(&0) }
+            open spec fn spec_end_bound(&self) -> Bound<&usize> { Bound::Excluded(&1) }
+        }
+
+        impl RangeBounds<usize> for PanickingRange {
+            // An external implementation can satisfy the return-value model
+            // while panicking before it returns.
+            #[verifier::external_body]
+            fn start_bound(&self) -> Bound<&usize> { panic!("invalid input") }
+            fn end_bound(&self) -> Bound<&usize> { Bound::Excluded(&1) }
+        }
+
+        fn test(s: &mut [u8])
+            requires old(s).len() >= 1,
+            no_unwind
+        {
+            s.copy_within(PanickingRange, 0); // FAILS: bounds methods may unwind.
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        assert!(err.errors[0].message.contains("cannot show this call will not unwind"));
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_copy_within_no_unwind_generic_range_rejected ["--no-cheating"] => verus_code! {
+        use vstd::prelude::*;
+        use core::ops::RangeBounds;
+        use vstd::std_specs::range::{slice_range_valid, slice_range_start, slice_range_end};
+
+        fn test<R: RangeBounds<usize>>(s: &mut [u8], src: R, dest: usize)
+            requires
+                slice_range_valid(&src, old(s)@.len()),
+                dest + (slice_range_end(&src, old(s)@.len()) - slice_range_start(&src))
+                    <= old(s)@.len(),
+            no_unwind
+        {
+            s.copy_within(src, dest); // FAILS: bounds alone do not rule out unwinding.
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        assert!(err.errors[0].message.contains("cannot show this call will not unwind"));
+    }
 }
 
 test_verify_one_file! {
@@ -795,6 +908,7 @@ test_verify_one_file! {
         fn test(s: &mut [u8])
             requires
                 old(s)@.len() == 5,
+            no_unwind
         {
             s.copy_within(3..5, 4); // FAILS: dest 4 + count 2 > len 5
         }
@@ -808,6 +922,7 @@ test_verify_one_file! {
         fn test(s: &mut [u8])
             requires
                 old(s)@.len() == 5,
+            no_unwind
         {
             s.copy_within(0..10, 0); // FAILS: src end 10 > len 5
         }
@@ -821,6 +936,7 @@ test_verify_one_file! {
         fn test(s: &mut [u8])
             requires
                 old(s)@.len() == 5,
+            no_unwind
         {
             s.copy_within(3..1, 0); // FAILS: src start 3 > end 1
         }
