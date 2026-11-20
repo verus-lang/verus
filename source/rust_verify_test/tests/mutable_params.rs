@@ -589,7 +589,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] patterns_in_param_position_without_macro [] => code! {
+    #[test] patterns_in_param_position_without_macro ["--allow-hand-written-internal-attrs"] => code! {
         #[verus::internal(verify)]
         fn add_pair((a, b): (i32, i32)) -> i32 {
             requires(a == 1 && b == 2);
@@ -843,7 +843,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] wildcard_params_in_trait_methods [] => code! {
+    #[test] wildcard_params_in_trait_methods ["--allow-hand-written-internal-attrs"] => code! {
         #[verus::internal(verify)]
         trait Plain {
             fn m(&self, _: u32, _: u32);

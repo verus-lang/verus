@@ -3,8 +3,8 @@
 mod common;
 use common::*;
 
-test_verify_one_file! {
-    #[test] basic verus_code! {
+test_verify_one_file_with_options! {
+    #[test] basic ["--allow-hand-written-internal-attrs"] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn test() {
             let i = 0;
@@ -63,8 +63,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 3)
 }
 
-test_verify_one_file! {
-    #[test] param_not_equal_to_old verus_code! {
+test_verify_one_file_with_options! {
+    #[test] param_not_equal_to_old ["--allow-hand-written-internal-attrs"] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn test_param_havoced(x: &mut u64) {
             let mut i = 0;
@@ -106,8 +106,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 3)
 }
 
-test_verify_one_file! {
-    #[test] closure_param_not_equal_to_old verus_code! {
+test_verify_one_file_with_options! {
+    #[test] closure_param_not_equal_to_old ["--allow-hand-written-internal-attrs"] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn test_param_havoced() {
             let clos = |x: &mut u64| {
@@ -155,8 +155,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 3)
 }
 
-test_verify_one_file! {
-    #[test] with_match verus_code! {
+test_verify_one_file_with_options! {
+    #[test] with_match ["--allow-hand-written-internal-attrs"] => verus_code! {
         #[verifier::exec_allows_no_decreases_clause]
         fn test_nested_in_let_match() {
             let mut i = 0;
@@ -177,8 +177,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_loops_with_no_back_edge verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_loops_with_no_back_edge ["--allow-hand-written-internal-attrs"] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
