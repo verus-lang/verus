@@ -1123,17 +1123,17 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let arg = expr_to_vir_consume(bctx, &args[0])?;
                 mk_expr(ExprX::Old(arg))
             }
-            ExprItem::ProphecyDisallowed => {
+            ExprItem::ForcePureAndNonProphetic => {
                 record_spec_fn_pure_args_only(bctx, expr);
                 internal_err_unless!(
                     args_len == 2,
                     expr.span,
-                    "expected prophecy_disallowed",
+                    "expected force_pure_and_nonprophetic",
                     &args
                 );
-                let reason = get_string_lit_arg(&args[0], "prophecy_disallowed")?;
+                let reason = get_string_lit_arg(&args[0], "force_pure_and_nonprophetic")?;
                 let arg = expr_to_vir_consume(bctx, &args[1])?;
-                mk_expr(ExprX::ProphecyDisallowed(Arc::new(reason), arg))
+                mk_expr(ExprX::ForcePureAndNonProphetic(Arc::new(reason), arg))
             }
             ExprItem::ArrayIndex => {
                 record_spec_fn(bctx, expr);
@@ -2475,7 +2475,7 @@ fn uncompilable_verus_fn(verus_item: &VerusItem) -> bool {
             ExprItem::Choose
             | ExprItem::ChooseTuple
             | ExprItem::Old
-            | ExprItem::ProphecyDisallowed
+            | ExprItem::ForcePureAndNonProphetic
             | ExprItem::GetVariantField
             | ExprItem::GetUnionField
             | ExprItem::IsVariant
