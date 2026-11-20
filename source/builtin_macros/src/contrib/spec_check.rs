@@ -10,7 +10,7 @@
 //! exactly as if they were absent. This is the stub that lets vstd carry labels without
 //! always depending on verus-spec-check.
 //!
-//! With the `spec-check` cargo feature, a labeled item list in vstd is instead handed, prior 
+//! With the `spec-check` cargo feature, a labeled item list in vstd is instead handed, prior
 //! to other `verus!` processing, to `vstd::contrib::spec_check::vcheck_preprocess!`. In vstd's
 //! `cargo test --features spec-check` build that macro runs the verus-spec-check engine over the
 //! list and re-enters `verus!` through `verus_spec_check_resume!`, which then strips whatever
