@@ -569,7 +569,7 @@ fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) 
             // to
             //   fn f(verus_tmp_x: Tracked<T>) {
             //       #[verus::internal(header_unwrap_parameter)] let t;
-            //       #[verifier::proof_block] { t = verus_tmp_x.get() };
+            //       #[verus::internal(proof_block)] { t = verus_tmp_x.get() };
             let span = pat.span();
             let x = wrapped_pat_id.ident;
             let tmp_id =
@@ -581,10 +581,10 @@ fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) 
                     span => #[verus::internal(header_unwrap_parameter)] let #x));
                 if tracked_wrapper {
                     unwrap_ghost_tracked.push(stmt_with_semi!(
-                        span => #[verifier::proof_block] { #x = #tmp_id.get() }));
+                        span => #[verus::internal(proof_block)] { #x = #tmp_id.get() }));
                 } else {
                     unwrap_ghost_tracked.push(stmt_with_semi!(
-                        span => #[verifier::proof_block] { #x = #tmp_id.view() }));
+                        span => #[verus::internal(proof_block)] { #x = #tmp_id.view() }));
                 }
             }
         }
@@ -1556,8 +1556,7 @@ impl Visitor {
         _con_ty: &Type,
         con_span: Span,
     ) {
-        if self.erase_ghost.erase() && matches!(con_mode, FnMode::Spec(_) | FnMode::SpecChecked(_))
-        {
+        if self.erase_ghost.erase() && const_body_is_stubbed(con_mode) {
             if let Some(expr) = con_expr.take() {
                 let mut stmts = Vec::new();
                 stmts.push(Stmt::Expr(
@@ -1612,6 +1611,10 @@ impl Visitor {
     ) -> FnMode {
         if self.erase_ghost.keep() {
             attrs.push(mk_verus_attr(span, quote! { verus_macro }));
+        }
+        if self.erase_ghost.keep() && const_body_is_stubbed(mode) {
+            // The Erase expansion stubs the body (desugar_const_or_static)
+            attrs.push(mk_verus_attr(span, quote! { stub_body }));
         }
 
         let publish_attrs = match (&mode, vis, &publish) {
@@ -1978,6 +1981,9 @@ impl Visitor {
         // - Leave Struct and Enum as-is (REVIEW: we could leave stubs with PhantomData fields)
         for item in items.iter_mut() {
             let span = item.span();
+            if let Item::Const(c) = item {
+                mark_private_proof_const(self.erase_ghost, &c.vis, &c.mode, span, &mut c.attrs);
+            }
             match item {
                 Item::Fn(fun) => match (&fun.vis, &fun.sig.mode) {
                     (
@@ -3595,7 +3601,7 @@ impl Visitor {
             *expr = self.maybe_erase_expr(
                 span,
                 Expr::Verbatim(
-                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { {#inner}; } ),
+                    quote_spanned!(span => #[verus::internal(proof_block)] /* vattr */ { {#inner}; } ),
                 ),
             );
         }
@@ -3654,7 +3660,7 @@ impl Visitor {
                 *expr = Expr::Verbatim(if self.erase_ghost.erase() {
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Tracked #turbofish ::assume_new_fallback(|| ::core::unreachable!()))
                 } else if is_inside_ghost {
-                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Tracked #turbofish ::new(#inner))
+                    quote_spanned_builtin!(verus_builtin, span => #[verus::internal(ghost_wrapper)] #verus_builtin::Tracked #turbofish ::new(#inner))
                 } else {
                     quote_spanned_builtin!(verus_builtin, span => #[verus::internal(ghost_wrapper)] #verus_builtin::tracked_exec #turbofish (#[verus::internal(tracked_block_wrapped)] #inner))
                 });
@@ -3664,7 +3670,7 @@ impl Visitor {
                 *expr = Expr::Verbatim(if self.erase_ghost.erase() {
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Ghost #turbofish ::assume_new_fallback(|| ::core::unreachable!()))
                 } else if is_inside_ghost {
-                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Ghost #turbofish ::new(#inner))
+                    quote_spanned_builtin!(verus_builtin, span => #[verus::internal(ghost_wrapper)] #verus_builtin::Ghost #turbofish ::new(#inner))
                 } else {
                     quote_spanned_builtin!(verus_builtin, span => #[verus::internal(ghost_wrapper)] #verus_builtin::ghost_exec #turbofish (#[verus::internal(ghost_block_wrapped)] #inner))
                 });
@@ -3678,7 +3684,7 @@ impl Visitor {
                     let e = if is_inside_ghost {
                         quote_spanned!(span => #[verifier::proof_in_spec] /* vattr */ #inner)
                     } else {
-                        quote_spanned!(span => #[verifier::proof_block] /* vattr */ #inner)
+                        quote_spanned!(span => #[verus::internal(proof_block)] /* vattr */ #inner)
                     };
                     *expr = self.maybe_erase_expr(span, Expr::Verbatim(e));
                 }
@@ -4373,7 +4379,7 @@ impl Visitor {
             #[verus::internal(spec)]
             #[verus::internal(unwrapped_binding)]
             let #x_iter_body_old;
-            #[verifier::proof_block]
+            #[verus::internal(proof_block)]
             {
                 #x_iter_body_old = #x_iter_name;
             }
@@ -4386,7 +4392,7 @@ impl Visitor {
                 ::core::option::Option::None => break,
             };
             let #pat = #x_loop_next;
-            #[verifier::proof_block]
+            #[verus::internal(proof_block)]
             {
                 // This assertion helps add the results of the peek operation into Z3's context
                 #vstd::prelude::assert_(#vstd::std_specs::iter::trigger_peek_implications(
@@ -4396,7 +4402,7 @@ impl Visitor {
             #[verus::internal(spec)]
             #[verus::internal(unwrapped_binding)]
             let #x_iter_name;
-            #[verifier::proof_block]
+            #[verus::internal(proof_block)]
             {
                 #x_iter_name = #x_iter_body_old;
             }
@@ -4422,7 +4428,7 @@ impl Visitor {
             #[verus::internal(spec)]
             #[verus::internal(unwrapped_binding)]
             let #x_snapshot;
-            #[verifier::proof_block]
+            #[verus::internal(proof_block)]
             {
                 #x_snapshot = #x_wrapped_iter.snapshot.view();
             }
@@ -6347,6 +6353,29 @@ pub(crate) fn is_external(attrs: &Vec<Attribute>) -> bool {
                 _ => false,
            }
     })
+}
+
+/// Does the Erase expansion replace the body of a const or static with this mode?
+fn const_body_is_stubbed(mode: &FnMode) -> bool {
+    matches!(mode, FnMode::Spec(_) | FnMode::SpecChecked(_))
+}
+
+/// The Erase expansion replaces a ghost const that is not `pub` with a stub fn
+/// (`visit_items_prefilter`). In the Keep expansion, give such a proof const the `stub_body`
+/// marker, so that full erasure skips its body too (spec consts get it in `visit_const_or_static`).
+fn mark_private_proof_const(
+    erase_ghost: EraseGhost,
+    vis: &Visibility,
+    mode: &FnMode,
+    span: Span,
+    attrs: &mut Vec<Attribute>,
+) {
+    if erase_ghost.keep()
+        && !matches!(vis, Visibility::Public(_))
+        && matches!(mode, FnMode::Proof(_) | FnMode::ProofAxiom(_))
+    {
+        attrs.push(mk_verus_attr(span, quote! { stub_body }));
+    }
 }
 
 /// Constructs #[name(tokens)]

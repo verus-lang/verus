@@ -605,13 +605,13 @@ fn full_erasure_erases_call(verus_item: &VerusItem) -> bool {
         | VerusItem::AfterBorrow
         | VerusItem::MutRefTracked => true,
 
-        // These get replaced by `Ghost::assume_new()` or `Tracked::assume_new()`
+        // Erased with the `ghost_wrapper` marker
         VerusItem::CompilableOpr(
             CompilableOprItem::GhostExec
             | CompilableOprItem::GhostNew
             | CompilableOprItem::TrackedNew
             | CompilableOprItem::TrackedExec,
-        ) => true,
+        ) => false,
         // These only appear in ghost code anyway
         VerusItem::CompilableOpr(
             CompilableOprItem::TrackedGet
@@ -643,19 +643,6 @@ fn full_erasure_erases_call(verus_item: &VerusItem) -> bool {
     }
 }
 
-/// Do the given attributes (on an expression, let statement, or item) mark ghost code?
-/// (This is used for full erasure.)
-fn full_erasure_is_ghost_attrs(attrs: &[rustc_hir::Attribute]) -> bool {
-    use crate::attributes::{Attr, GhostBlockAttr};
-    crate::attributes::parse_attrs_opt(attrs, None).iter().any(|attr| match attr {
-        Attr::GhostBlock(GhostBlockAttr::Proof | GhostBlockAttr::Tracked) => true,
-        Attr::Mode(Mode::Spec | Mode::Proof) => true,
-        Attr::InferMode => true,
-        Attr::UnwrapParameter => true,
-        _ => false,
-    })
-}
-
 /// Set up the information needed for full erasure, which is used for const evaluation.
 /// This needs to happen before rustc type-checking.
 pub(crate) fn setup_full_erasure_ctxt<'tcx>(
@@ -682,7 +669,11 @@ pub(crate) fn setup_full_erasure_ctxt<'tcx>(
     let erase_call_fns = verus_items
         .id_to_name
         .iter()
-        .filter(|(_, verus_item)| full_erasure_erases_call(verus_item))
+        // A const fn among these is erased only with the ghost code around it, as in the
+        // compiled program
+        .filter(|(def_id, verus_item)| {
+            full_erasure_erases_call(verus_item) && !tcx.is_const_fn(**def_id)
+        })
         .map(|(def_id, _)| *def_id)
         .collect();
     let proof_with_callee_fn_def_id = verus_items
@@ -699,7 +690,6 @@ pub(crate) fn setup_full_erasure_ctxt<'tcx>(
             tracked_struct_def_id: *tracked,
             ghost_assume_new_fn_def_id: find_assume_new(*ghost),
             tracked_assume_new_fn_def_id: find_assume_new(*tracked),
-            is_ghost_attrs: full_erasure_is_ghost_attrs,
         },
     ));
 }

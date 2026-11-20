@@ -649,6 +649,31 @@ pub fn run_verus_raw(args: &[&str], dir: &std::path::Path) -> std::process::Outp
         .expect("raw verus wait failed")
 }
 
+/// Verify `code` (after the test preludes) with `--compile`, run the binary it produces, and
+/// return what the binary prints. Panics if verification, compilation or the binary fails.
+pub fn verify_compile_and_run(code: &str, extra_args: &[&str]) -> String {
+    let tempdir = tempfile::TempDir::new().expect("temp dir");
+    let entry_file = tempdir.path().join("test.rs");
+    std::fs::write(&entry_file, format!("{}\n{}\n{}\n", FEATURE_PRELUDE, USE_PRELUDE, code))
+        .expect("write source file");
+    let mut args = vec!["--compile", entry_file.to_str().unwrap()];
+    args.extend_from_slice(extra_args);
+    let output = run_verus_raw(&args, tempdir.path());
+    assert!(
+        output.status.success(),
+        "verus failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let exe_name = if cfg!(target_os = "windows") { "test.exe" } else { "test" };
+    let run = std::process::Command::new(tempdir.path().join(exe_name))
+        .current_dir(tempdir.path())
+        .output()
+        .expect("could not run the compiled binary");
+    assert!(run.status.success(), "the binary failed:\n{}", String::from_utf8_lossy(&run.stderr));
+    String::from_utf8(run.stdout).expect("the binary's output is not UTF-8")
+}
+
 pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     run_cargo_verus_with_target(args, dir, &dir.join("target"))
 }
