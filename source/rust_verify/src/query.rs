@@ -580,6 +580,8 @@ impl<'tcx> Query<'tcx> {
             return Err(err);
         }
 
+        // Must run after the functions are added: crate_to_vir no longer holds their bodies.
+        crate::rust_to_vir_adts::fix_size_of_broadcast_lemma_visibility(&mut cratex);
         let other_vir_crates = self.get_other_vir_crates()?;
         let merged_traits = self.get_merged_traits()?;
         vir::traits::set_krate_dyn_compatibility(&other_vir_crates, &merged_traits, &mut cratex)
