@@ -191,6 +191,33 @@ impl<T> Prophecy<T> where T: Structural {
     }
 }
 
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub tracked struct Resolved<T> {
+    _inner: ProphecyGhost<T>,
+}
+
+impl<T> Resolved<T> {
+    pub uninterp spec fn proph(&self) -> ProphecyGhost<T>;
+
+    pub uninterp spec fn value(&self) -> T;
+
+    pub open spec fn is_for(self, proph: ProphecyGhost<T>) -> bool {
+        self.proph() == proph
+    }
+
+    pub open spec fn points_to(self, value: T) -> bool {
+        self.value() == value
+    }
+
+    pub axiom fn resolved(&self, proph: ProphecyGhost<T>)
+        requires
+            self.is_for(proph),
+        ensures
+            self.value() == proph.value(),
+    ;
+}
+
 /** A general-purpose prophecy variable.
 
 A prophecy variable is allocated via [`ProphecyGhost::new`](Self::new)
@@ -226,11 +253,13 @@ impl<T> ProphecyGhost<T> {
         tracked self,
         tracked u: &ProphecyGhost<U>,
         f: spec_fn(U) -> T,
-    )
+    ) -> (tracked rs: Resolved<T>)
         ensures
             self.value() == f(u.value()),
+            rs.value() == self.value(),
+            rs.proph() == self,
     {
-        self.resolve_dependent_2(u, &ProphecyGhost::new(), |u: U, v: ()| f(u));
+        self.resolve_dependent_2(u, &ProphecyGhost::new(), |u: U, v: ()| f(u))
     }
 
     pub axiom fn resolve_dependent_2<U, V>(
@@ -238,9 +267,11 @@ impl<T> ProphecyGhost<T> {
         tracked u: &ProphecyGhost<U>,
         tracked v: &ProphecyGhost<V>,
         f: spec_fn(U, V) -> T,
-    )
+    ) -> (tracked rs: Resolved<T>)
         ensures
             self.value() == f(u.value(), v.value()),
+            rs.value() == self.value(),
+            rs.proph() == self,
     ;
 
     pub proof fn resolve_dependent_3<U, V, W>(
@@ -249,13 +280,16 @@ impl<T> ProphecyGhost<T> {
         tracked v: &ProphecyGhost<V>,
         tracked w: &ProphecyGhost<W>,
         f: spec_fn(U, V, W) -> T,
-    )
+    ) -> (tracked rs: Resolved<T>)
         ensures
             self.value() == f(u.value(), v.value(), w.value()),
+            rs.value() == self.value(),
+            rs.proph() == self,
     {
         let tracked vw = ProphecyGhost::<(V, W)>::new();
-        self.resolve_dependent_2(u, &vw, |u: U, vw: (V, W)| f(u, vw.0, vw.1));
+        let tracked rs = self.resolve_dependent_2(u, &vw, |u: U, vw: (V, W)| f(u, vw.0, vw.1));
         vw.resolve_dependent_2(v, w, |v: V, w: W| (v, w));
+        rs
     }
 }
 
