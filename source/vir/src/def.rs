@@ -1278,14 +1278,9 @@ pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
     }
 }
 
-/// The extension trait `vstd::std_specs::cmp::PartialEqSpec` for `PartialEq`
-pub fn partial_eq_spec_trait_path() -> Path {
-    crate::path!(CrateId::Vstd => "std_specs", "cmp", "PartialEqSpec")
-}
-
-/// `vstd::std_specs::cmp::PartialEqSpec::obeys_eq_spec`
-pub fn obeys_eq_spec_fun() -> Fun {
-    crate::fun!(CrateId::Vstd => "std_specs", "cmp", "PartialEqSpec"; "obeys_eq_spec")
+/// `core::cmp::PartialEq`
+pub fn partial_eq_trait_path() -> Path {
+    crate::path!(CrateId::Core => "cmp", "PartialEq")
 }
 
 pub fn clone_spec_fn_name(path: &Path) -> Fun {

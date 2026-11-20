@@ -596,11 +596,6 @@ pub fn inherit_default_bodies(
     let mut default_methods: HashMap<Path, Vec<&Function>> = HashMap::new();
     // set of all impl methods (&impl_path, &trait_method_name)
     let mut method_impls: HashSet<(&Path, &Fun)> = HashSet::new();
-    // PartialEqSpec::obeys_eq_spec has no default body in vstd,
-    // but it gets a default body of `false` for automatically derived impls of PartialEq
-    let partial_eq_spec_path = crate::def::partial_eq_spec_trait_path();
-    let obeys_eq_spec_fun = crate::def::obeys_eq_spec_fun();
-    let mut obeys_eq_spec_decl: Option<&Function> = None;
     for tr in &krate.traits {
         if trait_map.contains_key(&tr.x.name) {
             return Err(crate::well_formed::trait_conflict_error(
@@ -616,11 +611,6 @@ pub fn inherit_default_bodies(
     for f in &krate.functions {
         if let FunctionKind::TraitMethodDecl { trait_path, has_default: true } = &f.x.kind {
             default_methods.get_mut(trait_path).expect("trait_path").push(f);
-        }
-        if let FunctionKind::TraitMethodDecl { has_default: false, .. } = &f.x.kind {
-            if f.x.name == obeys_eq_spec_fun {
-                obeys_eq_spec_decl = Some(f);
-            }
         }
         if let FunctionKind::TraitMethodImpl { impl_path, method, .. } = &f.x.kind {
             let p = (impl_path, method);
@@ -641,13 +631,26 @@ pub fn inherit_default_bodies(
             extension_to_trait.insert(extension.clone(), tr.x.name.clone());
         }
     }
+
+    // PartialEqSpec::obeys_eq_spec has no default body in vstd,
+    // but it gets a default body of `false` for automatically derived impls of PartialEq.
+    let partial_eq_path = crate::def::partial_eq_trait_path();
+    let partial_eq_spec_path: Option<Path> = extension_to_trait
+        .iter()
+        .find(|(_, t)| **t == partial_eq_path)
+        .map(|(extension, _)| extension.clone());
+    let obeys_eq_spec_decl: Option<&Function> = krate.functions.iter().find(|f| {
+        matches!(&f.x.kind, FunctionKind::TraitMethodDecl { trait_path, has_default: false }
+            if Some(trait_path) == partial_eq_spec_path.as_ref())
+            && f.x.name.path.last_segment().name().is_some_and(|x| &**x == "obeys_eq_spec")
+    });
     let synthesized_impls = synthesize_extension_impls(
         krate,
         unpruned_krate,
         &trait_map,
         &default_methods,
         &extension_to_trait,
-        &partial_eq_spec_path,
+        partial_eq_spec_path.as_ref(),
     );
     kratex.trait_impls.extend(synthesized_impls.iter().cloned());
 
@@ -671,7 +674,9 @@ pub fn inherit_default_bodies(
         // the default method's body
         let mut inherit_methods: Vec<(&Function, Option<Expr>)> =
             default_methods[&trait_impl.x.trait_path].iter().map(|f| (*f, None)).collect();
-        if trait_impl.x.trait_path == partial_eq_spec_path && trait_impl.x.auto_derived {
+        if Some(&trait_impl.x.trait_path) == partial_eq_spec_path.as_ref()
+            && trait_impl.x.auto_derived
+        {
             if let Some(decl) = obeys_eq_spec_decl {
                 inherit_methods.push((decl, Some(crate::ast_util::mk_bool(&decl.span, false))));
             }
@@ -846,7 +851,7 @@ fn synthesize_extension_impls(
     trait_map: &HashMap<Path, &Trait>,
     default_methods: &HashMap<Path, Vec<&Function>>,
     extension_to_trait: &HashMap<Path, Path>,
-    partial_eq_spec_path: &Path,
+    partial_eq_spec_path: Option<&Path>,
 ) -> Vec<TraitImpl> {
     let has_default_methods =
         |extension: &Path| default_methods.get(extension).is_some_and(|ms| !ms.is_empty());
@@ -855,7 +860,7 @@ fn synthesize_extension_impls(
     let mut trait_to_extension: HashMap<Path, Path> = HashMap::new();
     for (extension, t) in extension_to_trait.iter() {
         if trait_map.contains_key(extension)
-            && (has_default_methods(extension) || extension == partial_eq_spec_path)
+            && (has_default_methods(extension) || Some(extension) == partial_eq_spec_path)
         {
             trait_to_extension.insert(t.clone(), extension.clone());
         }
