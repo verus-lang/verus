@@ -37,8 +37,20 @@ struct Ctxt<'a> {
 
 impl<'a> Ctxt<'a> {
     fn assumptions_allowed(&self, function: &Function) -> bool {
-        function.x.attrs.no_cheating_trusted
-            || matches!(&function.x.owning_module, Some(path) if path.is_vstd_path())
+        if function.x.attrs.no_cheating_trusted {
+            return true;
+        }
+        let Some(path) = &function.x.owning_module else {
+            return false;
+        };
+        // vstd is trusted, whether it is its own crate or embedded in core
+        // (along with verus_builtin) via `Vstd::IsCore`
+        path.is_vstd_path()
+            || (path.krate == crate::ast::CrateId::Core
+                && path
+                    .segments
+                    .first()
+                    .is_some_and(|s| s.is_name("vstd") || s.is_name("verus_builtin")))
     }
 }
 
