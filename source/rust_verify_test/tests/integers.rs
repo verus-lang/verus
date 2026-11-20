@@ -760,6 +760,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enums_with_signed_representations_intrinsic verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)] #[repr(i8)] enum E8 { A = -1, B = 0, C = 1 }
         #[derive(Copy, Clone)] #[repr(i16)] enum E16 { A = -1, B = 0, C = 1 }
         #[derive(Copy, Clone)] #[repr(i32)] enum E32 { A = -1, B = 0, C = 1 }
@@ -797,6 +799,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enums_with_unsigned_representations_intrinsic verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)] #[repr(u8)] enum E8 { A = 0xff, B = 0, C = 1 }
         #[derive(Copy, Clone)] #[repr(u16)] enum E16 { A = 0xffff, B = 0, C = 1 }
         #[derive(Copy, Clone)] #[repr(u32)] enum E32 { A = 0xffff_ffff, B = 0, C = 1 }
