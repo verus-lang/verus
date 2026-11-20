@@ -463,10 +463,7 @@ pub fn __call_panic(out: &[&str]) -> !
 #[cfg(feature = "alloc")]
 #[doc(hidden)]
 #[verifier(external_body)]
-pub fn __new_argument<T: core::fmt::Debug>(v: &T) -> alloc::string::String
-    requires
-        forall|f: &core::fmt::Formatter<'_>| v.fmt_req(f),
-{
+pub fn __new_argument<T: core::fmt::Debug>(v: &T) -> alloc::string::String {
     alloc::format!("{:?}", v)
 }
 
