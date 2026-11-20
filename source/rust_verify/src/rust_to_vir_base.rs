@@ -1305,10 +1305,19 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Dynamic(preds, _) => {
             use rustc_middle::ty::ExistentialPredicate;
-            if preds.len() != 1 {
+            // Auto-trait bounds (`dyn Trait + Send + Sync`) carry no verification content:
+            // a value of `dyn Trait + Send` is a value of `dyn Trait`, so encoding the former
+            // as the latter over-approximates the type, exactly as the auto-trait bounds on
+            // generics are dropped in `check_generic_bound` above. Keep the remaining
+            // predicates and require exactly one principal trait among them.
+            let non_auto: Vec<_> = preds
+                .iter()
+                .filter(|p| !matches!(p.skip_binder(), ExistentialPredicate::AutoTrait(_)))
+                .collect();
+            if non_auto.len() != 1 {
                 unsupported_err!(span, "dyn with more than one trait");
             }
-            match preds[0].skip_binder() {
+            match non_auto[0].skip_binder() {
                 ExistentialPredicate::Trait(trait_ref) => {
                     let trait_did = trait_ref.def_id;
                     let args = trait_ref.args;
