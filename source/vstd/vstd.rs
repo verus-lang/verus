@@ -73,7 +73,9 @@ pub mod math;
 pub mod modes;
 pub mod multiset;
 pub mod multiset_lib;
-#[cfg(verus_keep_ghost)]
+// Modules gated on verus_keep_ghost are only compiled for Verus. Those that also compile in
+// the erased cargo build are included for spec-check, so their labels get tested too.
+#[cfg(any(verus_keep_ghost, feature = "spec-check"))]
 pub mod mut_ref;
 pub mod pervasive;
 pub mod predicate;

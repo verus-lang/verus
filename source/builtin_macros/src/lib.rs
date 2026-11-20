@@ -101,6 +101,17 @@ pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_items(input, cfg_erase(), true)
 }
 
+/// `verus!` for an item list that vstd's verus-spec-check bridge
+/// (`vstd::contrib::spec_check::vcheck_preprocess!`) has already handed to the engine:
+/// labels still present are stripped instead of being handed over again.
+/// See `contrib/spec_check.rs`.
+#[cfg(feature = "spec-check")]
+#[doc(hidden)]
+#[proc_macro]
+pub fn verus_spec_check_resume(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    contrib::spec_check::resume::run(|| syntax::rewrite_items(input, cfg_erase(), true))
+}
+
 /// Like verus!, but for use inside a (non-trait) impl
 #[proc_macro]
 pub fn verus_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
