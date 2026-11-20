@@ -32,7 +32,10 @@ pub fn check_closure_well_formed(expr: &Expr, is_proof_fn: bool) -> Result<(), V
                 // because spec return values are currently erased to (),
                 // causing a type mismatch with the closure's expected return type.
                 // See test_ensures_fail_return_stmt in tests/proof_closures.rs.
-                Err(error(&expr.span, "Verus does not yet support `return` inside `proof_fn`"))
+                Err(error(
+                    &expr.span,
+                    "Verus does not currently support `return` inside `proof_fn`",
+                ))
             }
             _ => Ok(()),
         }

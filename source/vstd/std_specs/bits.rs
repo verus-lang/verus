@@ -2,6 +2,13 @@ use super::super::prelude::*;
 
 verus! {
 
+#[cfg(verus_keep_ghost)]
+use super::super::arithmetic::power2::{pow2, lemma_pow2_unfold, lemma2_to64};
+#[cfg(verus_keep_ghost)]
+use super::super::bits::lemma_unsigned_int_max_is_pow2_minus_1;
+#[cfg(verus_keep_ghost)]
+use super::super::layout::unsigned_int_max_values;
+
 // TODO mark the lemmas as not external_body when it's supported
 // along with broadcast_forall
 ///////////////////////////
@@ -173,6 +180,26 @@ pub broadcast proof fn axiom_u8_leading_ones(i: u8)
             by (bit_vector);
     }
 }
+
+/// Equivalent to `i.reverse_bits()`.
+/// See [`axiom_u8_reverse_bits`] for useful properties.
+pub uninterp spec fn u8_reverse_bits(i: u8) -> u8;
+
+#[verifier::when_used_as_spec(u8_reverse_bits)]
+pub assume_specification[ u8::reverse_bits ](i: u8) -> (r: u8)
+    ensures
+        r == u8_reverse_bits(i),
+    opens_invariants none
+    no_unwind
+;
+
+pub broadcast axiom fn axiom_u8_reverse_bits(i: u8)
+    ensures
+        u8_reverse_bits(#[trigger] u8_reverse_bits(i)) == i,
+        // bit j of the result is bit 7 - j of i
+        forall|j: u8|
+            j < 8 ==> #[trigger] (u8_reverse_bits(i) >> j) & 1u8 == (i >> sub(7u8, j)) & 1u8,
+;
 
 ///////////////////////////
 /////////////////////////// For u16
@@ -350,6 +377,26 @@ pub broadcast proof fn axiom_u16_leading_ones(i: u16)
     }
 }
 
+/// Equivalent to `i.reverse_bits()`.
+/// See [`axiom_u16_reverse_bits`] for useful properties.
+pub uninterp spec fn u16_reverse_bits(i: u16) -> u16;
+
+#[verifier::when_used_as_spec(u16_reverse_bits)]
+pub assume_specification[ u16::reverse_bits ](i: u16) -> (r: u16)
+    ensures
+        r == u16_reverse_bits(i),
+    opens_invariants none
+    no_unwind
+;
+
+pub broadcast axiom fn axiom_u16_reverse_bits(i: u16)
+    ensures
+        u16_reverse_bits(#[trigger] u16_reverse_bits(i)) == i,
+        // bit j of the result is bit 15 - j of i
+        forall|j: u16|
+            j < 16 ==> #[trigger] (u16_reverse_bits(i) >> j) & 1u16 == (i >> sub(15u16, j)) & 1u16,
+;
+
 ///////////////////////////
 /////////////////////////// For u32
 /// Equivalent to `i.trailing_zeros()`.
@@ -525,6 +572,26 @@ pub broadcast proof fn axiom_u32_leading_ones(i: u32)
             == 1u32) by (bit_vector);
     }
 }
+
+/// Equivalent to `i.reverse_bits()`.
+/// See [`axiom_u32_reverse_bits`] for useful properties.
+pub uninterp spec fn u32_reverse_bits(i: u32) -> u32;
+
+#[verifier::when_used_as_spec(u32_reverse_bits)]
+pub assume_specification[ u32::reverse_bits ](i: u32) -> (r: u32)
+    ensures
+        r == u32_reverse_bits(i),
+    opens_invariants none
+    no_unwind
+;
+
+pub broadcast axiom fn axiom_u32_reverse_bits(i: u32)
+    ensures
+        u32_reverse_bits(#[trigger] u32_reverse_bits(i)) == i,
+        // bit j of the result is bit 31 - j of i
+        forall|j: u32|
+            j < 32 ==> #[trigger] (u32_reverse_bits(i) >> j) & 1u32 == (i >> sub(31u32, j)) & 1u32,
+;
 
 ///////////////////////////
 /////////////////////////// For u64
@@ -704,6 +771,392 @@ pub broadcast proof fn axiom_u64_leading_ones(i: u64)
     }
 }
 
+/// Equivalent to `i.reverse_bits()`.
+/// See [`axiom_u64_reverse_bits`] for useful properties.
+pub uninterp spec fn u64_reverse_bits(i: u64) -> u64;
+
+#[verifier::when_used_as_spec(u64_reverse_bits)]
+pub assume_specification[ u64::reverse_bits ](i: u64) -> (r: u64)
+    ensures
+        r == u64_reverse_bits(i),
+    opens_invariants none
+    no_unwind
+;
+
+pub broadcast axiom fn axiom_u64_reverse_bits(i: u64)
+    ensures
+        u64_reverse_bits(#[trigger] u64_reverse_bits(i)) == i,
+        // bit j of the result is bit 63 - j of i
+        forall|j: u64|
+            j < 64 ==> #[trigger] (u64_reverse_bits(i) >> j) & 1u64 == (i >> sub(63u64, j)) & 1u64,
+;
+
+///////////////////////////
+/////////////////////////// For u128
+/// Equivalent to `i.trailing_zeros()`.
+/// See [`axiom_u128_trailing_zeros`] for useful properties.
+pub closed spec fn u128_trailing_zeros(i: u128) -> u32
+    decreases i,
+{
+    if i == 0 {
+        128
+    } else if (i & 1) != 0 {
+        0
+    } else {
+        (1 + u128_trailing_zeros(i / 2)) as u32
+    }
+}
+
+/// Equivalent to `i.leading_zeros()`.
+/// See [`axiom_u128_leading_zeros`] for useful properties.
+pub closed spec fn u128_leading_zeros(i: u128) -> u32
+    decreases i,
+{
+    if i == 0 {
+        128
+    } else {
+        (u128_leading_zeros(i / 2) - 1) as u32
+    }
+}
+
+#[verifier::when_used_as_spec(u128_trailing_zeros)]
+pub assume_specification[ u128::trailing_zeros ](i: u128) -> (r: u32)
+    ensures
+        r == u128_trailing_zeros(i),
+;
+
+#[verifier::when_used_as_spec(u128_leading_zeros)]
+pub assume_specification[ u128::leading_zeros ](i: u128) -> (r: u32)
+    ensures
+        r == u128_leading_zeros(i),
+;
+
+pub broadcast proof fn axiom_u128_trailing_zeros(i: u128)
+    ensures
+        0 <= #[trigger] u128_trailing_zeros(i) <= 128,
+        i == 0 <==> u128_trailing_zeros(i) == 128,
+        // i^th bit is 1
+        0 <= u128_trailing_zeros(i) < 128 ==> (i >> u128_trailing_zeros(i) as u128) & 1u128
+            == 1u128,
+        // trailing bits are 0
+        i << sub(128, u128_trailing_zeros(i) as u128) == 0,
+        forall|j: u128| 0 <= j < u128_trailing_zeros(i) ==> #[trigger] (i >> j) & 1u128 == 0u128,
+    decreases i,
+{
+    assert(i >> 0 == i) by (bit_vector);
+    assert(i << 0 == i) by (bit_vector);
+    assert(i & 0 == 0) by (bit_vector);
+    assert(i / 2 == (i >> 1u128)) by (bit_vector);
+    assert((i & 1) == 0 ==> i != 1) by (bit_vector);
+    let x = u128_trailing_zeros(i / 2) as u128;
+    assert(x < 128 ==> (i >> 1) >> x == (i >> add(x, 1))) by (bit_vector);
+    assert(i << 128 == 0) by (bit_vector);
+    assert(i & 1 != 0 ==> i & 1 == 1) by (bit_vector);
+    assert((i & 1) == 0 ==> (i >> 1) << sub(128, x) == 0 ==> i << sub(128, add(x, 1)) == 0)
+        by (bit_vector);
+    if i != 0 {
+        axiom_u128_trailing_zeros(i / 2);
+    }
+    assert forall|j: u128| 0 <= j < u128_trailing_zeros(i) implies #[trigger] (i >> j) & 1u128
+        == 0u128 by {
+        let y = u128_trailing_zeros(i) as u128;
+        assert(y <= 128 ==> i << sub(128, y) == 0 && 0 <= j < y ==> (i >> j) & 1u128 == 0u128)
+            by (bit_vector);
+    }
+}
+
+pub broadcast proof fn axiom_u128_leading_zeros(i: u128)
+    ensures
+        0 <= #[trigger] u128_leading_zeros(i) <= 128,
+        i == 0 <==> u128_leading_zeros(i) == 128,
+        // i^th bit from the left is 1
+        0 <= u128_leading_zeros(i) < 128 ==> (i >> sub(127u128, u128_leading_zeros(i) as u128))
+            & 1u128 != 0u128,
+        // leading bits are 0
+        i >> sub(128, u128_leading_zeros(i) as u128) == 0,
+        forall|j: u128|
+            128 - u128_leading_zeros(i) <= j < 128 ==> #[trigger] (i >> j) & 1u128 == 0u128,
+    decreases i,
+{
+    assert(i / 2 == (i >> 1u128)) by (bit_vector);
+    assert(((i >> 1) >> sub(127u128, 0)) & 1u128 == 0u128) by (bit_vector);
+    let x = u128_leading_zeros(i / 2) as u128;
+    assert(i >> 0 == i) by (bit_vector);
+    assert(1u128 & 1u128 == 1u128) by (bit_vector);
+    assert(0 < x < 128 ==> ((i >> 1) >> sub(127u128, x)) == (i >> sub(127u128, sub(x, 1))))
+        by (bit_vector);
+    assert(0 < x <= 128 ==> (i >> 1) >> sub(128, x) == 0 ==> i >> sub(128, sub(x, 1)) == 0)
+        by (bit_vector);
+    if i != 0 {
+        axiom_u128_leading_zeros(i / 2);
+    }
+    assert forall|j: u128| 128 - u128_leading_zeros(i) <= j < 128 implies #[trigger] (i >> j)
+        & 1u128 == 0u128 by {
+        let y = u128_leading_zeros(i) as u128;
+        assert(y <= 128 ==> i >> sub(128, y) == 0 ==> sub(128, y) <= j < 128 ==> (i >> j) & 1u128
+            == 0u128) by (bit_vector);
+    }
+}
+
+///////////////////////////
+/////////////////////////// For usize
+/// Equivalent to `i.trailing_zeros()`.
+/// See [`axiom_usize_trailing_zeros`] for useful properties.
+pub closed spec fn usize_trailing_zeros(i: usize) -> u32
+    decreases i,
+{
+    if i == 0 {
+        usize::BITS
+    } else if (i & 1) != 0 {
+        0
+    } else {
+        (1 + usize_trailing_zeros(i / 2)) as u32
+    }
+}
+
+/// Equivalent to `i.leading_zeros()`.
+/// See [`axiom_usize_leading_zeros`] for useful properties.
+pub closed spec fn usize_leading_zeros(i: usize) -> u32
+    decreases i,
+{
+    if i == 0 {
+        usize::BITS
+    } else {
+        (usize_leading_zeros(i / 2) - 1) as u32
+    }
+}
+
+#[verifier::when_used_as_spec(usize_trailing_zeros)]
+pub assume_specification[ usize::trailing_zeros ](i: usize) -> (r: u32)
+    ensures
+        r == usize_trailing_zeros(i),
+;
+
+#[verifier::when_used_as_spec(usize_leading_zeros)]
+pub assume_specification[ usize::leading_zeros ](i: usize) -> (r: u32)
+    ensures
+        r == usize_leading_zeros(i),
+;
+
+pub broadcast proof fn axiom_usize_trailing_zeros(i: usize)
+    ensures
+        0 <= #[trigger] usize_trailing_zeros(i) <= usize::BITS,
+        i == 0 <==> usize_trailing_zeros(i) == usize::BITS,
+        // i^th bit is 1
+        0 <= usize_trailing_zeros(i) < usize::BITS ==> (i >> usize_trailing_zeros(i) as usize)
+            & 1usize == 1usize,
+        // trailing bits are 0
+        i << sub(usize::BITS as usize, usize_trailing_zeros(i) as usize) == 0,
+        forall|j: usize|
+            0 <= j < usize_trailing_zeros(i) ==> #[trigger] (i >> j) & 1usize == 0usize,
+    decreases i,
+{
+    assert(i >> 0 == i) by (bit_vector);
+    assert(i << 0 == i) by (bit_vector);
+    assert(i & 0 == 0) by (bit_vector);
+    assert(i / 2 == (i >> 1usize)) by (bit_vector);
+    assert((i & 1) == 0 ==> i != 1) by (bit_vector);
+    let x = usize_trailing_zeros(i / 2) as usize;
+    assert(x < usize::BITS as usize ==> (i >> 1) >> x == (i >> add(x, 1))) by (bit_vector);
+    assert(i << (usize::BITS as usize) == 0) by (bit_vector);
+    assert(i & 1 != 0 ==> i & 1 == 1) by (bit_vector);
+    assert((i & 1) == 0 ==> (i >> 1) << sub(usize::BITS as usize, x) == 0 ==> i << sub(
+        usize::BITS as usize,
+        add(x, 1),
+    ) == 0) by (bit_vector);
+    if i != 0 {
+        axiom_usize_trailing_zeros(i / 2);
+    }
+    assert forall|j: usize| 0 <= j < usize_trailing_zeros(i) implies #[trigger] (i >> j) & 1usize
+        == 0usize by {
+        let y = usize_trailing_zeros(i) as usize;
+        assert(y <= usize::BITS as usize ==> i << sub(usize::BITS as usize, y) == 0 && 0 <= j < y
+            ==> (i >> j) & 1usize == 0usize) by (bit_vector);
+    }
+}
+
+pub broadcast proof fn axiom_usize_leading_zeros(i: usize)
+    ensures
+        0 <= #[trigger] usize_leading_zeros(i) <= usize::BITS,
+        i == 0 <==> usize_leading_zeros(i) == usize::BITS,
+        // i^th bit from the left is 1
+        0 <= usize_leading_zeros(i) < usize::BITS ==> (i >> sub(
+            sub(usize::BITS as usize, 1),
+            usize_leading_zeros(i) as usize,
+        )) & 1usize != 0usize,
+        // leading bits are 0
+        i >> sub(usize::BITS as usize, usize_leading_zeros(i) as usize) == 0,
+        forall|j: usize|
+            usize::BITS - usize_leading_zeros(i) <= j < usize::BITS ==> #[trigger] (i >> j) & 1usize
+                == 0usize,
+    decreases i,
+{
+    assert(i / 2 == (i >> 1usize)) by (bit_vector);
+    assert(((i >> 1) >> sub(sub(usize::BITS as usize, 1), 0)) & 1usize == 0usize) by (bit_vector);
+    let x = usize_leading_zeros(i / 2) as usize;
+    assert(i >> 0 == i) by (bit_vector);
+    assert(1usize & 1usize == 1usize) by (bit_vector);
+    assert(0 < x < usize::BITS as usize ==> ((i >> 1) >> sub(sub(usize::BITS as usize, 1), x)) == (i
+        >> sub(sub(usize::BITS as usize, 1), sub(x, 1)))) by (bit_vector);
+    assert(0 < x <= usize::BITS as usize ==> (i >> 1) >> sub(usize::BITS as usize, x) == 0 ==> i
+        >> sub(usize::BITS as usize, sub(x, 1)) == 0) by (bit_vector);
+    if i != 0 {
+        axiom_usize_leading_zeros(i / 2);
+    }
+    assert forall|j: usize|
+        usize::BITS - usize_leading_zeros(i) <= j < usize::BITS implies #[trigger] (i >> j) & 1usize
+        == 0usize by {
+        let y = usize_leading_zeros(i) as usize;
+        assert(y <= usize::BITS as usize ==> i >> sub(usize::BITS as usize, y) == 0 ==> sub(
+            usize::BITS as usize,
+            y,
+        ) <= j < usize::BITS as usize ==> (i >> j) & 1usize == 0usize) by (bit_vector);
+    }
+}
+
+///////////////////////////
+/////////////////////////// count_ones for all unsigned types
+/// The number of 1 bits in the binary representation of `n`.
+pub open spec fn nat_count_ones(n: nat) -> nat
+    decreases n,
+{
+    if n < 2 {
+        n
+    } else {
+        n % 2 + nat_count_ones(n / 2)
+    }
+}
+
+proof fn lemma_nat_count_ones_bound(n: nat, k: nat)
+    requires
+        n < pow2(k),
+    ensures
+        nat_count_ones(n) <= k,
+        n == 0 <==> nat_count_ones(n) == 0,
+    decreases n,
+{
+    if n != 0 {
+        lemma2_to64();
+        assert(k > 0);
+        lemma_pow2_unfold(k);
+        lemma_nat_count_ones_bound(n / 2, (k - 1) as nat);
+    }
+}
+
+/// See [`axiom_u8_count_ones`] for useful properties.
+#[verifier::allow_in_spec]
+pub assume_specification[ u8::count_ones ](i: u8) -> u32
+    returns
+        nat_count_ones(i as nat) as u32,
+    opens_invariants none
+    no_unwind
+;
+
+/// See [`axiom_u16_count_ones`] for useful properties.
+#[verifier::allow_in_spec]
+pub assume_specification[ u16::count_ones ](i: u16) -> u32
+    returns
+        nat_count_ones(i as nat) as u32,
+    opens_invariants none
+    no_unwind
+;
+
+/// See [`axiom_u32_count_ones`] for useful properties.
+#[verifier::allow_in_spec]
+pub assume_specification[ u32::count_ones ](i: u32) -> u32
+    returns
+        nat_count_ones(i as nat) as u32,
+    opens_invariants none
+    no_unwind
+;
+
+/// See [`axiom_u64_count_ones`] for useful properties.
+#[verifier::allow_in_spec]
+pub assume_specification[ u64::count_ones ](i: u64) -> u32
+    returns
+        nat_count_ones(i as nat) as u32,
+    opens_invariants none
+    no_unwind
+;
+
+/// See [`axiom_u128_count_ones`] for useful properties.
+#[verifier::allow_in_spec]
+pub assume_specification[ u128::count_ones ](i: u128) -> u32
+    returns
+        nat_count_ones(i as nat) as u32,
+    opens_invariants none
+    no_unwind
+;
+
+/// See [`axiom_usize_count_ones`] for useful properties.
+#[verifier::allow_in_spec]
+pub assume_specification[ usize::count_ones ](i: usize) -> u32
+    returns
+        nat_count_ones(i as nat) as u32,
+    opens_invariants none
+    no_unwind
+;
+
+pub broadcast proof fn axiom_u8_count_ones(i: u8)
+    ensures
+        #![trigger nat_count_ones(i as nat)]
+        i.count_ones() <= 8,
+        i == 0 <==> i.count_ones() == 0,
+{
+    lemma_unsigned_int_max_is_pow2_minus_1();
+    lemma_nat_count_ones_bound(i as nat, 8);
+}
+
+pub broadcast proof fn axiom_u16_count_ones(i: u16)
+    ensures
+        #![trigger nat_count_ones(i as nat)]
+        i.count_ones() <= 16,
+        i == 0 <==> i.count_ones() == 0,
+{
+    lemma_unsigned_int_max_is_pow2_minus_1();
+    lemma_nat_count_ones_bound(i as nat, 16);
+}
+
+pub broadcast proof fn axiom_u32_count_ones(i: u32)
+    ensures
+        #![trigger nat_count_ones(i as nat)]
+        i.count_ones() <= 32,
+        i == 0 <==> i.count_ones() == 0,
+{
+    lemma_unsigned_int_max_is_pow2_minus_1();
+    lemma_nat_count_ones_bound(i as nat, 32);
+}
+
+pub broadcast proof fn axiom_u64_count_ones(i: u64)
+    ensures
+        #![trigger nat_count_ones(i as nat)]
+        i.count_ones() <= 64,
+        i == 0 <==> i.count_ones() == 0,
+{
+    lemma_unsigned_int_max_is_pow2_minus_1();
+    lemma_nat_count_ones_bound(i as nat, 64);
+}
+
+pub broadcast proof fn axiom_u128_count_ones(i: u128)
+    ensures
+        #![trigger nat_count_ones(i as nat)]
+        i.count_ones() <= 128,
+        i == 0 <==> i.count_ones() == 0,
+{
+    lemma_unsigned_int_max_is_pow2_minus_1();
+    lemma_nat_count_ones_bound(i as nat, 128);
+}
+
+pub broadcast proof fn axiom_usize_count_ones(i: usize)
+    ensures
+        #![trigger nat_count_ones(i as nat)]
+        i.count_ones() <= usize::BITS,
+        i == 0 <==> i.count_ones() == 0,
+{
+    unsigned_int_max_values();
+    lemma_nat_count_ones_bound(i as nat, usize::BITS as nat);
+}
+
 pub broadcast group group_bits_axioms {
     axiom_u8_trailing_zeros,
     axiom_u8_trailing_ones,
@@ -721,6 +1174,20 @@ pub broadcast group group_bits_axioms {
     axiom_u64_trailing_ones,
     axiom_u64_leading_zeros,
     axiom_u64_leading_ones,
+    axiom_u8_reverse_bits,
+    axiom_u16_reverse_bits,
+    axiom_u32_reverse_bits,
+    axiom_u64_reverse_bits,
+    axiom_u128_trailing_zeros,
+    axiom_u128_leading_zeros,
+    axiom_usize_trailing_zeros,
+    axiom_usize_leading_zeros,
+    axiom_u8_count_ones,
+    axiom_u16_count_ones,
+    axiom_u32_count_ones,
+    axiom_u64_count_ones,
+    axiom_u128_count_ones,
+    axiom_usize_count_ones,
 }
 
 } // verus!

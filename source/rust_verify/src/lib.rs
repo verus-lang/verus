@@ -1,5 +1,5 @@
 #![feature(rustc_private)]
-#![feature(box_patterns)]
+#![feature(deref_patterns)]
 
 // not using this as a dependency, only necessary to make the rlib for the compiler crates
 // available to cargo
@@ -39,7 +39,6 @@ mod boundary_suggestions;
 pub mod cargo_verus;
 pub mod cargo_verus_dep_tracker;
 pub mod context;
-pub mod debugger;
 pub mod def;
 pub mod driver;
 pub mod erase;
@@ -51,8 +50,10 @@ mod fn_call_to_vir;
 mod hir_hide_reveal_rewrite;
 mod import_export;
 mod no_cheating;
+mod observers;
 mod pre_header;
 pub mod profiler;
+mod query;
 mod resolve_traits;
 pub mod reveal_hide;
 mod rust_intrinsics_to_vir;
@@ -64,10 +65,12 @@ pub mod rust_to_vir_expr;
 pub mod rust_to_vir_func;
 pub mod rust_to_vir_global;
 mod rust_to_vir_impl;
+pub mod rust_to_vir_path;
 pub mod rust_to_vir_trait;
 #[cfg(feature = "singular")]
 pub mod singular;
 mod spans;
+pub mod test_observer;
 pub mod trait_check;
 mod trait_check_ast;
 mod trait_check_emit;

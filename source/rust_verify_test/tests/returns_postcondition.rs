@@ -200,7 +200,7 @@ test_verify_one_file! {
                 &X { i: 0 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a `returns` clause cannot be declared on both a trait method impl and its declaration")
+    } => Err(err) => assert_vir_error_msg(err, "a `returns` clause cannot be declared on both a trait method implementation and its declaration")
 }
 
 test_verify_one_file! {
@@ -245,7 +245,7 @@ test_verify_one_file! {
                 return U { j: 0 }; // FAILS
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a `returns` clause cannot be declared on both a trait method impl and its declaration")
+    } => Err(err) => assert_vir_error_msg(err, "a `returns` clause cannot be declared on both a trait method implementation and its declaration")
 }
 
 test_verify_one_file_with_options! {
@@ -480,5 +480,5 @@ test_verify_one_file_with_options! {
         {
             *x
         }
-    } => Err(err) => assert_vir_error_msg(err, "allow_in_spec not supported for function with &mut param")
+    } => Err(err) => assert_vir_error_msg(err, "`allow_in_spec` not supported for function with a mutable reference parameter")
 }

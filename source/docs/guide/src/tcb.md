@@ -6,7 +6,7 @@ on verification but on the assumptions being made.
 
 Assumptions can be introduced through the following mechanisms:
 
- * As [`assume`](./requires_ensures.md) statement
+ * An [`assume`](./requires_ensures.md) statement
  * An axiom - any function introduced with [`#[verifier::external_body]`](./calling-unverified-from-verified.md) or declared as an `axiom fn`
  * An axiomatic specification - any exec function introduced with `#[verifier::external_body]` or `#[verifier::external_fn_specification]`
  * `#[verifier::external]` (See below.)

@@ -17,7 +17,7 @@ let py = function(px) atomically loop |update| -> (au)
 
 The atomic function call binds an `update` function, which represents the effects of the `try_open_atomic_update` macro to the client.
 It is helpful to think of the macro as defining the `update` function, as their inputs and outputs, as well as their pre- and postcondition match precisely.
-While the user is free call this function whatever they like, we will always call this function `update` throughout this guide for consistency.
+While the user is free to call this function whatever they like, we will always call this function `update` throughout this guide for consistency.
 The `update` function is `proof`-mode, allowing atomic invariants to be opened around it.
 The body of the `atomically` block also is `proof`-mode.
 
@@ -29,11 +29,11 @@ It also gives users a place to specify the input and output types of the atomic 
 
 Since the library function may open the atomic update multiple times, due to aborting, the client must prove that it can provide the required resources as many times as necessary, meaning the atomic function call must be a loop.
 This loop supports all the common loop header clauses:
-`invariant_except_breaks`, `invariants`, and `ensures`.
+`invariant_except_breaks`, `invariant`, and `ensures`.
 
 If the atomic update is committed by the library, as indicated by the `UpdateTry` implementation on the output type, the client must `break` out of the loop.
 Similarly, if the library aborts the atomic update, the loop must `continue`, either explicitly or implicitly.
-Verus checks that these control flow constructs are used correctly using additional verification conditions, i.e. `break` and `continue` get a precondition that `ax.branch()` is equal to `Commit` or `Abort` respectively.
+Verus checks that these control flow constructs are used correctly using additional verification conditions, i.e. `break` and `continue` get a precondition that `ay.branch()` is equal to `Commit` or `Abort` respectively.
 
 In cases where this aborting mechanism is not necessary (e.g. if the output type of the atomic update is `Commit<T>`), **the `loop` keyword can be removed** to disable this feature.
 This is equivalent to adding a `break` to the end of the `atomically` block, except it provides slightly better proof automation and eliminates the need for loop invariants in straight line code.
@@ -82,4 +82,4 @@ The client then acquires one initial credit before the atomic function call, whi
 
 Note that we need two `match` expressions here, because `break` and `continue` are not allowed to appear inside the `open_atomic_invariant` macro.
 The first `match` closes the invariant, and the second `match` handles the control flow of the atomic function call.
-Nevertheless, Verus is smart enough to realize that the `break` is executed if and only if the result of the `update` functions signals that the atomic update has been aborted.
+Nevertheless, Verus is smart enough to realize that the `break` is executed if and only if the result of the `update` function signals that the atomic update has been committed.

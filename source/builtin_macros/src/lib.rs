@@ -2,7 +2,8 @@
     verus_keep_ghost,
     feature(proc_macro_tracked_env),
     feature(proc_macro_expand),
-    feature(proc_macro_diagnostic)
+    feature(proc_macro_diagnostic),
+    feature(proc_macro_def_site)
 )]
 
 use std::sync::OnceLock;
@@ -23,7 +24,6 @@ mod struct_decl_inv;
 mod structural;
 mod syntax_trait;
 mod topological_sort;
-mod unerased_proxies;
 
 decl_derive!([Structural] => structural::derive_structural);
 decl_derive!([StructuralEq] => structural::derive_structural_eq);
@@ -120,12 +120,16 @@ pub fn verus_proof_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 
 #[proc_macro]
 pub fn verus_exec_expr_keep_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_expr(EraseGhost::Keep, false, input)
+    let erase = match cfg_erase() {
+        EraseGhost::Keep => EraseGhost::Keep,
+        EraseGhost::Erase | EraseGhost::EraseAll => EraseGhost::Erase,
+    };
+    syntax::rewrite_expr(erase, false, input)
 }
 
 #[proc_macro]
 pub fn verus_exec_expr_erase_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_expr(EraseGhost::Keep, false, input)
+    syntax::rewrite_expr(EraseGhost::Erase, false, input)
 }
 
 #[proc_macro]
@@ -336,7 +340,7 @@ pub fn calc_proc_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 
 // If no #[verus_verify] on the item, it is verifier::external by default.
 // When compiling code with verus:
-// #[verus_verify] annotates the item with verifier::verify
+// #[verus_verify] annotates the item with verus::internal(verify)
 // #[verus_verify(external_body)] annotates the item with verifier::external_body
 // When compiling code with standard rust tool, the item has no verifier annotation.
 #[proc_macro_attribute]
@@ -374,7 +378,9 @@ pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// for verification.
 /// For example, declare a ghost/tracked variable.
 /// To avoid confusion, let stmts without ghost/tracked is not supported.
-/// Non-local stmts inside proof_decl! are treated similar to those in proof!
+/// Non-local stmts other than statement macros are treated similar to those in proof!
+/// Statement macros are not supported; invoke declaration macros in the surrounding
+/// scope or use proof! for proof statements.
 #[proc_macro]
 pub fn proof_decl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let erase = cfg_erase();
@@ -655,6 +661,11 @@ pub fn self_view(
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     contrib::spec_derive::self_view(attr, input)
+}
+
+#[proc_macro]
+pub fn exec_spec_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    contrib::exec_spec::exec_spec_type(input)
 }
 
 /*** End of contrib macros ***/

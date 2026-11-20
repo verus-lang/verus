@@ -259,8 +259,8 @@ impl<V> DListXor<V> {
             }
             let penult_ptr = PPtr::<Node<V>>::from_usize(penult_u64 as usize);
             let ghost idx = (self.ptrs@.len() - 2) as nat;
-            let mut penult_node = penult_ptr.borrow_mut(Tracked(self.perms.tracked_borrow_mut(idx)));
             let t: Ghost<u64> = Ghost(self.prev_of((self.ptrs@.len() - 2) as nat));
+            let mut penult_node = penult_ptr.borrow_mut(Tracked(self.perms.tracked_borrow_mut(idx)));
             assert((t@ ^ last_u64) ^ last_u64 == t@ ^ 0) by (bit_vector);
             penult_node.xored = penult_node.xored ^ last_u64;
             assert(penult_node.xored == t@ ^ 0);
@@ -341,8 +341,8 @@ impl<V> DListXor<V> {
                 lemma_usize_u64(second_u64);
             }
             let second_ptr = PPtr::<Node<V>>::from_usize(second_u64 as usize);
-            let second_node = second_ptr.borrow_mut(Tracked(self.perms.tracked_borrow_mut(1)));
             let t: Ghost<u64> = Ghost(self.next_of(1));
+            let second_node = second_ptr.borrow_mut(Tracked(self.perms.tracked_borrow_mut(1)));
             assert((first_u64 ^ t@) ^ first_u64 == 0 ^ t@) by (bit_vector);
             second_node.xored = second_node.xored ^ first_u64;
             assert(second_node.xored == 0 ^ t@);

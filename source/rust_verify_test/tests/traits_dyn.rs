@@ -4,6 +4,80 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] dyn_self_quantifier_ensures verus_code! {
+        trait T {
+            spec fn f(&self) -> int;
+            proof fn all_same(tracked &self)
+                ensures forall|b: &Self| #[trigger] b.f() == self.f();
+        }
+        proof fn test(tracked d: &dyn T) { d.all_same(); }
+    } => Err(err) => assert_vir_error_msg(err, "uses Self outside of the receiver")
+}
+
+test_verify_one_file! {
+    #[test] dyn_self_quantifier_requires verus_code! {
+        trait T {
+            spec fn f(&self) -> int;
+            proof fn bogus(tracked &self)
+                requires exists|b: &Self| #[trigger] b.f() == 2;
+        }
+        proof fn test(tracked d: &dyn T) { d.bogus(); }
+    } => Err(err) => assert_vir_error_msg(err, "uses Self outside of the receiver")
+}
+
+test_verify_one_file! {
+    #[test] dyn_self_quantifier_helper verus_code! {
+        spec fn equal<A: ?Sized>(a: &A, b: &A) -> bool { a == b }
+        spec fn all_same<A: ?Sized>(a: &A) -> bool {
+            forall|b: &A| #[trigger] equal(b, a)
+        }
+        trait T {
+            proof fn all_same(tracked &self) ensures all_same(self);
+        }
+        proof fn test(tracked d: &dyn T) { d.all_same(); }
+    } => Err(err) => assert_vir_error_msg(err, "uses Self outside of the receiver")
+}
+
+test_verify_one_file! {
+    #[test] dyn_self_quantifier_nested verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            proof fn property(tracked &self)
+                ensures forall|s: Seq<&Self>| #[trigger] s.len() >= 0;
+        }
+        proof fn test(tracked d: &dyn T) { d.property(); }
+    } => Err(err) => assert_vir_error_msg(err, "uses Self outside of the receiver")
+}
+
+test_verify_one_file! {
+    #[test] dyn_self_quantifier_mask verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            spec fn f(&self) -> int;
+            proof fn work(tracked &self)
+                opens_invariants if exists|b: &Self| #[trigger] b.f() == 2 {
+                    ISet::<int>::empty()
+                } else {
+                    ISet::<int>::full()
+                };
+        }
+        proof fn test(tracked d: &dyn T) { d.work(); }
+    } => Err(err) => assert_vir_error_msg(err, "uses Self outside of the receiver")
+}
+
+test_verify_one_file! {
+    #[test] dyn_self_quantifier_unwind verus_code! {
+        trait T {
+            spec fn f(&self) -> int;
+            fn work(&self)
+                opens_invariants none
+                no_unwind when exists|b: &Self| #[trigger] b.f() == 2;
+        }
+        fn test(d: &dyn T) { d.work(); }
+    } => Err(err) => assert_vir_error_msg(err, "uses Self outside of the receiver")
+}
+
+test_verify_one_file! {
     #[test] test_dyn verus_code! {
         use std::rc::Rc;
         use std::sync::Arc;
@@ -169,6 +243,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] dyn_compatability_error_when_dyn_only_appears_in_struct verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            proof fn bogus(&self)
+                ensures
+                    false;
+        }
+        struct X<'a> {
+            x: &'a dyn T,
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not Verus dyn-compatible")
+}
+
+test_verify_one_file! {
     #[test] dyn_proof_must_be_inhabited1b verus_code! {
         trait T {
             spec fn f(&self) -> nat;
@@ -266,7 +354,7 @@ test_verify_one_file! {
             assert(false);
         }
         // Note: when we allow spec ensures, this should become a "not Verus dyn-compatible" error
-    } => Err(err) => assert_vir_error_msg(err, "spec functions cannot have requires/ensures")
+    } => Err(err) => assert_vir_error_msg(err, "spec functions cannot have `requires`/`ensures`")
 }
 
 test_verify_one_file! {
@@ -360,6 +448,40 @@ test_verify_one_file! {
             s.0.f();
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] dyn_coercion_cycle_proof verus_code! {
+        trait T {
+            proof fn f(tracked &self) ensures false;
+        }
+        impl T for u8 {
+            proof fn f(tracked &self) {
+                let tracked d: &dyn T = self;
+                d.f();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
+    #[test] dyn_coercion_cycle_blanket_impl verus_code! {
+        trait T {
+            spec fn f(&self) -> int;
+        }
+        trait U {
+            spec fn g(&self) -> int;
+        }
+        impl<A: T> U for A {
+            spec fn g(&self) -> int { self.f() }
+        }
+        impl T for u8 {
+            spec fn f(&self) -> int {
+                let d: &dyn U = self;
+                d.g() + 1
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
 }
 
 test_verify_one_file! {
@@ -467,7 +589,7 @@ test_verify_one_file! {
         trait T {}
         fn test(d: &(dyn T + Send)) {
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dyn with more that one trait")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support dyn with more than one trait")
 }
 
 test_verify_one_file! {
@@ -475,7 +597,7 @@ test_verify_one_file! {
         trait T {}
         fn test(d: &dyn Fn() -> ()) {
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dyn with more that one trait")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support dyn with more than one trait")
 }
 
 test_verify_one_file! {
@@ -529,4 +651,323 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_dyn_mut_coercion verus_code! {
+        trait Cell {
+            spec fn get(&self) -> u64;
+            fn set(&mut self, v: u64)
+                ensures final(self).get() == v;
+        }
+
+        struct S { a: u64, hidden: u64 }
+
+        impl Cell for S {
+            spec fn get(&self) -> u64 { self.a }
+            fn set(&mut self, v: u64) { self.a = v; }
+        }
+
+        fn set_dyn(c: &mut dyn Cell, v: u64)
+            ensures final(c).get() == v,
+        {
+            c.set(v);
+        }
+
+        fn call_arg() {
+            let mut s = S { a: 1, hidden: 7 };
+            set_dyn(&mut s, 2);
+            assert(s.a == 2);
+        }
+
+        fn binding_and_cast() {
+            let mut s = S { a: 1, hidden: 7 };
+            let d: &mut dyn Cell = &mut s;
+            d.set(2);
+            assert(s.a == 2);
+            let e = &mut s as &mut dyn Cell;
+            e.set(3);
+            assert(s.a == 3);
+        }
+
+        fn as_dyn(s: &mut S) -> (d: &mut dyn Cell)
+            ensures final(d).get() == final(s).a,
+        {
+            s
+        }
+
+        fn returned() {
+            let mut s = S { a: 1, hidden: 7 };
+            as_dyn(&mut s).set(5);
+            assert(s.a == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_dyn_mut_coercion_type_invariant verus_code! {
+        use vstd::prelude::*;
+        trait Cell {
+            spec fn get(&self) -> u64;
+            fn set(&mut self, v: u64)
+                ensures final(self).get() == v,
+                no_unwind;
+        }
+
+        impl Cell for u64 {
+            spec fn get(&self) -> u64 { *self }
+            fn set(&mut self, v: u64) { *self = v; }
+        }
+
+        fn set_dyn(c: &mut dyn Cell, v: u64)
+            ensures final(c).get() == v,
+            no_unwind
+        {
+            c.set(v);
+        }
+
+        struct Bounded { x: u64 }
+
+        impl Bounded {
+            #[verifier::type_invariant]
+            spec fn inv(&self) -> bool { self.x <= 10 }
+        }
+
+        fn preserves(b: &mut Bounded) {
+            set_dyn(&mut b.x, 5);
+        }
+
+        fn breaks(b: &mut Bounded) {
+            set_dyn(&mut b.x, 11); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] dyn_spec_fn_method_generics verus_code! {
+        trait T {
+            spec fn f<C>(&self, c: C) -> int where Self: Sized;
+        }
+
+        struct S;
+
+        impl T for S {
+            spec fn f<C>(&self, c: C) -> int { 5 }
+        }
+
+        fn test(x: &dyn T) {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] dyn_array_has_type verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            spec fn f(&self) -> u8;
+        }
+        impl T for u8 {
+            spec fn f(&self) -> u8 { *self }
+        }
+        fn test(a: &u8, b: &u8) {
+            let arr: [&dyn T; 2] = [a, b];
+            assert(arr@.len() == 2);
+            let s: &[&dyn T] = &[a, b];
+            assert(s@.len() == 2);
+            assert(s@[1].f() == *b);
+            assert(s@[0].f() == *b); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] dyn_cycle_supertrait verus_code! {
+        use vstd::prelude::*;
+        trait U {
+            spec fn f(&self, s: S) -> bool;
+        }
+        trait T: U {}
+        struct S(Box<dyn T>);
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+// Upstream crate for the cross-crate dyn-compatibility tests below.
+// T is sealed, so A1 and A2 (unit structs) are its only possible implementors.
+const DYN_UPSTREAM_A: &str = verus_code_str! {
+    use vstd::prelude::*;
+
+    pub mod private { pub trait Sealed {} impl Sealed for super::A1 {} impl Sealed for super::A2 {} }
+
+    #[verifier::external]
+    pub trait T: private::Sealed {
+        fn f(&self);
+        fn all_same(&self) { }
+    }
+
+    #[verifier::external_trait_specification]
+    #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+    pub trait ExT: private::Sealed {
+        type ExternalTraitSpecificationFor: T;
+        spec fn score(&self) -> int;
+        fn f(&self);
+    }
+
+    pub struct A1;
+    pub struct A2;
+    impl T for A1 { fn f(&self) {} }
+    impl T for A2 { fn f(&self) {} }
+    impl TSpecImpl for A1 { open spec fn score(&self) -> int { 1 } }
+    impl TSpecImpl for A2 { open spec fn score(&self) -> int { 2 } }
+
+    pub open spec fn same<A: ?Sized>(a: &A, b: &A) -> bool { a == b }
+
+    pub fn get1() -> (r: Box<dyn T>) ensures r.score() == 1 { Box::new(A1) }
+    pub fn get2() -> (r: Box<dyn T>) ensures r.score() == 2 { Box::new(A2) }
+
+    pub trait Lemma {
+        fn lemma<X: T + ?Sized>(x1: &X, x2: &X) ensures same(x1, x2);
+    }
+
+    // Valid in this crate: T's specs here allow no Lemma impl (dyn T has two distinct values)
+    pub fn exploit<L: Lemma>() ensures false {
+        let d1: Box<dyn T> = Box::new(A1);
+        let d2: Box<dyn T> = Box::new(A2);
+        L::lemma::<dyn T>(&*d1, &*d2);
+        assert(d1.score() == d2.score());
+    }
+};
+
+test_verify_crates! {
+    #[test] dyn_cross_crate_compatible_ext_spec_ok [
+        "a" => DYN_UPSTREAM_A.to_string(),
+        "b" => verus_code! {
+            use vstd::prelude::*;
+            use a::{T, TSpec};
+
+            // This additional specification keeps T verus-dyn-compatible
+            #[verifier::external_trait_specification]
+            pub trait ExTMore: a::private::Sealed {
+                type ExternalTraitSpecificationFor: T;
+                fn all_same(&self) ensures true;
+            }
+
+            fn test() {
+                let d1 = a::get1();
+                d1.all_same();
+                let x: &dyn T = &*d1;
+                assert(x.score() == 1);
+            }
+            fn test_fail() {
+                let d1 = a::get1();
+                assert(d1.score() == 2); // FAILS
+            }
+        },
+    ] => Err(err) => assert_one_fails(err)
+}
+
+test_verify_crates! {
+    #[test] dyn_cross_crate_incompatible_ext_spec_direct [
+        "a" => DYN_UPSTREAM_A.to_string(),
+        "b" => verus_code! {
+            use vstd::prelude::*;
+            use a::{T, TSpec, same};
+
+            // Valid for every sized implementor of T, but not for dyn T
+            #[verifier::external_trait_specification]
+            pub trait ExTMore: a::private::Sealed {
+                type ExternalTraitSpecificationFor: T;
+                fn all_same(&self)
+                    ensures forall|b: &Self| #[trigger] same(b, self);
+            }
+
+            fn test() {
+                let d1 = a::get1();
+                let d2 = a::get2();
+                d1.all_same();
+                assert(same(&*d2, &*d1));
+                assert(false);
+            }
+        },
+    ] => Err(err) => assert_vir_error_msg(err, "crate `b` makes trait `a::T` not Verus dyn-compatible (specification of function a::T::all_same uses Self outside of the receiver), but crate `a` already treats `a::T` as Verus dyn-compatible")
+}
+
+test_verify_crates! {
+    #[test] dyn_cross_crate_incompatible_ext_spec_no_dyn_downstream [
+        "a" => DYN_UPSTREAM_A.to_string(),
+        "b" => verus_code! {
+            use vstd::prelude::*;
+            use a::{T, Lemma, same};
+
+            // Valid for every sized implementor of T, but not for dyn T
+            #[verifier::external_trait_specification]
+            pub trait ExTMore: a::private::Sealed {
+                type ExternalTraitSpecificationFor: T;
+                fn all_same(&self)
+                    ensures forall|b: &Self| #[trigger] same(b, self);
+            }
+
+            // No dyn appears anywhere in this crate
+            pub struct L;
+            impl Lemma for L {
+                fn lemma<X: T + ?Sized>(x1: &X, x2: &X) {
+                    x2.all_same();
+                    assert(same(x1, x2));
+                }
+            }
+
+            fn test() {
+                a::exploit::<L>();
+                assert(false);
+            }
+        },
+    ] => Err(err) => assert_vir_error_msg(err, "crate `b` makes trait `a::T` not Verus dyn-compatible (specification of function a::T::all_same uses Self outside of the receiver), but crate `a` already treats `a::T` as Verus dyn-compatible")
+}
+
+test_verify_crates! {
+    #[test] dyn_cross_crate_incompatible_ext_spec_imported_sibling [
+        // T is sealed, so A1 and A2 (unit structs) are its only possible implementors.
+        "t" => verus_code! {
+            pub mod private { pub trait Sealed {} impl Sealed for super::A1 {} impl Sealed for super::A2 {} }
+            #[verifier::external]
+            pub trait T: private::Sealed {
+                fn f(&self);
+                fn all_same(&self) { }
+            }
+            pub struct A1;
+            pub struct A2;
+            #[verifier::external]
+            impl T for A1 { fn f(&self) {} }
+            #[verifier::external]
+            impl T for A2 { fn f(&self) {} }
+        },
+        // a uses dyn T, so it requires T to be verus-dyn-compatible
+        "a" ["t"] => verus_code! {
+            use vstd::prelude::*;
+            use t::T;
+
+            #[verifier::external_trait_specification]
+            pub trait ExT: t::private::Sealed {
+                type ExternalTraitSpecificationFor: T;
+                fn f(&self);
+            }
+
+            pub fn get1() -> Box<dyn T> { Box::new(t::A1) }
+        },
+        // b independently adds a specification that is not verus-dyn-compatible
+        "b" ["t"] => verus_code! {
+            use vstd::prelude::*;
+            use t::T;
+
+            pub open spec fn same<A: ?Sized>(a: &A, b: &A) -> bool { a == b }
+
+            #[verifier::external_trait_specification]
+            pub trait ExTMore: t::private::Sealed {
+                type ExternalTraitSpecificationFor: T;
+                fn all_same(&self)
+                    ensures forall|b: &Self| #[trigger] same(b, self);
+            }
+        },
+        "c" ["t", "a", "b"] => verus_code! {
+            fn test() {}
+        },
+    ] => Err(err) => assert_vir_error_msg(err, "crate `b` makes trait `t::T` not Verus dyn-compatible (specification of function t::T::all_same uses Self outside of the receiver), but crate `a` already treats `t::T` as Verus dyn-compatible")
 }

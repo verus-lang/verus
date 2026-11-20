@@ -209,6 +209,59 @@ test_verify_one_file! {
             field: Box<[ Foo ; 1 ]>,
         }
 
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_array_no_ground_variant verus_code! {
+        use vstd::prelude::*;
+
+        struct S { a: [Box<S>; 1] }
+
+        proof fn descend(s: S)
+            ensures false
+            decreases s
+        {
+            descend(*s.a@[0]);
+        }
+
+        proof fn bad() ensures false {
+            descend(arbitrary());
+        }
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_array_no_ground_variant_generic verus_code! {
+        use vstd::prelude::*;
+
+        struct S<const N: usize> { a: [Box<S<N>>; N] }
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_array_ground_variants verus_code! {
+        use vstd::prelude::*;
+
+        struct Empty { a: [Box<Empty>; 0] }
+
+        fn make_empty() -> Empty {
+            Empty { a: [] }
+        }
+
+        enum Tree<const N: usize> {
+            Leaf,
+            Branch([Box<Tree<N>>; N]),
+        }
+
+        proof fn test_decreases(t: Tree<1>) {
+            match t {
+                Tree::Leaf => {},
+                Tree::Branch(children) => {
+                    assert(decreases_to!(t => children@[0]));
+                },
+            }
+        }
     } => Ok(())
 }
 
@@ -404,7 +457,7 @@ test_verify_one_file! {
             let ar = [C; 13];
             assert(ar@[0] == ar@[1]); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: array-fill expresion with non-copy type")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support array-fill expression with non-copy type")
 }
 
 test_verify_one_file! {

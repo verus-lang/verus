@@ -468,7 +468,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         struct S;
         impl Integer for S {}
-    } => Err(err) => assert_rust_error_msg(err, "the trait `verus_builtin::Integer` requires an `unsafe impl` declaration")
+    } => Err(err) => assert_vir_error_msg(err, "cannot implement `sealed` trait")
 }
 
 test_verify_one_file! {
@@ -532,6 +532,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enum_to_int verus_code! {
+        use vstd::prelude::*;
         #[derive(Copy, Clone)]
         enum E {
             A,
@@ -554,6 +555,7 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] test_enum_to_int_overflow ["--compile"] => verus_code! {
+        use vstd::prelude::*;
         #[derive(Copy, Clone)]
         enum E {
             A,
@@ -582,11 +584,13 @@ test_verify_one_file! {
                 self as int == 0
             {}
         }
-    } => Err(err) => assert_vir_error_msg(err, "Zero-sized empty Enum expr")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support casting an enum with no variants")
 }
 
 test_verify_one_file! {
     #[test] test_enum_to_int_non_empty_fields1 verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)]
         enum E {
             A(bool),
@@ -596,11 +600,13 @@ test_verify_one_file! {
         ensures
             v as int == 0,
         {}
-    } => Err(err) => assert_vir_error_msg(err, "Enum variant should not contain any fields.")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support casting an enum whose variants have fields")
 }
 
 test_verify_one_file! {
     #[test] test_enum_to_int_non_empty_fields2 verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)]
         enum E {
             A(bool),
@@ -610,11 +616,13 @@ test_verify_one_file! {
         ensures
             E::A(false) as int == 0,
         {}
-    } => Err(err) => assert_vir_error_msg(err, "Enum variant should not contain any fields.")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support casting an enum whose variants have fields")
 }
 
 test_verify_one_file! {
     #[test] test_enum_to_int_proof verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)]
         enum E {
             A,
@@ -631,6 +639,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enums_with_signed_representations_issue2767 verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)] #[repr(i8)] enum E8 { A = -1, B = 0, C = 1 }
         #[derive(Copy, Clone)] #[repr(i16)] enum E16 { A = -1, B = 0, C = 1 }
         #[derive(Copy, Clone)] #[repr(i32)] enum E32 { A = -1, B = 0, C = 1 }
@@ -668,6 +678,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enums_with_unsigned_representations verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)] #[repr(u8)] enum E8 { A = 0xff, B = 0, C = 1 }
         #[derive(Copy, Clone)] #[repr(u16)] enum E16 { A = 0xffff, B = 0, C = 1 }
         #[derive(Copy, Clone)] #[repr(u32)] enum E32 { A = 0xffff_ffff, B = 0, C = 1 }
@@ -705,6 +717,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enums_with_overflow verus_code! {
+        use vstd::prelude::*;
+
         #[allow(overflowing_literals)]
         #[derive(Copy, Clone)] #[repr(i8)] enum Ei8 { A = 255, B = 0 }
 
@@ -726,6 +740,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enums_with_arch_dependent verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)] #[repr(isize)] enum Eisize { A = 0x8000_0000, B = 0 }
         #[derive(Copy, Clone)] #[repr(usize)] enum Eusize { A = 0x1_0000_0000, B = 0 }
 
@@ -737,7 +753,7 @@ test_verify_one_file! {
             assert(Eusize::A as int == 0x1_000_0000);
         }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "discriminant does not fit in 32-bits when isize is used",
-        "discriminant does not fit in 32-bits when usize is used",
+        "discriminants that do not fit in 32 bits when isize is used",
+        "discriminants that do not fit in 32 bits when usize is used",
     ])
 }

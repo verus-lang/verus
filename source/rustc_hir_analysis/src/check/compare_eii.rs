@@ -6,14 +6,14 @@
 use std::borrow::Cow;
 use std::iter;
 
+use rustc_attr_ir::{EiiImplResolution, find_attr};
 use rustc_data_structures::fx::FxIndexSet;
 use rustc_errors::{Applicability, E0806, struct_span_code_err};
-use rustc_hir::attrs::EiiImplResolution;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_hir::{self as hir, FnSig, HirId, ItemKind, find_attr};
+use rustc_hir::{self as hir, FnSig, HirId, ItemKind};
 use rustc_infer::infer::{self, InferCtxt, TyCtxtInferExt};
-use rustc_infer::traits::{ObligationCause, ObligationCauseCode};
+use rustc_infer::traits::{ObligationCause, ObligationCauseCode, TraitErrors};
 use rustc_middle::ty::error::{ExpectedFound, TypeError};
 use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt, TypeVisitableExt, TypingMode, Unnormalized};
 use rustc_span::{ErrorGuaranteed, Ident, Span, Symbol};
@@ -138,7 +138,7 @@ pub(crate) fn compare_eii_function_types<'tcx>(
     // Check that all obligations are satisfied by the implementation's
     // version.
     let errors = ocx.evaluate_obligations_error_on_ambiguity();
-    if !errors.is_empty() {
+    if let TraitErrors::HasErrors(errors) = errors {
         let reported = infcx.err_ctxt().report_fulfillment_errors(errors);
         return Err(reported);
     }
@@ -201,13 +201,13 @@ pub(crate) fn compare_eii_statics<'tcx>(
         );
         diag.span_note(eii_attr_span, "expected this because of this attribute");
 
-        return Err(diag.emit());
+        return Err(diag.emit_err());
     }
 
     // Check that all obligations are satisfied by the implementation's
     // version.
     let errors = ocx.evaluate_obligations_error_on_ambiguity();
-    if !errors.is_empty() {
+    if let TraitErrors::HasErrors(errors) = errors {
         let reported = infcx.err_ctxt().report_fulfillment_errors(errors);
         return Err(reported);
     }
@@ -301,8 +301,7 @@ fn check_no_generics<'tcx>(
         // since in that case it looks like a duplicate error: the declaration of the EII already can't contain generics.
         // So, we check here if at least one of the eii impls has ImplResolution::Macro, which indicates it's
         // not generated as part of the declaration.
-        && find_attr!(tcx, external_impl, EiiImpls(impls) if impls.iter().any(|i| matches!(i.resolution, EiiImplResolution::Macro(_)))
-        )
+        && find_attr!(tcx, external_impl, EiiImpl(i) if matches!(i.resolution, EiiImplResolution::Macro(_)))
     {
         tcx.dcx().emit_err(EiiWithGenerics {
             span: tcx.def_span(external_impl),
@@ -350,7 +349,7 @@ fn check_early_region_bounds<'tcx>(
     });
 
     diag.span_label(eii_attr_span, format!("required because of this attribute"));
-    return Err(diag.emit());
+    return Err(diag.emit_err());
 }
 
 fn check_number_of_arguments<'tcx>(
@@ -448,7 +447,7 @@ fn report_number_of_arguments_mismatch<'tcx>(
 
     err.span_label(eii_attr_span, format!("required because of this attribute"));
 
-    err.emit()
+    err.emit_err()
 }
 
 fn report_eii_mismatch<'tcx>(
@@ -522,7 +521,7 @@ fn report_eii_mismatch<'tcx>(
         None,
     );
 
-    diag.emit()
+    diag.emit_err()
 }
 
 #[instrument(level = "debug", skip(infcx))]

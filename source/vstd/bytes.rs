@@ -11,8 +11,17 @@ use super::view::*;
 verus! {
 
 broadcast use group_seq_lemmas;
-// Conversion between u16 and little-endian byte sequences
+// Conversion from little-endian bytes to u8
 
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ <u8>::from_le_bytes ](bytes: [u8; 1]) -> u8
+    returns
+        bytes@[0],
+    opens_invariants none
+    no_unwind
+;
+
+// Conversion between u16 and little-endian byte sequences
 pub closed spec fn spec_u16_to_le_bytes(x: u16) -> Seq<u8> {
     #[verusfmt::skip]
     seq![
@@ -85,6 +94,14 @@ pub exec fn u16_from_le_bytes(s: &[u8]) -> (x: u16)
     use core::convert::TryInto;
     u16::from_le_bytes(s.try_into().unwrap())
 }
+
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ <u16>::from_le_bytes ](bytes: [u8; 2]) -> u16
+    returns
+        spec_u16_from_le_bytes(bytes@),
+    opens_invariants none
+    no_unwind
+;
 
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
@@ -180,6 +197,14 @@ pub exec fn u32_from_le_bytes(s: &[u8]) -> (x: u32)
     use core::convert::TryInto;
     u32::from_le_bytes(s.try_into().unwrap())
 }
+
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ <u32>::from_le_bytes ](bytes: [u8; 4]) -> u32
+    returns
+        spec_u32_from_le_bytes(bytes@),
+    opens_invariants none
+    no_unwind
+;
 
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
@@ -337,6 +362,14 @@ pub exec fn u64_from_le_bytes(s: &[u8]) -> (x: u64)
     use core::convert::TryInto;
     u64::from_le_bytes(s.try_into().unwrap())
 }
+
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ <u64>::from_le_bytes ](bytes: [u8; 8]) -> u64
+    returns
+        spec_u64_from_le_bytes(bytes@),
+    opens_invariants none
+    no_unwind
+;
 
 #[cfg(feature = "alloc")]
 #[verifier::external_body]

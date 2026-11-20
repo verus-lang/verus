@@ -963,7 +963,7 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning to scrutinee during match guard")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support assigning to the scrutinee during a match guard")
 }
 
 test_verify_one_file_with_options! {
@@ -985,5 +985,5 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus doesn't support assigning to scrutinee during match guard")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support assigning to the scrutinee during a match guard")
 }

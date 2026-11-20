@@ -155,7 +155,7 @@ impl SingularExpr {
                 let r = rhs.to_singular_string();
                 format!("({:} {:} {:})", l, op, r)
             }
-            SingularExpr::Literal(l) => (**l).clone(),
+            SingularExpr::Literal(l) => format!("bigint({:})", l),
             SingularExpr::Var(Var::User(ident)) => sanitize_var_name(&ident),
             SingularExpr::Var(Var::Tmp(tmp)) => tmp.to_string(),
         }
@@ -221,13 +221,29 @@ impl SingularEncoder {
                 let rhs = self.expr_to_singular(&rhs)?;
                 Ok(lhs.modulo(rhs))
             }
+            ExprX::Multi(MultiOp::Sub, exprs) => {
+                let (arg1, arg2) = if exprs.len() == 1 {
+                    let zero = SingularExpr::Literal(Arc::new("0".to_string()));
+                    let arg = self.expr_to_singular(&exprs[0])?;
+                    (zero, arg)
+                } else if exprs.len() == 2 {
+                    let arg1 = self.expr_to_singular(&exprs[0])?;
+                    let arg2 = self.expr_to_singular(&exprs[1])?;
+                    (arg1, arg2)
+                } else {
+                    return Err(format!("Verus internal error: unsupported MultiOp Sub"));
+                };
+                Ok(SingularExpr::Binary(BinOp::Sub, Rc::new(arg1), Rc::new(arg2)))
+            }
             ExprX::Multi(op, exprs) => {
                 let bin_op = match op {
                     MultiOp::Add => BinOp::Add,
-                    MultiOp::Sub => BinOp::Sub,
                     MultiOp::Mul => BinOp::Mul, // still reachable with constant multiplication
                     _ => {
-                        return Err(format!("unsupported integer_ring operator: {:?}", op.clone()));
+                        return Err(format!(
+                            "unsupported `integer_ring` operator: {:?}",
+                            op.clone()
+                        ));
                     }
                 };
                 assert!(exprs.len() >= 1);
@@ -263,7 +279,7 @@ impl SingularEncoder {
                     )));
                 } else if vir::def::EUC_DIV == (**fname).as_str() {
                     return Err(format!(
-                        "unsupported operator: division. Consider registering the division result as a new variable before calling integer_ring lemma"
+                        "unsupported operator: division; consider registering the division result as a new variable before calling `integer_ring` lemma"
                     ));
                 } else {
                     // treat as uninterpreted functions
@@ -281,7 +297,7 @@ impl SingularEncoder {
                     }
                 }
             }
-            _ => return Err(format!("integer_ring unsupported expression: {:?}", expr)),
+            _ => return Err(format!("`integer_ring` unsupported expression: {:?}", expr)),
         }
     }
 
@@ -299,7 +315,7 @@ impl SingularEncoder {
                         a1.clone().sub(a2.clone()).modulo(m1.clone()),
                     ));
                 }
-                return Err(format!("requires not sharing divisor in integer_ring"));
+                return Err(format!("`requires` not sharing divisor in `integer_ring`"));
             }
 
             return Ok(SingularReqClause::Ideal(lhs.sub(rhs)));
@@ -315,7 +331,7 @@ impl SingularEncoder {
                 }
             }
         }
-        return Err(format!("requires not in equational form in integer_ring"));
+        return Err(format!("`requires` not in equational form in `integer_ring`"));
     }
 
     fn encode_ensures_poly(&mut self, expr: &Expr) -> Result<SingularEnsClause, String> {
@@ -344,13 +360,13 @@ impl SingularEncoder {
                     });
                 }
                 // potentially, we can support this case by not adding the mod_poly, unclear how helpful it would be
-                return Err(format!("integer_ring ensures not sharing divisor: {:?}", expr));
+                return Err(format!("`integer_ring` `ensures` not sharing divisor: {:?}", expr));
             }
 
             return Ok(SingularEnsClause { eq0: lhs.sub(rhs), modulus: None });
         }
 
-        return Err(format!("integer_ring ensures not in equational form"));
+        return Err(format!("`integer_ring` `ensures` not in equational form"));
     }
 
     fn translate(&mut self, e: &SingularExpr) -> SingularExpr {
@@ -481,7 +497,7 @@ fn diagnostics_for_ne0(
     for (c, span) in provided.iter() {
         if !expected_set.contains(c) {
             diagnostics.report(&vir::messages::warning(span,
-                "integer_ring: this precondition is superfluous and has no impact on the integer_ring decision procedure").to_any());
+                "integer_ring: this precondition is superfluous and has no impact on the `integer_ring` decision procedure").to_any());
         }
         provided_set.insert(c);
     }
@@ -489,7 +505,7 @@ fn diagnostics_for_ne0(
     for e in expected_set.iter() {
         if !provided_set.contains(e) {
             diagnostics.report(&vir::messages::warning(func_span,
-                format!("integer_ring: this lemma should have `{:} != 0` as a precondition, since this expression is used as a divisor. (This will be a hard error in the future.)", e.to_diagnostic_string())).to_any());
+                format!("integer_ring: this lemma should have `{:} != 0` as a precondition, since this expression is used as a divisor (this will be a hard error in the future)", e.to_diagnostic_string())).to_any());
         }
     }
 }
@@ -641,7 +657,7 @@ pub fn check_singular_valid(
             // the resultant poly fails to reduce to 0. the poly is not going to be very informative, so we just return the error message.
             let err = error(
                 &err.spans[0],
-                "postcondition not satisfied, Singular cannot prove one of the the ensures"
+                "postcondition not satisfied, Singular cannot prove one of the `ensures`"
                     .to_string(),
             )
             .primary_label(&err.spans[0], "Singular cannot prove this");

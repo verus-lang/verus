@@ -409,6 +409,7 @@ fn stm_assign(
             au_branch_bool,
             pre_modified_params_incl,
             pre_modified_params_excl,
+            known_no_back_edge,
         } => {
             let pre_stms = stms_assign(assign_map, declared, assigned, modified, pre_stms);
 
@@ -450,6 +451,7 @@ fn stm_assign(
                 au_branch_bool: au_branch_bool.clone(),
                 pre_modified_params_incl: pre_modified_params_incl.clone(),
                 pre_modified_params_excl: pre_modified_params_excl.clone(),
+                known_no_back_edge: *known_no_back_edge,
             };
             Spanned::new(stm.span.clone(), loop_x)
         }
@@ -578,6 +580,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             pre_modified_params_incl,
             pre_modified_params_excl,
             au_branch_bool,
+            known_no_back_edge,
         } => {
             assert!(pre_modified_params_incl.is_none());
             assert!(pre_modified_params_excl.is_none());
@@ -586,7 +589,11 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
 
             let pre_stms = stms_mutations(param_typs, mutations, pre_stms);
 
-            mutations.merge_with(&modified_vars.as_ref().unwrap());
+            if !known_no_back_edge {
+                mutations.merge_with(&modified_vars.as_ref().unwrap());
+            }
+
+            let pre_modified_params_incl = mutations.filter_by_params(param_typs);
 
             let cond = match cond {
                 None => None,
@@ -596,8 +603,6 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
                 }
             };
             let body = stm_mutations(param_typs, mutations, body);
-
-            let pre_modified_params_incl = mutations.filter_by_params(param_typs);
 
             let loopx = StmX::Loop {
                 pre_stms,
@@ -614,6 +619,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
                 pre_modified_params_incl: Some(Arc::new(pre_modified_params_incl)),
                 pre_modified_params_excl: Some(Arc::new(pre_modified_params_excl)),
                 au_branch_bool: au_branch_bool.clone(),
+                known_no_back_edge: *known_no_back_edge,
             };
             stm.new_x(loopx)
         }

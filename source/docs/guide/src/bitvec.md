@@ -64,7 +64,7 @@ However, it can also be decent at arithmetic (`+`, `-`, `*`, `/`, `%`) over boun
 
 The `bit_vector` solver supports the use of constants and `spec` functions.
 However, those functions are still restricted to using the same bit-vector and
-arithemtic operations listed above (internally, function support works by
+arithmetic operations listed above (internally, function support works by
 inlining the functions).  
 
 Function support means that you can write and use descriptive helper functions.
@@ -161,6 +161,6 @@ proof fn test_left_shift_u32_vs_u64(y: u32) {
 
 Some larger examples to browse:
 
- * [garbage collection example](https://github.com/verus-lang/verus/blob/main/source/../examples/bitvector_garbage_collection.rs)
- * [bitvector equivalence example](https://github.com/verus-lang/verus/blob/main/source/../examples/bitvector_equivalence.rs)
- * [miscellaneous](https://github.com/verus-lang/verus/blob/main/source/../examples/bitvector_basic.rs)
+ * [garbage collection example](https://github.com/verus-lang/verus/blob/main/examples/bitvector_garbage_collection.rs)
+ * [bitvector equivalence example](https://github.com/verus-lang/verus/blob/main/examples/bitvector_equivalence.rs)
+ * [miscellaneous](https://github.com/verus-lang/verus/blob/main/examples/bitvector_basic.rs)

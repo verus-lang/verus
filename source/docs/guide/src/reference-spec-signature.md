@@ -17,7 +17,7 @@ V@[openness] ::= closed
 
 ## The `recommends` clause
 
-The `recommends` clauses is a "soft precondition", which is sometimes checked for the sake
+The `recommends` clause is a "soft precondition", which is sometimes checked for the sake
 of diagnostics, but is not a hard requirement for the function to be well-defined.
 
 See [this guide page](./spec_vs_proof.md#recommends) for motivation and overview.
@@ -25,7 +25,7 @@ See [this guide page](./spec_vs_proof.md#recommends) for motivation and overview
 ## The `decreases` clause
 
 The `decreases` clause is used to ensure that recursive definitions are well-formed.
-Note that if the `decreases` clauses has a `when`-subclause, it will restrict the function definition
+Note that if the `decreases` clause has a `when`-subclause, it will restrict the function definition
 to the domain.
 
 See [the reference page for `decreases`](./reference-decreases.md) for more information,

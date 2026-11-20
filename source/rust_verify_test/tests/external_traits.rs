@@ -4,6 +4,123 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] external_trait_supertrait_associated_type verus_code! {
+        #[verifier::external]
+        trait Build<A>: Sized {
+            fn build(a: A) -> Self;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExBuild<A>: Sized {
+            type ExternalTraitSpecificationFor: Build<A>;
+            fn build(a: A) -> Self;
+        }
+
+        #[verifier::external]
+        trait T<A>: Build<Self::Item> {
+            type Item;
+            fn identity(a: Self::Item) -> Self::Item;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT<A>: Build<Self::Item> {
+            type ExternalTraitSpecificationFor: T<A>;
+            type Item;
+            fn identity(a: Self::Item) -> (ret: Self::Item)
+                ensures ret == a;
+        }
+
+        impl Build<u32> for u32 {
+            fn build(a: u32) -> Self { a }
+        }
+
+        impl T<bool> for u32 {
+            type Item = u32;
+            fn identity(a: u32) -> u32 { a }
+        }
+
+        fn identity<A, I: T<A>>(a: I::Item) -> (ret: I::Item)
+            ensures ret == a,
+        {
+            I::identity(a)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] external_trait_supertrait_associated_type_mismatch verus_code! {
+        #[verifier::external]
+        trait Build<A>: Sized {}
+
+        #[verifier::external_trait_specification]
+        trait ExBuild<A>: Sized {
+            type ExternalTraitSpecificationFor: Build<A>;
+        }
+
+        #[verifier::external]
+        trait T: Build<Self::Item> {
+            type Item;
+            type Other;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT: Build<Self::Other> {
+            type ExternalTraitSpecificationFor: T;
+            type Item;
+            type Other;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`external_trait_specification` trait bound mismatch")
+}
+
+test_verify_one_file! {
+    #[test] external_trait_marker_name_collision verus_code! {
+        #[verifier::external]
+        trait T {
+            type ExternalTraitSpecificationFor;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+        }
+
+        #[verifier::external]
+        trait SizedT: Sized {
+            type ExternalTraitSpecificationFor;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExSizedT: Sized {
+            type ExternalTraitSpecificationFor: SizedT;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] external_trait_custom_marker_name_collision verus_code! {
+        #[verifier::external]
+        trait Build<A>: Sized {}
+
+        #[verifier::external_trait_specification]
+        trait ExBuild<A>: Sized {
+            type ExternalTraitSpecificationFor: Build<A>;
+        }
+
+        #[verifier::external]
+        trait T: Build<Self::ExternalTraitSpecificationFor> {
+            type Marker;
+            type ExternalTraitSpecificationFor;
+        }
+
+        #[verifier::external_trait_specification(Marker)]
+        trait ExT: Build<Self::ExternalTraitSpecificationFor> {
+            type Marker: T;
+            type ExternalTraitSpecificationFor;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait verus_code! {
         trait Tr {
             fn foo();
@@ -22,7 +139,7 @@ test_verify_one_file! {
         fn ex_foo() {
             X::foo()
         }
-    } => Err(err) => assert_vir_error_msg(err, "using assume_specification for this function requires you to specify all other functions for the same trait impl, but the method `bar` is missing")
+    } => Err(err) => assert_vir_error_msg(err, "using `assume_specification` for this function requires you to specify all other functions for the same trait impl, but the method `bar` is missing")
 }
 
 test_verify_one_file! {
@@ -97,7 +214,7 @@ test_verify_one_file! {
         fn ex_bar() {
             X::bar()
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate assume_specification for this method")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate `assume_specification` for this method")
 }
 
 test_verify_one_file! {
@@ -123,7 +240,7 @@ test_verify_one_file! {
         fn ex_bar() {
             X::bar()
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for this trait implementation")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::X::foo`")
 }
 
 test_verify_one_file! {
@@ -139,7 +256,7 @@ test_verify_one_file! {
                 X
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for this trait method implementation")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::X::from`")
 }
 
 test_verify_one_file! {
@@ -205,7 +322,7 @@ test_verify_one_file! {
             type ExternalTraitSpecificationFor: T;
             fn f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate method")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::T::f`")
 }
 
 test_verify_one_file! {
@@ -256,7 +373,7 @@ test_verify_one_file! {
         trait Ex<A: Copy> {
             type ExternalTraitSpecificationFor: T<A>;
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_trait_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "`external_trait_specification` trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -554,7 +671,7 @@ test_verify_one_file! {
                 !TSpec::<u8>::s(self, q, a, b, x)
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -611,7 +728,7 @@ test_verify_one_file! {
             spec fn s1() -> bool { <u32 as TSpec>::s2() }
             spec fn s2() -> bool { !<u32 as TSpec>::s1() }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
 }
 
 test_verify_one_file! {
@@ -1062,4 +1179,380 @@ test_verify_one_file! {
             closed spec fn items(&self) -> Seq<Self::Item> { Seq::empty() }
         }
     } => Err(err) => assert_rust_error_msg(err, "overflow evaluating the requirement")
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_bodies verus_code! {
+        #[verifier::external]
+        pub trait T<A> {
+            fn f(&self, a: A) -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait Ex<A> {
+            type ExternalTraitSpecificationFor: T<A>;
+
+            spec fn req(&self) -> int;
+
+            open spec fn obeys(&self) -> bool {
+                false
+            }
+
+            open spec fn g<B>(&self, a: A, b: B) -> bool {
+                self.obeys()
+            }
+
+            fn f(&self, a: A) -> (r: bool)
+                ensures
+                    self.obeys() ==> r;
+        }
+
+        struct X<C> {
+            c: C,
+        }
+
+        // no impl of TSpecImpl: Verus synthesizes one with the default bodies
+        impl<C> T<u8> for X<C> {
+            fn f(&self, a: u8) -> bool {
+                false
+            }
+        }
+
+        // impl of TSpecImpl that overrides some, but not all, of the defaults
+        impl T<u8> for u32 {
+            fn f(&self, a: u8) -> bool {
+                true
+            }
+        }
+
+        impl TSpecImpl<u8> for u32 {
+            open spec fn req(&self) -> int {
+                7
+            }
+
+            open spec fn obeys(&self) -> bool {
+                true
+            }
+        }
+
+        // impl of TSpecImpl that overrides nothing except the required method
+        impl T<u8> for u64 {
+            fn f(&self, a: u8) -> bool {
+                false
+            }
+        }
+
+        impl TSpecImpl<u8> for u64 {
+            open spec fn req(&self) -> int {
+                8
+            }
+        }
+
+        proof fn test(x: X<u16>, u: u32, v: u64) {
+            assert(!TSpec::<u8>::obeys(&x));
+            assert(!TSpec::<u8>::g(&x, 3u8, 5int));
+            assert(TSpec::<u8>::obeys(&u));
+            assert(TSpec::<u8>::g(&u, 3u8, true));
+            assert(TSpec::<u8>::req(&u) == 7);
+            assert(!TSpec::<u8>::obeys(&v));
+            assert(!TSpec::<u8>::g(&v, 3u8, 5int));
+            assert(TSpec::<u8>::req(&v) == 8);
+        }
+
+        fn test_exec(x: X<u16>, u: u32) {
+            let r = u.f(3);
+            assert(r);
+            let r = x.f(3);
+            assert(r); // FAILS
+        }
+
+        proof fn test_fail(x: X<u16>) {
+            assert(TSpec::<u8>::obeys(&x)); // FAILS
+        }
+
+        proof fn test_fail_req(x: X<u16>) {
+            // req has no default, so it remains uninterpreted for X
+            assert(TSpec::<u8>::req(&x) == 7); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_bodies_in_impl verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn f() -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TrSpec via TrSpecImpl)]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            open spec fn obeys() -> bool {
+                false
+            }
+
+            fn f() -> (b: bool)
+                ensures
+                    Self::obeys() ==> b;
+        }
+
+        struct X<A> {
+            a: A,
+        }
+
+        // The default obeys() == false is visible inside the impl of Tr
+        impl<A> Tr for X<A> {
+            fn f() -> bool {
+                false
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_bodies_in_impl2 verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn f() -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TrSpec via TrSpecImpl)]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            open spec fn obeys() -> bool {
+                false
+            }
+
+            fn f() -> (b: bool)
+                ensures
+                    Self::obeys() ==> b;
+        }
+
+        struct Y;
+
+        impl Tr for Y {
+            fn f() -> bool {
+                false
+            }
+        }
+
+        impl TrSpecImpl for Y {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_bodies_in_impl_fails verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn f() -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TrSpec via TrSpecImpl)]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            open spec fn obeys() -> bool {
+                false
+            }
+
+            fn f() -> (b: bool)
+                ensures
+                    Self::obeys() ==> b; // FAILS
+        }
+
+        struct Z;
+
+        impl Tr for Z {
+            fn f() -> bool {
+                false
+            }
+        }
+
+        impl TrSpecImpl for Z {
+            open spec fn obeys() -> bool {
+                true
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_bodies_in_impl_fails2 verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn f() -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TrSpec via TrSpecImpl)]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            open spec fn obeys() -> bool {
+                true
+            }
+
+            fn f() -> (b: bool)
+                ensures
+                    Self::obeys() ==> b; // FAILS
+        }
+
+        struct X<A> {
+            a: A,
+        }
+
+        // The default obeys() == true is visible inside the impl of Tr
+        impl<A> Tr for X<A> {
+            fn f() -> bool {
+                false
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_bodies_empty_impl verus_code! {
+        #[verifier::external]
+        pub trait T<A> {
+            fn f(&self, a: A) -> bool;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait Ex<A> {
+            type ExternalTraitSpecificationFor: T<A>;
+
+            spec fn req(&self) -> int;
+
+            open spec fn obeys(&self) -> bool {
+                false
+            }
+
+            open spec fn g<B>(&self, a: A, b: B) -> bool {
+                self.obeys()
+            }
+
+            fn f(&self, a: A) -> (r: bool)
+                ensures
+                    self.obeys() ==> r;
+        }
+
+        struct X<C> {
+            c: C,
+        }
+
+        impl T<u8> for u32 {
+            fn f(&self, a: u8) -> bool {
+                true
+            }
+        }
+
+        impl TSpecImpl<u8> for u32 {
+        }
+    } => Err(err) => assert_rust_error_msg(err, "not all trait items implemented, missing: `req`")
+}
+
+test_verify_one_file! {
+    #[test] external_trait_impl_method_missing_from_spec verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn good(&self);
+            fn bad(&self);
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            fn good(&self);
+        }
+
+        #[verifier::external_body]
+        fn takes_trait<T: Tr>(t: &T) { t.bad() }
+
+        struct X { }
+
+        impl Tr for X {
+            fn good(&self) { }
+
+            fn bad(&self)
+                requires false
+            {
+            }
+        }
+
+        fn test() {
+            let x = X{};
+            takes_trait(&x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "no specification for trait method `bad` on trait `test_crate::Tr` supplied to Verus")
+}
+
+test_verify_one_file! {
+    #[test] external_trait_impl_method_missing_from_spec_assume_compatibility verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn good(&self);
+            fn bad(&self);
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            fn good(&self);
+        }
+
+        #[verifier::external_body]
+        fn takes_trait<T: Tr>(t: &T) { t.bad() }
+
+        struct X { }
+
+        impl Tr for X {
+            fn good(&self) { }
+
+            #[verifier::assume_compatibility_with_trait_spec]
+            fn bad(&self)
+                requires false
+            {
+            }
+        }
+
+        fn test() {
+            let x = X{};
+            takes_trait(&x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] external_trait_impl_method_missing_from_spec_assume_compatibility_no_cheating ["--no-cheating"] => verus_code! {
+        #[verifier::external]
+        pub trait Tr {
+            fn good(&self);
+            fn bad(&self);
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            fn good(&self);
+        }
+
+        struct X { }
+
+        impl Tr for X {
+            fn good(&self) { }
+
+            #[verifier::assume_compatibility_with_trait_spec]
+            fn bad(&self) { }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "`#[verifier::assume_compatibility_with_trait_spec]` not allowed with `--no-cheating`")
 }

@@ -2,8 +2,8 @@ use crate::syntax::{VERUS_SPEC, mk_rust_attr, mk_rust_attr_syn, mk_verus_attr};
 use quote::{quote, quote_spanned};
 use verus_syn::spanned::Spanned;
 use verus_syn::{
-    Expr, FnMode, Ident, ImplItem, ImplItemFn, Item, ItemImpl, ItemTrait, Meta, Path, Stmt, Token,
-    TraitItem, TraitItemFn, Type, TypeParamBound, Visibility,
+    Expr, FnMode, Ident, ImplItem, ImplItemFn, Item, ItemImpl, ItemTrait, Meta, Path, Publish,
+    Stmt, Token, TraitItem, TraitItemFn, Type, TypeParamBound, Visibility,
 };
 use verus_syn::{TraitBound, parse_quote_spanned};
 
@@ -71,7 +71,7 @@ Given:
 Generate additional items:
     trait TSpec: T {
         // omitted for erase_all
-        spec fn s1(...) -> ...;
+        spec fn s1(...) -> ...; // (or spec fn s1(...) -> ... { default body })
         ...
         // omitted for erase_all
         spec fn sn(...) -> ...;
@@ -80,7 +80,7 @@ Generate additional items:
     #[allow(non_camel_case_types)]
     trait TSpecImpl: T {
         // omitted for erase_all
-        fn s1(...) -> ...;
+        fn s1(...) -> ...; // (or fn s1(...) -> ... { panic!() } if s1 has a default body)
         ...
         // omitted for erase_all
         fn sn(...) -> ...;
@@ -113,20 +113,33 @@ fn expand_extension_trait<'tcx>(
         if let TraitItem::Fn(f) = item {
             if !erase_all && matches!(f.sig.mode, FnMode::Spec(..)) {
                 let span = f.sig.ident.span();
-                let mut f_tspec = f.clone();
+                let f_tspec = f.clone();
                 let mut f_tspec_impl = f.clone();
                 let mut f_blanket = ImplItemFn {
                     attrs: vec![parse_quote_spanned!(span => #[verifier::external_body])],
                     vis: Visibility::Inherited,
                     defaultness: None,
                     sig: f.sig.clone(),
-                    block: parse_quote_spanned!(span => { panic!() }),
+                    block: parse_quote_spanned!(span => { ::core::panic!() }),
                     semi_token: f.semi_token,
                 };
-                // TODO: when we support defaults, we might want to copy/move f's default body:
-                f_tspec.default = None;
-                f_tspec_impl.default = None;
+                // TSpec keeps f's default body (if any), which Verus uses for impls
+                // that don't explicitly override it (including the impls Verus synthesizes
+                // for impls of T that have no matching TSpecImpl impl).
+                // TSpecImpl is external, so its default body is just a placeholder
+                // that lets TSpecImpl impls omit the method.
+                if let Some(default) = &mut f_tspec_impl.default {
+                    let span = default.span();
+                    default.stmts = vec![Stmt::Expr(
+                        Expr::Verbatim(quote_spanned! { span => { ::core::panic!() } }),
+                        None,
+                    )];
+                    f_tspec_impl
+                        .attrs
+                        .push(parse_quote_spanned!(span => #[allow(unused_variables)]));
+                }
                 f_tspec_impl.sig.mode = FnMode::Default;
+                f_tspec_impl.sig.publish = Publish::Default;
                 // Remove #[verifier::prophetic] from the TSpecImpl methods.
                 // The TSpecImpl trait is marked #[verifier::external], so any Verus-specific
                 // attributes cause a spurious warning about having no effect.
@@ -136,6 +149,7 @@ fn expand_extension_trait<'tcx>(
                         && attr.path().segments[1].ident == "prophetic")
                 });
                 f_blanket.sig.mode = FnMode::Default;
+                f_blanket.sig.publish = Publish::Default;
                 tspec_items.push(TraitItem::Fn(f_tspec));
                 tspec_impl_items.push(TraitItem::Fn(f_tspec_impl));
                 blanket_impl_items.push(ImplItem::Fn(f_blanket));
@@ -183,7 +197,7 @@ fn expand_extension_trait<'tcx>(
             let span = tr.generics.span();
             // eventually TODO? MetaSized currently breaks stable rust when compiling to executable code
             // parse_quote_spanned!(span => core::marker::MetaSized)
-            parse_quote_spanned!(span => ?Sized)
+            parse_quote_spanned!(span => ?::core::marker::Sized)
         })
     };
     blanket_impl.generics.params.push(parse_quote_spanned!(span => #self_x: #t + #blanket_bound));
@@ -300,7 +314,7 @@ pub(crate) fn split_trait_method(
             FnArgKind::Receiver(r) => Some(r),
             _ => None,
         });
-        let pred = parse_quote_spanned!(fun.sig.ident.span() => Self: core::marker::Sized);
+        let pred = parse_quote_spanned!(fun.sig.ident.span() => Self: ::core::marker::Sized);
         do_split_trait_method!(verus_syn, fun, spec_fun, mk_rust_attr, recv, pred);
         spec_items.push(TraitItem::Fn(spec_fun));
         fun.sig.erase_spec_fields();
@@ -313,7 +327,7 @@ pub(crate) fn split_trait_method(
                 // replace body with panic!()
                 let span = default.span();
                 let expr: Expr = Expr::Verbatim(quote_spanned! {
-                    span => { panic!() }
+                    span => { ::core::panic!() }
                 });
                 let stmt = Stmt::Expr(expr, None);
                 default.stmts = vec![stmt];
@@ -336,7 +350,7 @@ pub(crate) fn split_trait_method_syn(
             FnArg::Receiver(r) => Some(r),
             _ => None,
         });
-        let pred = syn::parse_quote_spanned!(fun.sig.ident.span() => Self: core::marker::Sized);
+        let pred = syn::parse_quote_spanned!(fun.sig.ident.span() => Self: ::core::marker::Sized);
         do_split_trait_method!(syn, fun, spec_fun, mk_rust_attr_syn, recv, pred);
         // We won't run visit_trait_item_fn_mut, so we need to add no_method_body here:
         let span = fun.sig.fn_token.span;

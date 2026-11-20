@@ -7,7 +7,7 @@ Extensional equality proves that two collections are equal by proving that
 the collections contain equal elements.
 This can be used, for example, to prove that the sequences `s1`, `s2`, and `s3`
 are equal because they have the same elements (0, 10, 20, 30, 40),
-even though this sequences were constructed in different ways:
+even though these sequences were constructed in different ways:
 
 ```rust
 {{#include ../../../../examples/guide/lib_examples.rs:test_eq2}}

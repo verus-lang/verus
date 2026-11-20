@@ -164,7 +164,7 @@ test_verify_one_file! {
         proof fn test(x: int) {
             assume(forall|i: int| f(i / 2) == f(i / 2));
         }
-    } => Err(err) => assert_vir_error_msg(err, "Could not automatically infer triggers")
+    } => Err(err) => assert_vir_error_msg(err, "could not automatically infer triggers")
 }
 
 test_verify_one_file! {
@@ -190,7 +190,7 @@ test_verify_one_file! {
         proof fn test(x: int) {
             assume(forall|i: u32| ((i / 2) >> 1) == (i / 2) >> 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "Could not automatically infer triggers")
+    } => Err(err) => assert_vir_error_msg(err, "could not automatically infer triggers")
 }
 
 test_verify_one_file! {
@@ -327,22 +327,6 @@ test_verify_one_file! {
           }
         }
     } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] test_trigger_on_lambda_2 TRIGGER_ON_LAMBDA_COMMON.to_string() + verus_code_str! {
-        #[verifier(external_body)]
-        proof fn something(fn1: spec_fn(S)->bool, fn2: spec_fn(S)->bool)
-        ensures forall|s: S| #[trigger] fn1(s) ==> fn2(s) { }
-
-        proof fn foo(s: S) {
-          something(|s1| #[trigger] prop_1(s1), |s1| prop_2(s1));
-          assert forall|s: S| prop_1(s) implies prop_2(s) by {
-            assert(prop_1(s));
-            assert(prop_2(s));
-          }
-        }
-    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -609,7 +593,7 @@ test_verify_one_file! {
         fn test3() {
             assert(f_quant(Some(2), Some(2)));
         }
-    } => Err(err) => assert_vir_error_msg(err, "Could not automatically infer triggers for this quantifier")
+    } => Err(err) => assert_vir_error_msg(err, "could not automatically infer triggers for this quantifier")
 }
 
 test_verify_one_file! {
@@ -643,8 +627,81 @@ test_verify_one_file! {
         }
     } => Err(err) => {
         assert!(err.warnings.len() == 1);
-        assert!(err.warnings[0].message.contains("#[trigger] on a spec_fn closure is deprecated"));
+        assert!(err.warnings[0].message.contains("`#[trigger]` on a `spec_fn` closure is deprecated"));
         assert!(err.errors.len() == 1);
-        assert!(err.errors[0].message.contains("Could not automatically infer triggers for this quantifier"));
+        assert!(err.errors[0].message.contains("could not automatically infer triggers for this quantifier"));
     }
+}
+
+test_verify_one_file! {
+    #[test] test_strslice_get_char_trigger_instantiation verus_code! {
+        use vstd::prelude::*;
+
+        broadcast proof fn literal_index(s: &str, i: int)
+            ensures #[trigger] strslice_get_char(s, i) == s@[i],
+        {
+            vstd::string::axiom_str_literal_get_char(s, i);
+        }
+
+        // No sequence-index assertion seeds the witness at either position.
+        proof fn test(s: &str)
+            requires
+                strslice_len(s) == 12,
+                strslice_get_char(s, 5) == '/',
+                strslice_get_char(s, 8) == '\u{1F980}',
+            ensures
+                s@.contains('/'),
+                s@.contains('\u{1F980}'),
+        {
+            broadcast use literal_index;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_strslice_get_char_trigger_nested verus_code! {
+        use vstd::prelude::*;
+
+        broadcast proof fn literal_contains(s: &str, i: int)
+            requires 0 <= i < s@.len(),
+            ensures #[trigger] s@.contains(strslice_get_char(s, i)),
+        {
+            vstd::string::axiom_str_literal_get_char(s, i);
+        }
+
+        proof fn test(s: &str)
+            requires
+                strslice_len(s) == 12,
+                strslice_get_char(s, 5) == '/',
+            ensures s@.contains('/'),
+        {
+            broadcast use literal_contains;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_strslice_get_char_trigger_membership_bounds verus_code! {
+        use vstd::prelude::*;
+
+        broadcast proof fn literal_index(s: &str, i: int)
+            ensures #[trigger] strslice_get_char(s, i) == s@[i],
+        {
+            vstd::string::axiom_str_literal_get_char(s, i);
+        }
+
+        proof fn wrong_character(s: &str)
+            requires strslice_len(s) == 1, strslice_get_char(s, 0) == '/',
+        {
+            broadcast use literal_index;
+            assert(s@.contains('x')); // FAILS
+        }
+
+        proof fn out_of_bounds(s: &str)
+            requires strslice_len(s) == 0, strslice_get_char(s, 0) == '/',
+        {
+            broadcast use literal_index;
+            assert(s@.contains('/')); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }

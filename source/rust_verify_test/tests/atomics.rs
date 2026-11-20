@@ -117,7 +117,7 @@ test_verify_one_file_with_options! {
             });
             x
         }
-    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain an 'exec' loop")
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain an `exec` loop")
 }
 
 test_verify_one_file! {
@@ -305,7 +305,7 @@ test_verify_one_file! {
             #[verifier(atomic)]
             fn stuff();
         }
-    } => Err(err) => assert_vir_error_msg(err, "'atomic' not supported for trait functions")
+    } => Err(err) => assert_vir_error_msg(err, "`atomic` not supported for trait methods")
 }
 
 test_verify_one_file! {
@@ -320,7 +320,7 @@ test_verify_one_file! {
             #[verifier(atomic)]
             fn stuff();
         }
-    } => Err(err) => assert_vir_error_msg(err, "'atomic' not supported for trait functions")
+    } => Err(err) => assert_vir_error_msg(err, "`atomic` not supported for trait methods")
 }
 
 test_verify_one_file! {
@@ -329,7 +329,7 @@ test_verify_one_file! {
         fn stuff() {
             stuff();
         }
-    } => Err(err) => assert_vir_error_msg(err, "'atomic' cannot be used on a recursive function")
+    } => Err(err) => assert_vir_error_msg(err, "`atomic` cannot be used on a recursive function")
 }
 
 test_verify_one_file! {
@@ -343,7 +343,7 @@ test_verify_one_file! {
         fn stuff2() {
             stuff1();
         }
-    } => Err(err) => assert_vir_error_msg(err, "'atomic' cannot be used on a recursive function")
+    } => Err(err) => assert_vir_error_msg(err, "`atomic` cannot be used on a recursive function")
 }
 
 test_verify_one_file! {
@@ -358,8 +358,7 @@ test_verify_one_file! {
             });
         }
         pub fn call_do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<&AtomicInvariant<A, u8, B>>) {
-            let Tracked(credit) = create_open_invariant_credit();
-            proof { do_nothing(credit, i.get()); }
+            proof { do_nothing(create_open_invariant_credit(), i.get()); }
         }
     } => Ok(())
 }
@@ -376,8 +375,7 @@ test_verify_one_file! {
             });
         }
         pub fn call_do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<&LocalInvariant<A, u8, B>>) {
-            let Tracked(credit) = create_open_invariant_credit();
-            proof { do_nothing(credit, i.get()); }
+            proof { do_nothing(create_open_invariant_credit(), i.get()); }
         }
     } => Ok(())
 }
