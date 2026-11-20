@@ -248,7 +248,8 @@ fn datatypes_invs(
                         | TypX::Dyn(..)
                         | TypX::TypParam(_)
                         | TypX::Projection { .. }
-                        | TypX::PointeeMetadata(_) => {
+                        | TypX::PointeeMetadata(_)
+                        | TypX::ProjectionDeref(_) => {
                             roots.insert(container_name.clone());
                         }
                         TypX::Real => {}
