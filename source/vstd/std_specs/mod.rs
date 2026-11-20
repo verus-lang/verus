@@ -2,6 +2,7 @@
 pub mod alloc;
 
 pub mod array;
+pub mod ascii;
 pub mod atomic;
 pub mod bits;
 pub mod borrow;
