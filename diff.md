@@ -196,6 +196,8 @@ Out of this series:
 
 1. Arithmetic, endian and other proved lemmas (`div_mod.rs`, `power2.rs`, `endian.rs`,
    `wrapping.rs` `count_ones`, `utf8.rs`, `map.rs`, `resource/impls/map.rs`). Independent.
+   `endian.rs` includes `digit_to_int`, the workaround for the `CastToInteger` bug (main's #2908);
+   it can be removed once upstream fixes the bug (not urgent).
 2. `verus_verify_core` cfgs: `builtin` cfg rearrangement and the "Add cfg" list, `core_special_setup.rs`.
    Independent. Resolve the "match rustlib defs" TODO first.
 3. Shadow data (compiler). Original PR + proof support + soundness fixes as one PR, separate commits.

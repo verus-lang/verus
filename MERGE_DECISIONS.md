@@ -103,7 +103,9 @@ This is the only list of follow-ups; the sections below point here.
 9. Port `contrib/exec_spec/mem_contents.rs` to `TypedValue`, and un-ignore its 3 tests
    (`test_exec_spec_mem_contents`, `test_exec_spec_pptr_permissions`, `test_exec_spec_unverified_misc_forms`).
    The `MemContents` case in `builtin_macros/src/contrib/exec_spec.rs` is left as is.
-10. Port the 5 dropped iterator tests to main's API
+10. Port the iterator examples `examples/hillel.rs` and `examples/iterator-clients.rs` (commit 37cd71da7) to main's iterator API
+    (they use `zip_iterators`, `group_slice_axioms` and `option::axiom_spec_into_iter`; they fail in `examples.rs`).
+    Port the 5 dropped iterator tests to main's API
     (`map_`, `filter_`, `take_`, `skip_`, `iter_mut_can_be_implemented`; `git show HEAD:source/rust_verify_test/tests/iterators.rs`).
 11. Reconcile vstd's SliceIndex spec with rustlib's, and decide which parts of our design to add back
     (ours is described in `source/vstd/SOUNDNESS_AUDIT.md`).
