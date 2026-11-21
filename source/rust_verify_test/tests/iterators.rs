@@ -1744,3 +1744,82 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3587
+    // An impl that uses std's default `len` must not let callers learn `len() == exact_len()`,
+    // since the default `len` never sees `exact_len`.
+    #[test] exact_size_default_len_ignores_exact_len verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::{ExactSizeIteratorSpecImpl, IteratorSpecImpl};
+
+        pub struct One {
+            pub done: bool,
+        }
+
+        impl IteratorSpecImpl for One {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+                true
+            }
+
+            open spec fn remaining(&self) -> Seq<u8> {
+                if self.done { Seq::empty() } else { seq![1u8] }
+            }
+
+            open spec fn produces(&self) -> Seq<bool> {
+                if self.done { Seq::empty() } else { seq![true] }
+            }
+
+            open spec fn decrease(&self) -> Option<nat> {
+                Some(if self.done { 0 } else { 1 })
+            }
+
+            open spec fn peek(&self, index: int) -> Option<u8> {
+                None
+            }
+        }
+
+        impl Iterator for One {
+            type Item = u8;
+
+            fn next(&mut self) -> (ret: Option<u8>) {
+                if self.done {
+                    None
+                } else {
+                    self.done = true;
+                    Some(1)
+                }
+            }
+
+            fn size_hint(&self) -> (r: (usize, Option<usize>)) {
+                if self.done { (0, Some(0)) } else { (1, Some(1)) }
+            }
+        }
+
+        impl ExactSizeIteratorSpecImpl for One {
+            // Wrong: a fresh `One` has one item left.
+            open spec fn exact_len(&self) -> usize {
+                0
+            }
+        }
+
+        // No `len` here, so std's default `len` is used.
+        impl ExactSizeIterator for One {}
+
+        fn fresh_len_good() -> (n: usize)
+            ensures
+                n == 1,
+        {
+            let it = One { done: false };
+            it.len()
+        }
+
+        fn fresh_len_bad() -> (n: usize)
+            ensures
+                false, // FAILS
+        {
+            let it = One { done: false };
+            it.len()
+        }
+    } => Err(err) => assert_one_fails(err)
+}
