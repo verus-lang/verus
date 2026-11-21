@@ -615,7 +615,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::BorrowMut(_, _)
                     | ExprX::BorrowMutTracked(_)
                     | ExprX::TwoPhaseBorrowMut(_, _) => {
-                        let f = crate::fun!(CrateId::Vstd => "raw_ptr", "spec_ptr_addr");
+                        let f = crate::fun!(CrateId::Vstd => "raw_ptr"; "spec_ptr_addr");
                         reach_function(ctxt, state, &f);
                     }
                     _ => {}

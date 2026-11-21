@@ -24,7 +24,9 @@ As of 2026-11-20.
   `source/tools/build-expand-errors.sh` rebuilds and verifies it.
 
 **Next steps, in order**
-1. The user reviews this file, starting with the **[decision]** items:
+1. Review: the merge decisions (the conflict sections) were approved on 2026-11-20.
+   **Next: review the [build fixes](#build-fixes-auto-merged-code-that-no-longer-compiles-against-main) section.**
+   The approved **[decision]** items, for reference:
    - `extra_rets` in SST, for shadow-data returns.
    - `builtin/src/lib.rs` crate attributes.
    - `SpecItem::AtomicSpec` in `no_cheating.rs`'s header list.
@@ -771,9 +773,9 @@ The file itself stays deleted (`git rm`'d). `raw_ptr_popl.rs` (the unbuilt old c
   `fun!(CrateId::Vstd => "raw_ptr", "spec_ptr_addr")` → `fun!(CrateId::Vstd => "raw_ptr"; "spec_ptr_addr")`
   in `sst_util.rs`, `ast_to_sst.rs`, `prune.rs`.
 - `shadow_data.rs` **[follows the `extra_rets` decision]**:
-  - main removed `ParPurpose` / `ParX::purpose`: dropped from `add_to_pars`.
+  - main removed `ParPurpose` / `ParX::purpose`: dropped from the shadow parameter, now built by a new helper `shadow_par` (used by `add_to_pars`).
   - `add_to_pars(&mut functionx.ret)` (which appended the shadow of the return value to `ret`) →
-    `extra_rets = [shadow of outer_ret]`.
+    `extra_rets = [shadow_par(outer_ret)]`.
   - New error: `shadow_data not allowed for async functions` (async functions have different `outer_ret` / `inner_ret`, and shadow data was never used with them).
   - `ShadowFun::ret_typ` from `f.x.outer_ret` (was `f.x.ret`).
 - `modes.rs`:
@@ -792,6 +794,21 @@ The file itself stays deleted (`git rm`'d). `raw_ptr_popl.rs` (the unbuilt old c
   - **[decision]** `HeaderFinder::is_specification_header`: main replaced `SpecItem::OpensInvariants{None,Any,,Except,Set}` with `SpecItem::OpensInvariantMask`;
     I also added main's new `SpecItem::AtomicSpec`, since it is part of the function's signature too
     (so `--no-cheating` also scans references inside an `atomic_spec` header). Remove it if you'd rather not.
+    - Background: under `--no-cheating`, trusted code must be closed under references
+      (it may not reference an untrusted item in the same crate).
+      For a `#[verus::trusted(spec)]` function, only the signature is trusted, not the body,
+      so `RefChecker` scans its type signature plus the arguments of the header calls in its body that `is_specification_header` accepts
+      (`requires`, `ensures`, `opens_invariants`, ...), and skips everything else in the body.
+    - main's atomic functions (#2720) add an `atomic_spec(...)` header,
+      which Verus reads as part of the function's contract (`vir/src/headers.rs` stores it as the function's atomic update,
+      next to `requires` / `ensures`; `pre_header.rs` lists it with the other spec headers).
+    - With `AtomicSpec` in the list: a `trusted(spec)` function's `atomic_spec` is checked like its `requires` / `ensures`,
+      so it may only reference trusted items.
+      Without it: the `atomic_spec` is treated as body code and not checked,
+      so a trusted contract could depend on an untrusted spec function in the same crate, which is the gap `--no-cheating` exists to close.
+    - Risk of keeping it: an existing `trusted(spec)` atomic function whose `atomic_spec` references untrusted local items would now get an error.
+      Nothing does this today: no test combines the two (`logatom.rs` doesn't use `--no-cheating`, and the `no_cheating*.rs` tests have no atomic functions),
+      and references into vstd are always allowed.
 - `rust_verify/src/erase.rs` (`full_erasure_erases_call`) and `fn_call_to_vir.rs` (`uncompilable_verus_fn`): added our `VerusItem::MutRefPtr` next to `MutRefCurrent` / `MutRefFuture` (erased; uncompilable in exec code).
 - `vstd/raw_ptr.rs`: `git rm`'d (main's copy was left in the working tree next to our `raw_ptr/mod.rs`, which made `mod raw_ptr` ambiguous).
 - `vstd/std_specs/core.rs`: main renamed the file's macro alias `verus_` → `verus_skip_verusfmt`; renamed it in our two `verus_! { ... }` blocks (the `cfg(not(verus_verify_core))` Index block and the next one).
@@ -819,6 +836,8 @@ The file itself stays deleted (`git rm`'d). `raw_ptr_popl.rs` (the unbuilt old c
   `from_ptr_store`, `from_ptr_load`, `from_ptr_swap` (`external_body`, `verifier::atomic`) were written against the old `PointsTo`.
   Ported per `POINTS_TO_MIGRATION.md`, matching our `ptr_mut_write` / `ptr_mut_read`:
   - import `PTPhys`, `PTTypedValue` (for `ptr()` / `wf()`) next to `PointsTo`.
+  - `#[cfg(not(verus_verify_core))]` on the import, and added to the macro's two `target_has_atomic_primitive_alignment` cfgs,
+    so rustlib has no trusted specs on `PointsTo`.
   - `is_init()` → `is_valid()`.
   - **added `wf()`** (the old `PointsTo` had a type invariant; the new one needs it explicit):
     `requires old(perm).wf()` + `ensures final(perm).wf()` on `from_ptr_store` and `from_ptr_swap`; `requires perm.wf()` on `from_ptr_load`.

@@ -601,6 +601,7 @@ fn full_erasure_erases_call(verus_item: &VerusItem) -> bool {
         | VerusItem::HasResolvedUnsized
         | VerusItem::MutRefCurrent
         | VerusItem::MutRefFuture
+        | VerusItem::MutRefPtr
         | VerusItem::Final
         | VerusItem::AfterBorrow
         | VerusItem::MutRefTracked => true,

@@ -510,6 +510,7 @@ pub tracked enum TypedValue<T: ?Sized> {
     /// Represents initialized memory with the given value of type `T`.
     Valid(Tracked<T>),
 }
+// matches Valid(t) && t@ == ?
 
 impl<T: ?Sized> TypedValue<T> {
     /// Returns `true` if it is a [`TypedValue::Valid`] value.

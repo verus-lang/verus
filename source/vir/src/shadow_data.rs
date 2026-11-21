@@ -7,7 +7,7 @@ use crate::def::{Spanned, shadow_data_temp_var};
 use crate::messages::{Span, error};
 use crate::sst::{
     CallTarget, Dest, Exp, ExpX, FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FunctionSst, LocalDecl,
-    LocalDeclKind, LocalDeclX, Par, ParPurpose, ParX, PostConditionSst, Stm, StmX,
+    LocalDeclKind, LocalDeclX, Par, ParX, PostConditionSst, Stm, StmX,
 };
 use crate::sst_util::subst_typ;
 use crate::sst_visitor::{map_exp_visitor_result, map_stm_exp_visitor, map_stm_visitor};
@@ -213,16 +213,14 @@ fn shadow_data_stm(ctxt: &Ctxt, state: &mut State, stm: &Stm) -> Stm {
     }
 }
 
+fn shadow_par(p: &Par, span: &Span) -> Par {
+    let parx = ParX { name: shadow_name(&p.x.name), typ: shadow_typ(&p.x.typ), mode: Mode::Spec };
+    Spanned::new(span.clone(), parx)
+}
+
 fn add_to_pars(pars: &mut Vec<Par>, span: &Span) {
     for p in pars.clone().into_iter() {
-        let name = shadow_name(&p.x.name);
-        let parx = ParX {
-            name,
-            typ: shadow_typ(&p.x.typ),
-            mode: Mode::Spec,
-            purpose: ParPurpose::Regular,
-        };
-        pars.push(Spanned::new(span.clone(), parx.clone()));
+        pars.push(shadow_par(&p, span));
     }
 }
 
@@ -406,9 +404,14 @@ fn shadow_data_function(
     if !matches!(functionx.item_kind, crate::ast::ItemKind::Function) {
         return Err(error(&span, "shadow_data only allowed for functions, not const or static"));
     }
+    if functionx.attrs.is_async {
+        return Err(error(&span, "shadow_data not allowed for async functions"));
+    }
+    assert!(functionx.extra_rets.is_empty());
 
     add_to_pars(Arc::make_mut(&mut functionx.pars), &span);
-    add_to_pars(Arc::make_mut(&mut functionx.ret), &span);
+    // The shadow data of the return value is an extra return value
+    functionx.extra_rets = Arc::new(vec![shadow_par(&functionx.outer_ret, &span)]);
     shadow_data_fun_decl(shadow_funs.clone(), Arc::make_mut(&mut functionx.decl), &span)?;
 
     if let Some(exec_proof_check) = &mut functionx.exec_proof_check {
@@ -446,7 +449,7 @@ pub(crate) fn shadow_data_funs(
     let sig = |f: &crate::ast::Function| ShadowFun {
         typ_params: f.x.typ_params.clone(),
         par_typs: f.x.params.iter().map(|p| p.x.typ.clone()).collect(),
-        ret_typ: f.x.ret.x.typ.clone(),
+        ret_typ: f.x.outer_ret.x.typ.clone(),
     };
     let mut shadow_funs: HashMap<Fun, ShadowFun> = HashMap::new();
     for f in krate.functions.iter() {

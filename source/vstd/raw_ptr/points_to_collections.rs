@@ -9,8 +9,6 @@ use crate::vstd::group_vstd_default;
 use crate::vstd::layout::{self, *};
 use crate::vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
-use crate::vstd::set_lib::set_int_range;
-#[cfg(verus_keep_ghost)]
 use crate::vstd::type_representation::*;
 
 verus! {
@@ -77,12 +75,12 @@ impl PointsToRaw {
 
     /// Returns `true` if the domain of this permission is exactly the range `[start, start + len)`.
     pub open spec fn is_range(self, start: int, len: int) -> bool {
-        set_int_range(start, start + len) =~= self.dom()
+        Set::range(start, start + len) =~= self.dom()
     }
 
     /// Returns `true` if the domain of this permission contains the range `[start, start + len)`.
     pub open spec fn contains_range(self, start: int, len: int) -> bool {
-        set_int_range(start, start + len) <= self.dom()
+        Set::range(start, start + len) <= self.dom()
     }
 
     /// The contents of `[start, start + len)` as a sequence.
@@ -244,7 +242,7 @@ impl PointsToRaw {
                     &&& perms[i].wf_basic()
                 },
         ensures
-            m.dom() == set_int_range(start, start + perms.len()),
+            m.dom() == Set::range(start, start + perms.len()),
             forall|i: int| 0 <= i < perms.len() ==> m[start + i] == #[trigger] perms[i],
             forall|a: int| #[trigger]
                 m.dom().contains(a) ==> {
@@ -264,7 +262,7 @@ impl PointsToRaw {
             let tracked last = rest.tracked_pop();
             let tracked mut m = Self::map_from_seq(rest, start, provenance);
             m.tracked_insert(start + rest.len(), last);
-            assert(m.dom() =~= set_int_range(start, start + perms.len()));
+            assert(m.dom() =~= Set::range(start, start + perms.len()));
             assert forall|i: int| 0 <= i < perms.len() implies m[start + i]
                 == #[trigger] perms[i] by {
                 if i < rest.len() {
@@ -282,7 +280,7 @@ impl PointsToRaw {
         len: nat,
     ) -> (tracked perms: Seq<PointsToByte>)
         requires
-            set_int_range(start, start + len) <= m.dom(),
+            Set::range(start, start + len) <= m.dom(),
         ensures
             perms.len() == len,
             forall|i: int| 0 <= i < len ==> #[trigger] perms[i] == m[start + i],

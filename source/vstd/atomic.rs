@@ -11,7 +11,8 @@ use core::sync::atomic::{AtomicI64, AtomicU64};
 use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
-use super::raw_ptr::PointsTo;
+#[cfg(not(verus_verify_core))]
+use super::raw_ptr::{PTPhys, PTTypedValue, PointsTo};
 use super::view::*;
 use super::wrapping::*;
 
@@ -515,7 +516,7 @@ macro_rules! ptr_atomic_methods {
         // (`PointsTo::is_aligned`). `target_has_atomic_primitive_alignment` is
         // rustc's name for those two being equal at a given width, so define
         // these only where it holds.
-        #[cfg(target_has_atomic_primitive_alignment = $width)]
+        #[cfg(all(not(verus_verify_core), target_has_atomic_primitive_alignment = $width))]
         const _: () = assert!(
             core::mem::align_of::<$value_ty>() == core::mem::align_of::<$rust_ty>(),
             concat!(
@@ -528,7 +529,7 @@ macro_rules! ptr_atomic_methods {
             )
         );
 
-        #[cfg(target_has_atomic_primitive_alignment = $width)]
+        #[cfg(all(not(verus_verify_core), target_has_atomic_primitive_alignment = $width))]
         verus!{
     impl $at_ty {
         /// Store a value via a raw pointer using atomic store.
@@ -546,10 +547,12 @@ macro_rules! ptr_atomic_methods {
         pub fn from_ptr_store(ptr: *mut $value_ty, value: $value_ty, Tracked(perm): Tracked<&mut PointsTo<$value_ty>>)
             requires
                 old(perm).ptr() == ptr,
+                old(perm).wf(),
             ensures
                 value == final(perm).value(),
                 old(perm).ptr() == final(perm).ptr(),
-                final(perm).is_init(),
+                final(perm).is_valid(),
+                final(perm).wf(),
             opens_invariants none
             no_unwind
         {
@@ -563,7 +566,8 @@ macro_rules! ptr_atomic_methods {
         pub fn from_ptr_load(ptr: *mut $value_ty, perm: Tracked<&PointsTo<$value_ty>>) -> (ret: $value_ty)
             requires
                 perm.ptr() == ptr,
-                perm.is_init(),
+                perm.is_valid(),
+                perm.wf(),
             ensures
                 ret == perm.value(),
             opens_invariants none
@@ -582,12 +586,14 @@ macro_rules! ptr_atomic_methods {
         pub fn from_ptr_swap(ptr: *mut $value_ty, Tracked(perm): Tracked<&mut PointsTo<$value_ty>>, v: $value_ty) -> (ret: $value_ty)
             requires
                 ptr == old(perm).ptr(),
-                old(perm).is_init(),
+                old(perm).is_valid(),
+                old(perm).wf(),
             ensures
                 final(perm).value() == v,
-                final(perm).is_init(),
+                final(perm).is_valid(),
                 old(perm).value() == ret,
                 ptr == final(perm).ptr(),
+                final(perm).wf(),
             opens_invariants none
             no_unwind
         {

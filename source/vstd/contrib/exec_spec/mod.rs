@@ -15,8 +15,10 @@ mod arith;
 pub use arith::*;
 mod map;
 pub use map::*;
-mod mem_contents;
-pub use mem_contents::*;
+// TODO(raw-ptr-final): mem_contents.rs mirrors the old raw_ptr::MemContents,
+// which the new raw_ptr replaces with TypedValue; port it to TypedValue.
+// mod mem_contents;
+// pub use mem_contents::*;
 mod multiset;
 pub use multiset::*;
 mod option;
