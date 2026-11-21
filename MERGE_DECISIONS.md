@@ -107,7 +107,7 @@ This is the only list of follow-ups; the sections below point here.
    to the generated traits and blanket impl (see the SliceIndex section).
    Possible fix: copy `cfg` / `cfg_attr` attributes to the generated items.
 8. `Seq::tracked_add` is private on main; we made it `pub` (used by `raw_ptr/points_to_ops.rs`).
-   Check whether upstream would make it public.
+   No separate report: it goes in PR 6, and the reviewer can raise it there.
 
 **Later (candidates for `MERGE_TODO.md`, docs branch `verify-rustlib-refactor`)**
 

@@ -205,13 +205,16 @@ Out of this series:
    Includes `iter.rs`'s `cfg_attr(verus_verify_core, verifier::shadow_data)` on `Iterator::next`.
 4. `mut_ref_ptr` + mut ref permission fix (compiler). Independent of 3; both branch from main, in parallel.
    - Includes `spec_ptr_addr` in main's `raw_ptr.rs` (the compiler looks it up as `vstd::raw_ptr::spec_ptr_addr`; the new `raw_ptr` keeps that path).
-     The vstd API changes from "mut ref issues" (`cast_mut_ref_to_ptr` returning `Tracked<&mut T>`, etc.) go in 7, not here.
+     The vstd API changes from "mut ref issues" (`cast_mut_ref_to_ptr` returning `Tracked<&mut T>`, etc.) go in 8, not here
+     (they exist only in the new `raw_ptr/ptr_specs.rs`; main has no `cast_mut_ref_to_ptr`).
    - Whichever of 3/4 lands second rebases: both add a `UnaryOp` variant to the same match arms
      (`interpreter.rs`, `triggers.rs`, `triggers_auto.rs`), plus possibly adjacent items in `builtin`, `verus_items.rs`, `ast.rs`.
 PRs 1–7 can run in parallel.
 
 5. `Tracked`/`Ghost: ?Sized` (`builtin`) + `modes.rs`: `tracked_ref`, `TrivialOwnership` + impls, `tracked_from_spec`
    (the new axioms take `T: ?Sized`, so they need the `builtin` change).
+6 + 7 go out as **one PR**, with a commit for each (independent, no shared files; both are prerequisites of 8).
+   List its new axioms and trusted specs in the PR description.
 6. Tracked `Seq`, slice and `Option` operations:
    - `seq.rs`: `tracked_borrow_subrange(_mut)`, `tracked_split_borrow_mut` (`external_body`),
      `tracked_add_borrow(_mut)` (axioms), `tracked_skip`, `tracked_add` made `pub` (proved).
@@ -219,10 +222,12 @@ PRs 1–7 can run in parallel.
    - `option.rs`: `Option::tracked_mut_borrow` (axiom).
    - Dedupe against main's slice `tracked_borrow`/`tracked_borrow_mut` (`tracked_slice_index` ≈ `tracked_borrow`).
    - Not here: `slice.rs` cfgs (→ 2); `slice_index_get`'s commented-out diagnostic item and `const` (from the shadow data commit; check why).
-7. Other vstd specs and axioms (none depend on raw_ptr). Independent.
+7. Other vstd specs and axioms (none depend on raw_ptr). Same PR as 6.
    - `layout.rs` ("Layout axioms" above): `layout_for_val_is_valid` takes `&V` (no users in vstd),
      `layout_of_sized`, `layout_of_str`'s size, the pointer-metadata axiom
      (the last two axioms are used by `type_representation.rs`, in 9).
+     `layout_of_str`'s size uses `spec_bytes()`, which exists only under `not(verus_verify_core)`,
+     so this PR also takes `layout_of_str`'s core/non-core split and the cfg'd `StringSliceAdditionalSpecFns` import (not PR 2).
    - `control_flow.rs`: `spec_from_from_spec` (axiom via `admit()`).
    - `std_specs/core.rs`: `ExThin` (used by `raw_ptr/ptr_specs.rs`, in 8).
 8. Raw pointer overhaul, as one PR with two commits so tests never break (squash-merged, so commit 1 needn't build alone). After 3, 4, 5, 6, 7.
