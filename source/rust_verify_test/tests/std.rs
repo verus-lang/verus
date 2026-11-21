@@ -2459,7 +2459,7 @@ test_verify_one_file! {
             let r = m.write(5);
             assert(*r == 5);
             *r = 7;
-            assert(m.mem_contents().is_init());
+            assert(m.mem_contents().is_valid());
             assert(m.mem_contents().value() == 7);
             let v = unsafe { m.assume_init() };
             assert(v == 7);
@@ -2520,7 +2520,7 @@ test_verify_one_file! {
 
         fn test_generic<T>(a: [MaybeUninit<T>; 2])
             requires
-                forall|i: int| #![auto] 0 <= i < 2 ==> a@[i].mem_contents().is_init(),
+                forall|i: int| #![auto] 0 <= i < 2 ==> a@[i].mem_contents().is_valid(),
         {
             let r = unsafe { MaybeUninit::array_assume_init(a) };
             assert(r@[0] == a@[0].mem_contents().value());

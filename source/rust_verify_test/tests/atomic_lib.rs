@@ -1062,10 +1062,11 @@ test_verify_one_file! {
         fn test(ptr: *mut u64, Tracked(perm): Tracked<&mut PointsTo<u64>>)
             requires
                 old(perm).ptr() == ptr,
-                old(perm).is_init(),
+                old(perm).is_valid(),
+                old(perm).wf(),
         {
             PAtomicU64::from_ptr_store(ptr, 5, Tracked(perm));
-            assert(perm.is_init());
+            assert(perm.is_valid());
             assert(perm.value() == 5);
 
             let l = PAtomicU64::from_ptr_load(ptr, Tracked(&*perm));
@@ -1073,7 +1074,7 @@ test_verify_one_file! {
 
             let prev = PAtomicU64::from_ptr_swap(ptr, Tracked(perm), 9);
             assert(prev == 5);
-            assert(perm.is_init());
+            assert(perm.is_valid());
             assert(perm.value() == 9);
         }
     } => Ok(())
@@ -1088,7 +1089,8 @@ test_verify_one_file! {
         fn test(ptr: *mut u64, Tracked(perm): Tracked<&mut PointsTo<u64>>)
             requires
                 old(perm).ptr() == ptr,
-                old(perm).is_uninit(),
+                old(perm).is_empty(),
+                old(perm).wf(),
         {
             PAtomicU64::from_ptr_store(ptr, 3, Tracked(perm));
             let prev = PAtomicU64::from_ptr_swap(ptr, Tracked(perm), 4);
@@ -1105,14 +1107,15 @@ test_verify_one_file! {
         fn test(ptr: *mut u64, Tracked(perm): Tracked<&mut PointsTo<u64>>) -> (ret: u64)
             requires
                 old(perm).ptr() == ptr,
-                old(perm).is_uninit(),
+                old(perm).is_empty(),
+                old(perm).wf(),
         {
             PAtomicU64::from_ptr_swap(ptr, Tracked(perm), 7) // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
 
-// Without is_init() on the result of a swap, two swaps over uninitialized
+// Without is_valid() on the result of a swap, two swaps over uninitialized
 // memory would report the same unknown value and this would verify.
 test_verify_one_file! {
     #[test] test_from_ptr_swap_uninit_agree PTR_ATOMIC_IMPORTS.to_string() + verus_code_str! {
@@ -1127,8 +1130,10 @@ test_verify_one_file! {
             requires
                 old(perm1).ptr() == p1,
                 old(perm2).ptr() == p2,
-                old(perm1).is_uninit(),
-                old(perm2).is_uninit(),
+                old(perm1).is_empty(),
+                old(perm2).is_empty(),
+                old(perm1).wf(),
+                old(perm2).wf(),
             ensures
                 ret.0 == ret.1,
         {

@@ -430,14 +430,14 @@ test_verify_one_file! {
         fn derive_false(p: *mut u32, Tracked(pt): Tracked<PointsTo<u32>>)
             requires
                 pt.ptr() == p,
-                pt.is_init(),
+                pt.is_valid(),
+                pt.wf(),
         {
             let tracked mut pt = pt;
-            let sr: SharedReference<'static, u32> = ptr_ref2(p, Tracked(&pt));
-            let tracked alias: &'static PointsTo<u32> = sr.points_to();
-            proof {
-                pt.is_disjoint(alias);
-            }
+            let alias: &'static u32 = ptr_ref(p, Tracked(&pt));
+            let v = *alias;
+            ptr_mut_write(p, Tracked(&mut pt), v + 1);
+            assert(*alias == v);
             assert(false);
         }
     } => Err(err) => assert_rust_error_msgs(err, &[
