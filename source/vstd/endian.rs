@@ -1105,9 +1105,17 @@ impl<B: Base> EndianNat<B> {
 
 /***** Functions involving both little and big endian *****/
 
+/// The value of a digit `d` as an `int`.
+// Used in closures instead of `d as int`:
+// since #2908, a closure returning `d as int` for a generic `d` loses the fact that the result is an `int`
+// (TODO: remove once fixed upstream).
+pub open spec fn digit_to_int<B: Integer>(d: B) -> int {
+    d as int
+}
+
 /// Converts a sequence of digits in base `B` in default endianness ([`endianness()`]) to an `EndianNat` in base `B`.
 pub open spec fn to_endian_from_digits<B>(n: Seq<B>) -> EndianNat<B> where B: Base + Integer {
-    EndianNat::<B>::new(endianness(), n.map(|i, d| d as int))
+    EndianNat::<B>::new(endianness(), n.map(|i, d| digit_to_int(d)))
 }
 
 /// Converts a sequence of digits in base `B` in default endianness ([`endianness()`]) to an `EndianNat` in the larger base `BIG`.
@@ -1115,7 +1123,7 @@ pub open spec fn to_big_from_digits<BIG, B>(n: Seq<B>) -> EndianNat<BIG> where
     BIG: BasePow2,
     B: CompatibleSmallerBaseFor<BIG> + Integer,
  {
-    EndianNat::<B>::to_big::<BIG>(EndianNat::<B>::new(endianness(), n.map(|i, d| d as int)))
+    EndianNat::<B>::to_big::<BIG>(EndianNat::<B>::new(endianness(), n.map(|i, d| digit_to_int(d))))
 }
 
 pub proof fn to_big_from_digits_single<BIG, B>(n: Seq<B>) where
@@ -1123,7 +1131,7 @@ pub proof fn to_big_from_digits_single<BIG, B>(n: Seq<B>) where
     B: CompatibleSmallerBaseFor<BIG> + Integer,
 
     requires
-        EndianNat::<B>::in_bounds(n.map(|i, d| d as int)),
+        EndianNat::<B>::in_bounds(n.map(|i, d| digit_to_int(d))),
         n.len() == EndianNat::<B>::exp::<BIG>(),
         n.len() > 0,
     ensures

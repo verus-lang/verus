@@ -573,7 +573,7 @@ proof fn lemma_bytes_to_endian_digits<B: DecodesToNat>(bytes: Seq<AbstractByte>,
             ),
     ensures
         AbstractByte::all_init(bytes),
-        EndianNat::<B>::in_bounds(digits.map(|i, d| d as int)),
+        EndianNat::<B>::in_bounds(digits.map(|i, d| digit_to_int(d))),
         bytes_to_endian(bytes).to_nat() == to_endian_from_digits(digits).to_nat(),
     decreases digits.len(),
 {

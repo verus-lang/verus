@@ -47,15 +47,21 @@ This is the only list of follow-ups; the sections below point here.
 
 **Verification failures (fix in commits on this branch)**
 
-1. `CastToInteger` closure bug from main's #2908: 4 vstd failures, also in `test_is_core`
+1. **[done: vstd workaround]** `CastToInteger` bug from main's #2908: 4 vstd failures, also in `test_is_core`
    (details in [vstd verification status](#vstd-verification-status-at-the-merge-commit-5-failures-to-fix-in-follow-up-commits)).
-   Fix in `vir/src/poly.rs` or work around it in vstd; report it upstream either way.
-   Repro:
-   `proof fn f<B: Integer>(s: Seq<B>) { assert(s.map(|i, d: B| d as int).len() == s.len()); }` fails;
-   `(d as int) + 0` verifies.
-2. Flaky `GhostSubseq::agree_map` (`resource/impls/seq.rs:243`, main's code).
-   Fails in the vstd build but not in `test_is_core`.
-   Likely perturbed by our `raw_ptr::group_points_to_lemmas` in `group_vstd_default`.
+   Not limited to closures: any `d as int` (generic `d: B`) used as a boxed `int` loses its `int` facts.
+   Repro (`B: Integer`): `assert(s.map(|i, d: B| d as int).len() == s.len())` fails,
+   and so do `let t = s.push(d as int); assert(t.len() == s.len() + 1)` and `assert(t.last() == d as int)` (`s: Seq<int>`);
+   `(d as int) + 0` and `Some(d as int)` verify.
+   Workaround: new `pub open spec fn digit_to_int<B: Integer>(d: B) -> int { d as int }` in `endian.rs`,
+   called in the 4 closures instead of `d as int`
+   (`to_endian_from_digits`, `to_big_from_digits`, `to_big_from_digits_single`'s requires, `lemma_bytes_to_endian_digits`' ensures).
+   main's `poly.rs` is unchanged. Report upstream (item 6).
+2. **[done]** Flaky `GhostSubseq::agree_map` (`resource/impls/seq.rs:243`, main's code).
+   Fixed in the proof: the `assert forall` now states the postcondition itself
+   (`self@.len()`, `self.off()`, `self@[i]`) and asserts `self@[i] == self.frac@[self.off + i]`,
+   so it no longer depends on Z3 unfolding `view`'s `Seq::new`.
+   Upstream could take the same change.
 3. `test_is_core`: core-only failure at `std_specs/iter.rs:1349`,
    main's `exists |m: &mut I| (I::next).ensures((m,), ret) && ...`,
    with our `#[cfg_attr(verus_verify_core, verifier::shadow_data)]` on `Iterator::next`.
@@ -72,7 +78,7 @@ This is the only list of follow-ups; the sections below point here.
 
 4. Run all of `rust_verify_test`. So far only `test_is_core` has been run:
    `vargo test --release --vstd-no-verify -p rust_verify_test --test core_special_setup`
-   (`--vstd-no-verify` because vstd verification fails until items 1 and 2 are fixed).
+   (`--vstd-no-verify` was needed while items 1 and 2 failed; vstd verifies now).
 5. Build rustlib against the merged vstd, and port it:
    - main's iterator API: `will_return_none` / `initial_value_relation` → `produces`,
      in `core/src/str/validations.rs`, `alloc/src/vec/into_iter.rs` and `alloc/src/collections/linked_list.rs`.
@@ -82,7 +88,7 @@ This is the only list of follow-ups; the sections below point here.
 
 **Upstream reports**
 
-6. `CastToInteger` (item 1).
+6. `CastToInteger` (item 1), with the `s.push(d as int)` repro; once fixed, `digit_to_int` can go.
 7. `external_trait_extension` (`builtin_macros/src/syntax_trait.rs`) doesn't copy the trait's `cfg` attributes
    to the generated traits and blanket impl (see the SliceIndex section).
    Possible fix: copy `cfg` / `cfg_attr` attributes to the generated items.
