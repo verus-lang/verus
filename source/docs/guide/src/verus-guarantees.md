@@ -9,7 +9,7 @@ verification.
 
 For code that *has* opted into verification, a successful Verus verification promises:
 1. The code is memory safe and free of [undefined behavior (UB)](https://doc.rust-lang.org/reference/behavior-considered-undefined.html).
-2. The code is panic free.
+2. The code is panic free, modulo resource exhaustion (see below).
 3. The code is correct, in the sense that it meets its specification.
 
 Note that the last guarantee is only as strong as the specification itself.  A weak spec may not provide
@@ -21,7 +21,9 @@ Equally important are the properties that Verus does not guarantee, even when it
 1. Verus does not verify the performance of the code, so it can still be horribly slow.
 2. Verus does not verify the absence of resource exhaustion,
    so your program might still run out of memory or stack space,
-   and Verus does not provide guarantees about what happens after that point.
+   but even then, Verus ensures exception safety: Verus verifies code 
+   defensively against unwinding panics that might result from out-of-memory conditions 
+   or from unverified code.
 3. While Verus enforces termination of specification and proof code
    (since this is crucial for soundness), Verus does not verify
    that your executable code will terminate.  While Verus verifies 
