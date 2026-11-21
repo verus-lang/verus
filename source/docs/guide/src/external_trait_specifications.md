@@ -125,4 +125,8 @@ to say that `obeys_eq_spec()` is true.
  * When using `external_trait_extension`, the two names (`SpecTrait` and `SpecImplTrait`)
    become real trait names; `SpecTrait` can be used in bounds and `SpecImplTrait` can be
    used in `impl` blocks.
+ * An impl of `SpecImplTrait` supplies specifications for the matching impl of the external trait.
+   If that matching impl is not verified (e.g. it is written outside `verus!` or marked
+   `#[verifier::external]`), the impl of `SpecImplTrait` is a trusted assumption and must be marked
+   with [`#[verifier::assume_external_impl]`](./reference-attributes.md#verifierassume_external_impl).
 

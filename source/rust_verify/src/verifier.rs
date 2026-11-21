@@ -2081,6 +2081,12 @@ impl Verifier {
             self.args.report_long_running,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
+        let exempt_crate = match self.args.vstd {
+            // vstd's own specs for std are trusted
+            crate::config::Vstd::IsVstd | crate::config::Vstd::IsCore => self.crate_id.as_ref(),
+            _ => None,
+        };
+        vir::traits::check_assume_external_impls(&krate, exempt_crate)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
         if self.args.log_all || self.args.log_args.log_vir_simple {

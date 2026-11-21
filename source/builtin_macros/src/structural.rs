@@ -47,6 +47,9 @@ pub fn derive_structural_eq(mut s: synstructure::Structure) -> proc_macro2::Toke
     let tokens2 = quote_spanned_builtin_vstd! { builtin, vstd, s.ast().span() =>
         #[automatically_derived]
         #[allow(non_local_definitions)]
+        // The PartialEq impl is typically derived (and therefore not verified),
+        // so StructuralEq trusts it to coincide with ==
+        #[verifier::assume_external_impl]
         impl #vstd::std_specs::cmp::PartialEqSpecImpl for #name {
             #[verus::internal(spec)]
             #[verus::internal(open)]

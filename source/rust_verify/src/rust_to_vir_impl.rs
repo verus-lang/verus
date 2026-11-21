@@ -85,6 +85,7 @@ fn trait_impl_to_vir<'tcx>(
     module_path: Path,
     auto_imported: bool,
     external_trait_blanket: bool,
+    assume_external_impl: bool,
     is_unsafe: bool,
 ) -> Result<Option<(Path, Typs, TraitImpl)>, VirErr> {
     let trait_polarity = ctxt.tcx.impl_polarity(impl_def_id);
@@ -133,6 +134,11 @@ fn trait_impl_to_vir<'tcx>(
     let mut trait_path = ctxt.def_id_to_vir_path(trait_did);
     if let Some(spec) = external_info.external_trait_extension_impl_map.get(&trait_path) {
         trait_path = spec.clone();
+    } else if assume_external_impl {
+        return err_span(
+            span,
+            "#[verifier::assume_external_impl] is only allowed on impls of external trait extensions (e.g. PartialEqSpecImpl)",
+        );
     }
     let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_no_polarity(
         ctxt.tcx,
@@ -153,6 +159,7 @@ fn trait_impl_to_vir<'tcx>(
         owning_module: Some(module_path),
         auto_imported,
         external_trait_blanket,
+        assume_external_impl,
         is_unsafe: is_unsafe,
     };
     let trait_impl = ctxt.spanned_new(span, trait_impl);
@@ -575,6 +582,7 @@ pub(crate) fn translate_impl<'tcx>(
                 module_path.clone(),
                 false,
                 vattrs.external_trait_blanket,
+                vattrs.assume_external_impl,
                 *safety != Safety::Safe,
             )
             .map_err(|e| vec![e])?
@@ -922,6 +930,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             module_path,
             true,
             false,
+            false,
             tcx.trait_def(trait_ref.def_id()).safety != Safety::Safe,
         );
         if let Ok(Some((trait_path, trait_typ_args, trait_impl))) = t_impl_opt {
@@ -1064,6 +1073,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             None,
             external_info,
             module_path,
+            false,
             false,
             false,
             tcx.trait_def(trait_did).safety != Safety::Safe,

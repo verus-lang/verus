@@ -2300,6 +2300,13 @@ fn check_all_but_functions(
         }
     }
     for tr_impl in krate.trait_impls.iter() {
+        if tr_impl.x.assume_external_impl && ctxt.no_cheating {
+            let msg = error(
+                &tr_impl.span,
+                "`#[verifier::assume_external_impl]` not allowed with `--no-cheating`",
+            );
+            emit.emit_deferred_err(msg);
+        }
         for typ in tr_impl.x.trait_typ_args.iter() {
             if let Err(e) = check_typ(&ctxt, typ, &tr_impl.span, &mut emit) {
                 errors.push(e);

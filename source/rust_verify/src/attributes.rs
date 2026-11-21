@@ -365,6 +365,10 @@ pub(crate) enum Attr {
     // Mark the blanket trait impl for the external_type_specification trait
     // (needed so that trait_conflicts.rs knows to ignore it.)
     ExternalTraitBlanket,
+    // On an impl of an external_trait_extension TSpecImpl trait whose matching impl of T
+    // is not verified (e.g. written outside verus! or marked external):
+    // explicitly mark that the TSpecImpl impl assumes the unverified impl satisfies T's specs
+    AssumeExternalImpl,
     // Any auto-derives for this type should be treated external
     ExternalAutoDerives(Option<std::collections::HashSet<String>>),
     // Marks a variable that's spec or ghost mode in exec code
@@ -730,6 +734,9 @@ pub(crate) fn parse_attrs(
                     ),
                 ) if arg == "external_trait_extension" && via == "via" => {
                     v.push(Attr::ExternalTraitExtension(s.clone(), i.clone()))
+                }
+                AttrTree::Fun(_, arg, None) if arg == "assume_external_impl" => {
+                    v.push(Attr::AssumeExternalImpl)
                 }
                 AttrTree::Fun(_, arg, Some([AttrTree::PathSegments(segments)]))
                     if arg == "external_trait_private_bound" =>
@@ -1355,6 +1362,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external_trait_specification: Option<String>,
     pub(crate) external_trait_extension: Option<(String, String)>,
     pub(crate) external_trait_blanket: bool,
+    pub(crate) assume_external_impl: bool,
     pub(crate) external_trait_private_bounds: Vec<Vec<String>>,
     pub(crate) unwrapped_binding: bool,
     pub(crate) sets_mode: bool,
@@ -1471,6 +1479,9 @@ pub(crate) fn get_external_attrs(
             Attr::ItemBroadcastUse => es.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
             Attr::Trust(..) => {}
+            // Emitted by derive(StructuralEq) even when the derived item is outside verus!,
+            // so don't warn when Verus ignores the item
+            Attr::AssumeExternalImpl => {}
             Attr::ExternalAutoDerives(None) => {
                 es.external_auto_derives = AutoDerivesAttr::AllExternal
             }
@@ -1559,6 +1570,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         external_trait_specification: None,
         external_trait_extension: None,
         external_trait_blanket: false,
+        assume_external_impl: false,
         external_trait_private_bounds: vec![],
         unwrapped_binding: false,
         sets_mode: false,
@@ -1595,6 +1607,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             }
             Attr::ExternalTraitExtension(s, i) => vs.external_trait_extension = Some((s, i)),
             Attr::ExternalTraitBlanket => vs.external_trait_blanket = true,
+            Attr::AssumeExternalImpl => vs.assume_external_impl = true,
             Attr::ExternalTraitPrivateBound(bound) => {
                 vs.external_trait_private_bounds.push(bound.clone());
             }

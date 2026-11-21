@@ -778,6 +778,7 @@ test_verify_one_file! {
         trait Ex {
             type ExternalTraitSpecificationFor: T;
         }
+        #[verifier::assume_external_impl]
         impl TSpecImpl for u32 {
         }
 
@@ -812,6 +813,7 @@ test_verify_one_file! {
         trait Ex {
             type ExternalTraitSpecificationFor: T;
         }
+        #[verifier::assume_external_impl]
         impl TSpecImpl for u32 {
         }
 
@@ -911,12 +913,14 @@ test_verify_one_file! {
             spec fn s(&self) -> bool;
         }
 
+        #[verifier::assume_external_impl]
         impl<A> TSpecImpl<A> for A {
             spec fn s(&self) -> bool {
                 false
             }
         }
 
+        #[verifier::assume_external_impl]
         impl<A> TSpecImpl<A> for Ghost<A> {
             spec fn s(&self) -> bool {
                 false

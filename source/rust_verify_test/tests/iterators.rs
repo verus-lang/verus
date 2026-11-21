@@ -1305,6 +1305,7 @@ test_verify_one_file_with_options! {
         use vstd::std_specs::iter::StepSpecImpl;
 
         // A StepSpecImpl does not prove anything about the executable Step methods.
+        #[verifier::assume_external_impl]
         impl StepSpecImpl for S {
             open spec fn spec_is_lt(self, other: Self) -> bool { self.0 < other.0 }
             open spec fn spec_steps_between(self, end: Self) -> Option<usize> { Some(1) }
