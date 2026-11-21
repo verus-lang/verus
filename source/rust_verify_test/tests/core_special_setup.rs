@@ -3,6 +3,75 @@
 mod common;
 use common::*;
 
+#[test]
+fn test_import_spec_impl_from_is_core() {
+    let dir = tempfile::tempdir().unwrap();
+    let builtin = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../builtin/src/lib.rs");
+    let library = dir.path().join("embedded.rs");
+    let consumer = dir.path().join("consumer.rs");
+    let rlib = dir.path().join("libembedded.rlib");
+    let vir = dir.path().join("embedded.vir");
+    std::fs::write(
+        &library,
+        format!(
+            "#![feature(fn_traits)]\n#[verifier::external]\n#[path = {:?}]\npub mod verus_builtin;\n{}",
+            builtin.to_str().unwrap(),
+            code_str! {
+                use verus_builtin_macros::verus;
+                verus! {
+                    #[verifier::external]
+                    pub trait T { fn f() -> bool; }
+
+                    #[verifier::external]
+                    impl T for u8 { fn f() -> bool { true } }
+
+                    #[verifier::external_trait_specification]
+                    #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+                    pub trait Ex {
+                        type ExternalTraitSpecificationFor: T;
+                        fn f() -> (r: bool) ensures r == Self::s();
+                        spec fn s() -> bool;
+                    }
+
+                    // --is-core permits trusted specs without an assumption marker.
+                    impl TSpecImpl for u8 { open spec fn s() -> bool { true } }
+                }
+            },
+        ),
+    )
+    .unwrap();
+    let run = run_verus_with_crate_args(
+        &["--is-core", "--crate-name=embedded"],
+        dir.path(),
+        &library,
+        true,
+        false,
+        &CrateArgs { deps: vec![], export: Some((rlib.clone(), vir.clone())) },
+    );
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+
+    std::fs::write(
+        &consumer,
+        code_str! {
+            use embedded::T;
+            // Avoid macro paths into the real core: this test embeds builtin in a
+            // regular library to exercise stdlib verification without rebuilding core.
+            #[verus::internal(verus_macro)]
+            fn test() -> bool { <u8 as T>::f() }
+        },
+    )
+    .unwrap();
+    let run = run_verus_with_crate_args(
+        &["--is-stdlib-outside-of-core"],
+        dir.path(),
+        &consumer,
+        true,
+        false,
+        &CrateArgs { deps: vec![("embedded".to_string(), rlib, vir)], export: None },
+    );
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+}
+
 test_verify_one_file_with_options! {
     #[test] test_is_core ["--is-core", "no-auto-import-verus_builtin"] => code! {
         #![allow(unused_parens)]

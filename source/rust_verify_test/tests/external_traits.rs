@@ -3,6 +3,31 @@
 mod common;
 use common::*;
 
+test_verify_crates! {
+    #[test] local_spec_impl_for_imported_external_impl [
+        "a" => code! {
+            use vstd::prelude::*;
+            pub trait T { fn f() -> bool; }
+            verus! { pub struct S; }
+            impl T for S { fn f() -> bool { true } }
+        },
+        "b" => verus_code! {
+            use a::{S, T};
+
+            #[verifier::external_trait_specification]
+            #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+            pub trait Ex {
+                type ExternalTraitSpecificationFor: T;
+                fn f() -> (r: bool) ensures r == Self::s();
+                spec fn s() -> bool;
+            }
+
+            // The extension is local even though the executable impl is imported.
+            impl TSpecImpl for S { open spec fn s() -> bool { true } }
+        },
+    ] => Err(err) => assert_vir_error_msg(err, "mark this impl with #[verifier::assume_external_impl]")
+}
+
 test_verify_one_file! {
     #[test] external_trait_supertrait_associated_type verus_code! {
         #[verifier::external]

@@ -396,7 +396,7 @@ pub fn run_verus_with_crate_args(
 
     let mut verus_args = Vec::new();
     let mut no_external_by_default = false;
-    let mut is_core = false;
+    let mut builtin_in_core = false;
     let mut use_internal_test_mode = true;
     let mut crate_name = "test_crate";
 
@@ -462,7 +462,10 @@ pub fn run_verus_with_crate_args(
             verus_args.push(log_dir.to_string());
         } else if *option == "--is-core" {
             verus_args.push("--is-core".to_string());
-            is_core = true;
+            builtin_in_core = true;
+        } else if *option == "--is-stdlib-outside-of-core" {
+            verus_args.push("--is-stdlib-outside-of-core".to_string());
+            builtin_in_core = true;
         } else if *option == "--disable-internal-test-mode" {
             use_internal_test_mode = false;
         } else if *option == "no-bv-simplify" {
@@ -503,7 +506,7 @@ pub fn run_verus_with_crate_args(
         ]
         .into_iter(),
     );
-    if !is_core {
+    if !builtin_in_core {
         verus_args.extend(
             vec!["--extern".to_string(), format!("verus_builtin={lib_builtin_path}")].into_iter(),
         );
@@ -561,7 +564,7 @@ pub fn run_verus_with_crate_args(
 
     verus_args.push(entry_file.to_str().unwrap().to_string());
 
-    if import_vstd && !is_core && use_internal_test_mode {
+    if import_vstd && !builtin_in_core && use_internal_test_mode {
         let lib_vstd_vir_path = verus_target_path.join("vstd.vir");
         let lib_vstd_vir_path = lib_vstd_vir_path.to_str().unwrap();
         let lib_vstd_path = verus_target_path.join("libvstd.rlib");

@@ -1776,14 +1776,10 @@ pub(crate) fn find_trait_impl_from_extension(
 /// so the impl of TSpecImpl is an assumption and must be marked as such
 /// with #[verifier::assume_external_impl].
 ///
-/// vstd's impls of TSpecImpl for std types are trusted specifications of std,
-/// so vstd is exempt from this check.
-/// If exempt_crate is Some, impls in that crate are also exempt
-/// (used when verifying vstd itself, including with --is-core).
-pub fn check_assume_external_impls(
-    krate: &Krate,
-    exempt_crate: Option<&crate::ast::CrateId>,
-) -> Result<(), VirErr> {
+/// Only check impls written in the current crate. Imported impls were checked when
+/// their defining crate was verified, which may have been exempt as vstd or --is-core.
+/// The caller skips this check when verifying vstd itself, including with --is-core.
+pub fn check_assume_external_impls(krate: &Krate, current_crate: &CrateId) -> Result<(), VirErr> {
     let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
     for t in krate.traits.iter() {
         if let Some((extension, _)) = &t.x.external_trait_extension {
@@ -1793,15 +1789,10 @@ pub fn check_assume_external_impls(
     let trait_impl_map: HashMap<Path, TraitImpl> =
         krate.trait_impls.iter().map(|ti| (ti.x.impl_path.clone(), ti.clone())).collect();
     for trait_impl in krate.trait_impls.iter() {
-        if trait_impl.x.external_trait_blanket {
+        if &trait_impl.x.impl_path.krate != current_crate || trait_impl.x.external_trait_blanket {
             continue;
         }
         let Some(t) = extension_to_trait.get(&trait_impl.x.trait_path) else { continue };
-        if trait_impl.x.impl_path.is_vstd_path()
-            || Some(&trait_impl.x.impl_path.krate) == exempt_crate
-        {
-            continue;
-        }
         // (if there is no matching impl, the error is reported elsewhere; see Ctx::new)
         if let Ok(origin) = find_trait_impl_from_extension(trait_impl, &trait_impl_map, t) {
             check_assume_external_impl(trait_impl, &origin, t)?;
