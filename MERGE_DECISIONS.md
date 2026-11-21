@@ -62,17 +62,20 @@ This is the only list of follow-ups; the sections below point here.
    (`self@.len()`, `self.off()`, `self@[i]`) and asserts `self@[i] == self.frac@[self.off + i]`,
    so it no longer depends on Z3 unfolding `view`'s `Seq::new`.
    Upstream could take the same change.
-3. `test_is_core`: core-only failure at `std_specs/iter.rs:1349`,
+3. **[done]** `test_is_core`: core-only failure at `std_specs/iter.rs:1349`,
    main's `exists |m: &mut I| (I::next).ensures((m,), ret) && ...`,
    with our `#[cfg_attr(verus_verify_core, verifier::shadow_data)]` on `Iterator::next`.
-   Hypothesis (untested): in `sst_util.rs` `sst_call_requires` / `sst_call_ensures`,
-   the tuple *type* is built from all of `func.x.pars` (including shadow parameters),
-   but the argument tuple from only the first `n_orig_params` arguments.
-   `sst_to_air.rs` skips the generic requires when there are extra parameters (`no_extra_parameters`), but not the generic ensures,
-   so a call to a `shadow_data` function assumes `call_ensures` at the wrong tuple type,
-   which doesn't match `(I::next).ensures((m,), ret)`.
-   Possible fix (shadow-data work, not the merge): build the tuple type from the first `n_orig_params` parameters,
-   for both requires and ensures (then the `no_extra_parameters` guard may be unnecessary).
+   Cause (a bug in our shadow-data code that main's new spec exposed): in `sst_util.rs` `sst_call_requires` / `sst_call_ensures`,
+   the tuple *type* was built from all of `func.x.pars` (including shadow parameters),
+   but the argument tuple from only the first `n_orig_params` arguments,
+   so a call to a `shadow_data` function assumed `call_ensures` at the wrong tuple type.
+   Fix: build the tuple type from the first `n_orig_params` parameters too, in both functions.
+   Kept the `no_extra_parameters` guard on the generic requires in `sst_to_air.rs`:
+   the `call_requires` / `call_ensures` axioms are disabled for functions with extra parameters (`sst_to_air_func.rs`),
+   so without the guard a caller could meet the precondition with an unrelated `call_requires`.
+   New test `shadow_data.rs` `test_call_ensures_after_call` (`let r = f(a); assert(call_ensures(f, (a,), r))`);
+   without the fix, Verus panics on it (`sst_to_air.rs:516`, the 2-tuple type is undeclared).
+   `test_is_core` and all `shadow_data.rs` tests pass.
 
 **Testing**
 

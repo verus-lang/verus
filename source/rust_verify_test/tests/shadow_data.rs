@@ -226,6 +226,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_call_ensures_after_call verus_code! {
+        #[verifier::shadow_data]
+        fn f(a: &bool) -> (r: bool)
+            ensures
+                r,
+        {
+            true
+        }
+        fn test(a: &bool) {
+            let r = f(a);
+            // call_ensures is over the original parameters only, not the shadow ones
+            assert(call_ensures(f, (a,), r));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_option verus_code! {
         use vstd::prelude::*;
 
