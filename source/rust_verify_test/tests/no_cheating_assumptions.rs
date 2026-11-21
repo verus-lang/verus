@@ -30,7 +30,7 @@ fn untrusted_by_default() {
     let files = vec![entry("", "verus! { proof fn cheat() ensures false { assume(false); } }")];
     let err = verify_files("untrusted_by_default", files, "test.rs".to_string(), NO_CHEATING)
         .expect_err("expected an error");
-    assert_vir_error_msg(err, "assume/admit not allowed with --no-cheating");
+    assert_vir_error_msg(err, "`assume`/`admit` not allowed with `--no-cheating`");
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn untrusted_item_overrides_trusted_parent() {
         NO_CHEATING,
     )
     .expect_err("expected an error");
-    assert_vir_error_msg(err, "assume/admit not allowed with --no-cheating");
+    assert_vir_error_msg(err, "`assume`/`admit` not allowed with `--no-cheating`");
 }
 
 #[test]
@@ -148,7 +148,7 @@ fn trusted_impl_inherits_and_method_can_override() {
         NO_CHEATING,
     )
     .expect_err("expected an error");
-    assert_vir_error_msg(err, "assume/admit not allowed with --no-cheating");
+    assert_vir_error_msg(err, "`assume`/`admit` not allowed with `--no-cheating`");
 }
 
 #[test]
@@ -248,7 +248,7 @@ fn trusted_spec_body_rejects_assumptions() {
         NO_CHEATING,
     )
     .expect_err("expected an error");
-    assert_vir_error_msg(err, "assume/admit not allowed with --no-cheating");
+    assert_vir_error_msg(err, "`assume`/`admit` not allowed with `--no-cheating`");
 }
 
 #[test]
@@ -328,7 +328,10 @@ fn external_body_obeys_item_trust() {
         NO_CHEATING,
     )
     .expect_err("expected an error");
-    assert_vir_error_msg(err, "external_body/assume_specification not allowed with --no-cheating");
+    assert_vir_error_msg(
+        err,
+        "`external_body`/`assume_specification` not allowed with `--no-cheating`",
+    );
 
     let trusted_spec_files = vec![entry(
         "",
@@ -345,7 +348,10 @@ fn external_body_obeys_item_trust() {
         NO_CHEATING,
     )
     .expect_err("expected an error");
-    assert_vir_error_msg(err, "external_body/assume_specification not allowed with --no-cheating");
+    assert_vir_error_msg(
+        err,
+        "`external_body`/`assume_specification` not allowed with `--no-cheating`",
+    );
 }
 
 #[test]
@@ -364,4 +370,157 @@ fn trust_attributes_are_inert_without_flag() {
         verify_files("trust_attributes_are_inert_without_flag", files, "test.rs".to_string(), &[],)
             .is_ok()
     );
+}
+
+fn expect_ok(name: &str, files: Vec<(String, String)>) {
+    let result = verify_files(name, files, "test.rs".to_string(), NO_CHEATING);
+    if let Err(err) = result {
+        panic!("expected success, got errors: {:#?}", err.errors);
+    }
+}
+
+#[test]
+fn trusted_method_may_use_untrusted_impl_generic_params() {
+    let files = vec![entry(
+        "",
+        "verus! {\n\
+         pub struct S<T>(pub T);\n\
+         impl<T, const N: usize> S<[T; N]> {\n\
+             #[verus::trusted]\n\
+             pub proof fn f<'a>(x: &'a T) ensures false { assume(false); }\n\
+         }\n\
+         }",
+    )];
+    expect_ok("trusted_method_may_use_untrusted_impl_generic_params", files);
+}
+
+#[test]
+fn trusted_nested_module_may_use_imports() {
+    let files = vec![entry(
+        "",
+        "verus! { pub proof fn helper() {} }\n\
+         #[verus::trusted]\n\
+         mod m {\n\
+         #[allow(unused_imports)] use verus_builtin::*;\n\
+         #[allow(unused_imports)] use verus_builtin_macros::*;\n\
+         #[allow(unused_imports)] use super::*;\n\
+         #[allow(unused_imports)] use super::helper;\n\
+         verus! { proof fn cheat() ensures false { assume(false); } }\n\
+         }",
+    )];
+    expect_ok("trusted_nested_module_may_use_imports", files);
+}
+
+#[test]
+fn trusted_use_does_not_launder_untrusted_items() {
+    let files = vec![entry(
+        "",
+        "verus! { pub proof fn helper() {} }\n\
+         #[verus::trusted]\n\
+         mod m {\n\
+         #[allow(unused_imports)] use verus_builtin::*;\n\
+         #[allow(unused_imports)] use verus_builtin_macros::*;\n\
+         use super::helper;\n\
+         verus! { proof fn caller() { helper(); } }\n\
+         }",
+    )];
+    let err = verify_files(
+        "trusted_use_does_not_launder_untrusted_items",
+        files,
+        "test.rs".to_string(),
+        NO_CHEATING,
+    )
+    .expect_err("expected an error");
+    assert_any_vir_error_msg(err, "trusted code may not reference an untrusted item");
+}
+
+#[test]
+fn trusted_enum_arrow_and_is_helpers() {
+    let files = vec![entry(
+        "",
+        "verus! {\n\
+         #[verus::trusted]\n\
+         pub enum E { A(u8), B { x: u8 } }\n\
+         #[verus::trusted]\n\
+         pub open spec fn f(e: E) -> u8 {\n\
+             if e is A { e->A_0 } else { e->x }\n\
+         }\n\
+         }",
+    )];
+    expect_ok("trusted_enum_arrow_and_is_helpers", files);
+}
+
+#[test]
+fn untrusted_enum_arrow_helpers_still_rejected() {
+    let files = vec![entry(
+        "",
+        "verus! {\n\
+         pub enum E { A(u8), B }\n\
+         #[verus::trusted]\n\
+         pub open spec fn f(e: E) -> u8 { e->A_0 }\n\
+         }",
+    )];
+    let err = verify_files(
+        "untrusted_enum_arrow_helpers_still_rejected",
+        files,
+        "test.rs".to_string(),
+        NO_CHEATING,
+    )
+    .expect_err("expected an error");
+    assert_any_vir_error_msg(err, "trusted code may not reference an untrusted item");
+}
+
+#[test]
+fn trusted_global_size_of() {
+    let files = vec![entry(
+        "",
+        "use vstd::prelude::*;\nverus! {\n\
+         #[verus::trusted]\n\
+         global size_of usize == 8;\n\
+         }",
+    )];
+    let result = verify_files_vstd(
+        "trusted_global_size_of",
+        files,
+        "test.rs".to_string(),
+        true,
+        NO_CHEATING,
+    );
+    if let Err(err) = result {
+        panic!("expected success, got errors: {:#?}", err.errors);
+    }
+}
+
+#[test]
+fn untrusted_global_size_of_rejected() {
+    let files = vec![entry("", "use vstd::prelude::*;\nverus! { global size_of usize == 8; }")];
+    let err = verify_files_vstd(
+        "untrusted_global_size_of_rejected",
+        files,
+        "test.rs".to_string(),
+        true,
+        NO_CHEATING,
+    )
+    .expect_err("expected an error");
+    assert_any_vir_error_msg(err, "not allowed with `--no-cheating`");
+}
+
+#[test]
+fn untrusted_enum_in_trusted_module_keeps_helpers_untrusted() {
+    let files = vec![entry(
+        "#![verus::trusted]",
+        "verus! {\n\
+         #[verus::untrusted]\n\
+         pub enum E { A(u8), B }\n\
+         pub open spec fn f(e: E) -> u8 { e->A_0 }\n\
+         }",
+    )];
+    let err = verify_files(
+        "untrusted_enum_in_trusted_module_keeps_helpers_untrusted",
+        files,
+        "test.rs".to_string(),
+        NO_CHEATING,
+    )
+    .expect_err("expected an error");
+    assert_any_vir_error_msg(err, "trusted code may not reference an untrusted item");
 }

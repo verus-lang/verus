@@ -135,7 +135,7 @@ pub(crate) enum ExprItem {
     Choose,
     ChooseTuple,
     Old,
-    ProphecyDisallowed,
+    ForcePureAndNonProphetic,
     GetVariantField,
     GetUnionField,
     IsVariant,
@@ -547,7 +547,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::choose",                  VerusItem::Expr(ExprItem::Choose)),
         ("verus::verus_builtin::choose_tuple",            VerusItem::Expr(ExprItem::ChooseTuple)),
         ("verus::verus_builtin::old",                     VerusItem::Expr(ExprItem::Old)),
-        ("verus::verus_builtin::prophecy_disallowed",     VerusItem::Expr(ExprItem::ProphecyDisallowed)),
+        ("verus::verus_builtin::force_pure_and_nonprophetic",     VerusItem::Expr(ExprItem::ForcePureAndNonProphetic)),
         ("verus::verus_builtin::get_variant_field",       VerusItem::Expr(ExprItem::GetVariantField)),
         ("verus::verus_builtin::get_union_field",         VerusItem::Expr(ExprItem::GetUnionField)),
         ("verus::verus_builtin::is_variant",              VerusItem::Expr(ExprItem::IsVariant)),
@@ -1022,6 +1022,14 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if let Some(item) = get_rust_int_intrinsic(tcx, def_id) {
         return Some(RustItem::IntIntrinsic(item));
+    }
+    // All the paths recognized by get_rust_item_str are in core or alloc.
+    // Since the paths are based on crate names, which aren't unique,
+    // make sure the item is actually defined in the real core or alloc crate
+    // (and not, say, in a user crate named `alloc`, or in a trait impl in a user crate).
+    match crate::rust_to_vir_path::mk_crate_id(tcx, def_id.krate) {
+        CrateId::Core | CrateId::Alloc => {}
+        CrateId::Internal | CrateId::Vstd | CrateId::Id(..) => return None,
     }
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);
     let rust_path = rust_path.as_ref().map(|x| x.as_str());

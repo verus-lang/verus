@@ -772,9 +772,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Old(R::get(e))))
             }
-            ExprX::ProphecyDisallowed(reason, e) => {
+            ExprX::ForcePureAndNonProphetic(reason, e) => {
                 let e = self.visit_expr(e)?;
-                R::ret(|| expr_new(ExprX::ProphecyDisallowed(reason.clone(), R::get(e))))
+                R::ret(|| expr_new(ExprX::ForcePureAndNonProphetic(reason.clone(), R::get(e))))
             }
             ExprX::Await(e) => {
                 let e = self.visit_expr(e)?;

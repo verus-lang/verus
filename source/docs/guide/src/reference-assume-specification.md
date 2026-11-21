@@ -102,4 +102,3 @@ Tips:
 | `T: ?Sized`       | `T: MetaSized` |
 | `T: PointeeSized` | No bound       |
 
-

@@ -360,9 +360,9 @@ pub fn old<A: ?Sized>(_: &mut A) -> &mut A {
 /// not allowed to depend on prophecies. The `reason` string literal is used in the
 /// error message: "prophetic expression not allowed in {reason}".
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::prophecy_disallowed"]
+#[rustc_diagnostic_item = "verus::verus_builtin::force_pure_and_nonprophetic"]
 #[verifier::spec]
-pub fn prophecy_disallowed<A>(_reason: &str, _a: A) -> A {
+pub fn force_pure_and_nonprophetic<A>(_reason: &str, _a: A) -> A {
     unimplemented!();
 }
 

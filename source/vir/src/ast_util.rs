@@ -522,6 +522,9 @@ pub fn path_as_friendly_rust_name(path: &Path) -> String {
 }
 
 pub fn path_as_vstd_name(path: &Path) -> Option<String> {
+    if !path.is_vstd_path() {
+        return None;
+    }
     crate::def::name_as_vstd_name(&path_as_friendly_rust_name(path))
 }
 

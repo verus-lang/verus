@@ -504,9 +504,9 @@ impl<'a, 'tcx> HeaderFinder<'a, 'tcx> {
                     | SpecItem::DecreasesBy
                     | SpecItem::RecommendsBy
                     | SpecItem::OpensInvariantMask
-                    | SpecItem::AtomicSpec
                     | SpecItem::NoUnwind
                     | SpecItem::NoUnwindWhen
+                    | SpecItem::AtomicSpec
             )) | Some(VerusItem::Directive(DirectiveItem::ExtraDependency))
         )
     }

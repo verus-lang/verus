@@ -1339,7 +1339,7 @@ pub enum ExprX {
     /// Marks an expression that is not allowed to be prophetic.
     /// The string is a description of the context, used in the error message.
     /// Like `Old`, this is only used for checks (in modes.rs) and otherwise has no meaning.
-    ProphecyDisallowed(Arc<String>, Expr),
+    ForcePureAndNonProphetic(Arc<String>, Expr),
     /// Async await
     Await(Expr),
     /// Used to check that match guards don't mutate the scrutinee, these are used between

@@ -2695,6 +2695,32 @@ impl Verifier {
             crate_ids.insert(id);
         }
 
+        // We identify the actual core and alloc crates by the lang items they define
+        // (see mk_crate_id), so ordinary crates must not define lang items.
+        // Only the standard library crates (verified with --is-core or
+        // --is-stdlib-outside-of-core) may do so.
+        // In fact, defining a lang_item would likely come with a number of assumptions
+        // that we do not currently check.
+        // We may want to add #[panic_handler] as an exception some day;
+        // it's stable and defines the panic_impl lang item.
+        if !matches!(
+            self.args.vstd,
+            crate::config::Vstd::IsCore | crate::config::Vstd::ImportedViaCore
+        ) {
+            for (lang_item, def_id) in tcx.lang_items().iter() {
+                if def_id.is_local() {
+                    let err = vir::messages::error(
+                        &spans.to_air_span(tcx.def_span(def_id)),
+                        format!(
+                            "Verus does not support defining lang items (found `{}`)",
+                            lang_item.name()
+                        ),
+                    );
+                    return Err((vec![err], vec![], None));
+                }
+            }
+        }
+
         if !verus_items.name_to_id.contains_key(&VerusItem::ErasedGhostValue) {
             let err = crate::util::no_builtin_err(self.air_no_span.as_ref().unwrap());
             return Err((vec![err], vec![], None));
