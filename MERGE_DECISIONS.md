@@ -79,9 +79,20 @@ This is the only list of follow-ups; the sections below point here.
 
 **Testing**
 
-4. Run all of `rust_verify_test`. So far only `test_is_core` has been run:
-   `vargo test --release --vstd-no-verify -p rust_verify_test --test core_special_setup`
-   (`--vstd-no-verify` was needed while items 1 and 2 failed; vstd verifies now).
+4. **[done, after merging main at cc615f27c]** Ran all of `rust_verify_test` (`vargo test --release -p rust_verify_test --no-fail-fast`).
+   Everything passes except:
+   - Fixed: main's tests on the old `raw_ptr` API, ported to the new one (`is_init` → `is_valid`, `is_uninit` → `is_empty`, plus `wf()`):
+     `atomic_lib.rs` (4 `from_ptr_*` tests), `std.rs` (`maybe_uninit_write`, `maybe_uninit_array_assume_init`),
+     `raw_ptrs.rs` `ptr_ref2_lifetime` (now `ptr_ref` + `ptr_mut_write`; same two lifetime errors).
+   - Fixed: `examples/state_machines/dist_rwlock.rs` `RwLock::new` (`s.wf()` failed although every conjunct proved).
+     Caused by our vstd, not the compiler: it verifies with main's vstd and our compiler,
+     and with our vstd minus `raw_ptr::group_raw_ptr_axioms` in `group_vstd_default`;
+     no single axiom of the group is responsible, so the proof is just fragile.
+     Fix (main's example, goes with the raw_ptr PR): an `assert forall` before `s` stating the `ref_counts` conjuncts of `wf()`
+     in both forms (`constant() == (s.inst, j)` and `.0` / `.1`), and an assert of the `exc_locked` conjuncts.
+   - Left: `examples/hillel.rs`, `examples/iterator-clients.rs` (follow-up 10).
+   - Environment only (not checked on main): `observer.rs` cvc5 tests (no cvc5 installed),
+     `cargo.rs` `cargo_new_*` (no toolchain manifest for the local dev version).
 5. Build rustlib against the merged vstd, and port it:
    - main's iterator API: `will_return_none` / `initial_value_relation` → `produces`,
      in `core/src/str/validations.rs`, `alloc/src/vec/into_iter.rs` and `alloc/src/collections/linked_list.rs`.

@@ -233,7 +233,9 @@ PRs 1–7 can run in parallel.
      - Prerequisite on verify-rustlib: move `AbstractByte` (+ methods) from `type_representation.rs` to `raw_ptr/abstract_bytes.rs`,
        with `pub use` in `type_representation.rs` so rustlib imports keep working.
    - Commit 2: downstream updates (`MemContents` → `TypedValue` list above: cells, `simple_pptr`, `atomic.rs`,
-     `std_specs`, `exec_spec`, examples, tests).
+     `std_specs`, `exec_spec`, examples, tests),
+     including main's tests ported to the new API (`atomic_lib.rs`, `std.rs`, `raw_ptrs.rs` `ptr_ref2_lifetime`)
+     and the `examples/state_machines/dist_rwlock.rs` proof fix (fragile with the new `group_raw_ptr_axioms`).
      Port `exec_spec/mem_contents.rs` to `TypedValue` and un-ignore its 3 tests, or call them out in the PR description.
 9. Type representation + transmute: `type_representation.rs`, `transmute.rs` (+ their `vstd.rs` modules), the bridging axiom,
    the two bigger-integer borrow functions (which also use `TrivialOwnership` from 5). After 8.
