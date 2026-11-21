@@ -879,7 +879,10 @@ pub(crate) fn erase_closure_body_for_closure_captures<'tcx>(
 ) -> bool {
     let fn_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
     let erasure_ctxt = get_verus_erasure_ctxt(fn_def_id);
-    matches!(erasure_ctxt.bodies.get(&local_def_id), Some(BodyErasure { erase_body: true, .. }))
+    match erasure_ctxt.bodies.get(&local_def_id) {
+        Some(BodyErasure { erase_body: _, erase_absolutely, ret_spec: _ }) => *erase_absolutely,
+        None => false,
+    }
 }
 
 pub(crate) static ATOMIC_CLOSURE_CAPTURE_SHADOW: AtomicBool = AtomicBool::new(false);
