@@ -933,6 +933,8 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "logatom_function_call" => {
                         v.push(Attr::LogatomFunctionCall)
                     }
+                    // Read only by full erasure (see `FullErasureCtxt` in rustc_mir_build/verus.rs)
+                    AttrTree::Fun(_, arg, None) if arg == "stub_body" => {}
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
