@@ -3269,11 +3269,11 @@ dependencies = [
 
 [[package]]
 name = "verus_builtin"
-version = "0.0.0-2026-11-15-0327"
+version = "0.0.0-2026-11-22-0344"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-11-15-0327"
+version = "0.0.0-2026-11-22-0344"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -3294,7 +3294,7 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-11-15-0327"
+version = "0.0.0-2026-11-22-0344"
 dependencies = [
  "indexmap 2.14.0",
  "proc-macro2",
