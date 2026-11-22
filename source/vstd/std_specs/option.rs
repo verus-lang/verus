@@ -54,8 +54,8 @@ pub trait OptionAdditionalFns<T>: Sized {
         requires
             self.is_Some(),
         ensures
-            final(self).is_Some(),
             *t == old(self)->0,
+            final(self).is_Some(),
             final(self)->0 == *final(t),
     ;
 

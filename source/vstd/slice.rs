@@ -251,9 +251,8 @@ pub axiom fn tracked_borrow_mut<T>(tracked s: &mut [T], i: int) -> (tracked t: &
         final(s)@ == old(s)@.update(i, *final(t)),
 ;
 
-/// Borrows the subslice bounded by `[i, j)` of a borrowed slice.
-pub axiom fn tracked_slice_subrange<'a, T>(tracked s: &'a [T], i: int, j: int) -> (tracked out:
-    &'a [T])
+/// Borrows the subslice bounded by `[i, j)` of a tracked slice.
+pub axiom fn tracked_borrow_subrange<T>(tracked s: &[T], i: int, j: int) -> (tracked out: &[T])
     requires
         0 <= i <= j <= s@.len(),
     ensures
