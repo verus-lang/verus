@@ -204,6 +204,15 @@ pub broadcast axiom fn axiom_slice_has_resolved<T>(slice: &[T], i: int)
             ==> has_resolved(#[trigger] slice@[i]),
 ;
 
+/// Borrows the subslice bounded by `[i, j)` of a borrowed slice.
+pub axiom fn tracked_slice_subrange<'a, T>(tracked s: &'a [T], i: int, j: int) -> (tracked out:
+    &'a [T])
+    requires
+        0 <= i <= j <= s@.len(),
+    ensures
+        out@ == s@.subrange(i, j),
+;
+
 /// We axiomatize that a slice can decrease to its corresponding sequence.
 pub broadcast axiom fn axiom_slice_decreases_to_seq<T>(s: &[T])
     ensures
