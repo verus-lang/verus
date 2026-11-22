@@ -515,6 +515,12 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::Length(_) => {
                 panic!("array length operation not allowed in `bit_vector` proofs")
             }
+            UnaryOp::ShadowData => {
+                return Err(error(&exp.span, "not allowed in bitvector"));
+            }
+            UnaryOp::ShadowAddrOf => {
+                panic!("internal error: unexpected ShadowAddrOf")
+            }
         },
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp) => {
             bv_exp_to_expr(ctx, state, exp)

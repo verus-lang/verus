@@ -510,6 +510,7 @@ fn mk_spec_function_stub(
                 tracked_swap: false,
                 tracked_take_option: false,
                 is_async: false,
+                has_shadow_data: false,
                 impls_cannot_extend_spec: false,
                 is_drop: false,
                 create_open_invariant_credit: false,

@@ -64,7 +64,7 @@ pub struct PathX {
 }
 
 #[derive(
-    Copy,
+//    Copy,
     Clone,
     Debug,
     Serialize,
@@ -103,6 +103,8 @@ pub enum VarIdentDisambiguate {
     ExpandErrorsDecl(u64),
     BitVectorToAirDecl(u64),
     ResInfTemp(u64),
+    // shadow_data variable
+    ShadowData(Box<VarIdentDisambiguate>),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -270,6 +272,7 @@ pub enum Primitive {
     StrSlice,
     Ptr, // Mut ptr, unless Const decoration is applied
     Global,
+    ShadowData,
 }
 
 #[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone)]
@@ -487,6 +490,11 @@ pub enum UnaryOp {
     MutRefFinal(bool),
     /// Length of an array or slice
     Length(ArrayKind),
+    /// shadow_data(x) operator to get shadow data of a variable (e.g. pointer for x if x: &t)
+    ShadowData,
+    /// Marker for an immutable borrow in SST,
+    /// used only temporarily for ShadowData processing and then erased before later SST stages
+    ShadowAddrOf,
 }
 
 /// Which builtin source name does this come from
@@ -1360,7 +1368,7 @@ pub enum ReadKind {
     /// A copy. (Not a move.)
     Copy,
     /// Take a shared borrow (&). (Not a move.)
-    ImmutBor,
+    ImmutBor { is_expr_addr_of: bool },
     /// For an expression that goes unused, e.g., in the statement `foo(x, y);` the return
     /// value of `foo` goes unused. Even though this is technically a move, we can ignore
     /// it for the purposes of resolution analysis.
@@ -1644,6 +1652,8 @@ pub struct FunctionAttrsX {
     pub create_open_invariant_credit: bool,
     /// Whether the function is an async function
     pub is_async: bool,
+    /// Does this function track the underlying pointer values in shared references
+    pub has_shadow_data: bool,
     /// Is this a types's drop implementation
     pub is_drop: bool,
     /// Is this the `clone` method of a `Clone` impl for a type that also implements

@@ -214,7 +214,7 @@ fn func_body_to_sst(
         let termination_check = FuncCheckSst {
             return_opaque_type_eqs: Arc::new(vec![]),
             post_condition: Arc::new(crate::sst::PostConditionSst {
-                dest: None,
+                dest: vec![],
                 kind: if function.x.decrease_by.is_some() {
                     PostConditionKind::DecreasesBy
                 } else {
@@ -786,9 +786,9 @@ pub fn func_def_to_sst(
         let ParamX { name, typ, .. } = &function.x.inner_ret.x;
         ens_params.push(function.x.inner_ret.clone());
         state.declare_imm_var_stm(name, typ, LocalDeclKind::Return, false);
-        Some(unique_local(name))
+        vec![unique_local(name)]
     } else {
-        None
+        vec![]
     };
     let ens_params = Arc::new(ens_params);
     let ens_pars = params_to_pars(&ens_params);
@@ -1133,9 +1133,11 @@ pub fn function_to_sst(
         opaqueness: function.x.opaqueness.clone(),
         typ_params: function.x.typ_params.clone(),
         typ_bounds: function.x.typ_bounds.clone(),
+        n_orig_params: function.x.params.len(),
         pars: params_to_pars(&function.x.params),
         outer_ret: param_to_par(&function.x.outer_ret),
         inner_ret: param_to_par(&function.x.inner_ret),
+        extra_rets: Arc::new(vec![]),
         ens_has_return: ens_has_return,
         item_kind: function.x.item_kind,
         attrs: function.x.attrs.clone(),

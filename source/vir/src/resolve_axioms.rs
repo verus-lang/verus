@@ -72,6 +72,9 @@ impl ResolvedTypeCollection {
             TypX::Primitive(Primitive::StrSlice | Primitive::Ptr | Primitive::Global, _) => {
                 // trivial resolve
             }
+            TypX::Primitive(Primitive::ShadowData, _) => {
+                // trivial resolve
+            }
             TypX::Decorate(dec, _, t) => {
                 match dec {
                     TypDecoration::Ref
