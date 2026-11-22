@@ -169,6 +169,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
 
     let mut_ref_current = str_to_node(MUT_REF_CURRENT);
     let mut_ref_future = str_to_node(MUT_REF_FUTURE);
+    let mut_ref_ptr = str_to_node(MUT_REF_PTR);
     let mut_ref_update_current = str_to_node(MUT_REF_UPDATE_CURRENT);
 
     let mut prelude = nodes_vec!(
@@ -247,6 +248,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-fun [const_bool] ([typ]) Bool)
         (declare-fun [mut_ref_current] ([Poly]) [Poly])
         (declare-fun [mut_ref_future] ([Poly]) [Poly])
+        (declare-fun [mut_ref_ptr] ([Poly]) [Poly])
         (declare-fun [mut_ref_update_current] ([Poly] [Poly]) [Poly])
 
         (axiom (forall ((m [Poly]) (arg [Poly])) (!
@@ -267,6 +269,15 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
             :qid prelude_mut_ref_update_current_future
             :skolemid skolem_prelude_mut_ref_update_current_future
         )))
+        (axiom (forall ((m [Poly]) (arg [Poly])) (!
+            (=
+                ([mut_ref_ptr] ([mut_ref_update_current] m arg))
+                ([mut_ref_ptr] m)
+            )
+            :pattern (([mut_ref_update_current] m arg))
+            :qid prelude_mut_ref_update_current_ptr
+            :skolemid skolem_prelude_mut_ref_update_current_ptr
+        )))
         (axiom (forall ((m [Poly]) (d [decoration]) (t [typ])) (!
             (=>
                 (has_type m (MUTREF d t))
@@ -284,6 +295,15 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
             :pattern ((has_type m (MUTREF d t)) ([mut_ref_future] m))
             :qid prelude_mut_ref_future_has_type
             :skolemid skolem_prelude_mut_ref_future_has_type
+        )))
+        (axiom (forall ((m [Poly]) (d [decoration]) (t [typ])) (!
+            (=>
+                (has_type m (MUTREF d t))
+                (has_type ([mut_ref_ptr] m) ([type_id_ptr] d t))
+            )
+            :pattern ((has_type m (MUTREF d t)) ([mut_ref_ptr] m))
+            :qid prelude_mut_ref_ptr_has_type
+            :skolemid skolem_prelude_mut_ref_ptr_has_type
         )))
         (axiom (forall ((m [Poly]) (d [decoration]) (t [typ]) (arg [Poly])) (!
             (=>

@@ -1706,7 +1706,7 @@ fn ok_to_assign_to_mut_bor_in_erased_code(
             }
             _ => {}
         },
-        ExprX::BorrowMut(place) | ExprX::TwoPhaseBorrowMut(place) => {
+        ExprX::BorrowMut(place, _is_ghost) | ExprX::TwoPhaseBorrowMut(place, _is_ghost) => {
             match record.mut_bor_place_modes.get(&place.span.id).unwrap() {
                 (Mode::Spec, _) => {
                     // If this passed type-checking before, this shouldn't be spec
@@ -2354,7 +2354,7 @@ fn check_expr(
             });
             Ok((Mode::Spec, proph))
         }
-        ExprX::Unary(UnaryOp::MutRefCurrent, e1) => {
+        ExprX::Unary(UnaryOp::MutRefCurrent | UnaryOp::MutRefPtr, e1) => {
             let (_m, proph) =
                 check_expr(ctxt, record, typing, Mode::Spec, Expect(Mode::Spec), e1, outer_proph)?;
             Ok((Mode::Spec, proph))
@@ -3574,8 +3574,8 @@ fn check_expr(
             )?;
             Ok((Mode::Spec, proph))
         }
-        ExprX::BorrowMut(place)
-        | ExprX::TwoPhaseBorrowMut(place)
+        ExprX::BorrowMut(place, _)
+        | ExprX::TwoPhaseBorrowMut(place, _)
         | ExprX::BorrowMutTracked(place)
         | ExprX::ImplicitReborrowOrSpecRead(place, _, _) => {
             let borrow_mut_tracked = matches!(&expr.x, ExprX::BorrowMutTracked(_));
@@ -4265,10 +4265,10 @@ fn check_function_inner(
                                         };
                                         let deref_e = match &place.x {
                                             PlaceX::Temporary(e)
-                                                if matches!(&e.x, ExprX::BorrowMut(_)) =>
+                                                if matches!(&e.x, ExprX::BorrowMut(_, _)) =>
                                             {
                                                 // * &mut P simplifies to P
-                                                let ExprX::BorrowMut(inner) = &e.x else {
+                                                let ExprX::BorrowMut(inner, _) = &e.x else {
                                                     unreachable!();
                                                 };
                                                 inner.clone()
@@ -4280,9 +4280,9 @@ fn check_function_inner(
                                             ),
                                         };
                                         let borrowx = if *two_phase {
-                                            ExprX::TwoPhaseBorrowMut(deref_e)
+                                            ExprX::TwoPhaseBorrowMut(deref_e, true)
                                         } else {
-                                            ExprX::BorrowMut(deref_e)
+                                            ExprX::BorrowMut(deref_e, true)
                                         };
                                         Ok(expr.new_x(borrowx))
                                     }
