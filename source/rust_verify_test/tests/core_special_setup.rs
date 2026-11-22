@@ -45,6 +45,20 @@ test_verify_one_file_with_options! {
         #[path="../../../../vstd/vstd.rs"]
         mod vstd;
 
+        // In --is-core mode, verus_builtin leaves Tracked's Deref impls to core.
+        impl<A: ?Sized> core::ops::Deref for verus_builtin::Tracked<A> {
+            type Target = A;
+            fn deref(&self) -> &A {
+                unimplemented!();
+            }
+        }
+
+        impl<A: ?Sized> core::ops::DerefMut for verus_builtin::Tracked<A> {
+            fn deref_mut(&mut self) -> &mut A {
+                unimplemented!();
+            }
+        }
+
         mod test {
             use crate::vstd::set::*;
             use crate::vstd::seq::*;
