@@ -28,8 +28,8 @@ use crate::sst::{
 use crate::sst_util::{
     exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_disjoin, sst_equal,
     sst_exp_get_proof_note, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
-    sst_mut_ref_future, sst_mut_ref_ptr, sst_ptr_addr, sst_unit_value,
-    stm_with_vars_at_pre_state, subst_exp, subst_pre_local_decl, subst_stm, subst_typ,
+    sst_mut_ref_future, sst_mut_ref_ptr, sst_ptr_addr, sst_unit_value, stm_with_vars_at_pre_state,
+    subst_exp, subst_pre_local_decl, subst_stm, subst_typ,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, stm_visitor_check};
 use crate::util::vec_map_result;

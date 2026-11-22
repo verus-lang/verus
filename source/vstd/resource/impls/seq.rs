@@ -248,9 +248,10 @@ impl<V> GhostSubseq<V> {
 
         self.frac.agree(&auth);
 
-        assert forall|i: int| 0 <= i < self.len implies #[trigger] auth@.contains_key(self.off + i)
-            && self.frac@[self.off + i] == auth@[self.off + i] by {
+        assert forall|i| 0 <= i < self@.len() implies #[trigger] auth@.contains_key(self.off() + i)
+            && auth@[self.off() + i] == self@[i] by {
             assert(self.frac@.contains_key(self.off + i));
+            assert(self@[i] == self.frac@[self.off + i]);
         };
     }
 

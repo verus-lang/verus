@@ -1076,7 +1076,7 @@ pub fn sst_ptr_addr(span: &Span, e1: &Exp) -> Exp {
         TypX::Primitive(crate::ast::Primitive::Ptr, ts) => ts[0].clone(),
         _ => panic!("sst_ptr_addr expects ptr type"),
     };
-    let fun = crate::fun!(CrateId::Vstd => "raw_ptr", "spec_ptr_addr");
+    let fun = crate::fun!(CrateId::Vstd => "raw_ptr"; "spec_ptr_addr");
     let cf = CallFun::Fun(fun, None);
     let expx = ExpX::Call(cf, Arc::new(vec![t]), Arc::new(vec![e1.clone()]));
     let usize_t = Arc::new(TypX::Int(IntRange::USize));

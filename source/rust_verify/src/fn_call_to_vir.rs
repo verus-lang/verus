@@ -2504,6 +2504,7 @@ fn uncompilable_verus_fn(verus_item: &VerusItem) -> bool {
         | VerusItem::HasResolvedUnsized
         | VerusItem::MutRefCurrent
         | VerusItem::MutRefFuture
+        | VerusItem::MutRefPtr
         | VerusItem::Final
         | VerusItem::AfterBorrow
         | VerusItem::ErasedGhostValue

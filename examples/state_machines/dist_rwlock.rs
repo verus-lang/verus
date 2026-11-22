@@ -399,6 +399,13 @@ impl<T> RwLock<T> {
         }
         let s = RwLock { inst: Tracked(inst), exc_locked: exc_locked_atomic, ref_counts: v };
         assert(s.inst@.rc_width() == s.ref_counts@.len());
+        assert forall|j: int| 0 <= j < s.ref_counts@.len() implies {
+            &&& #[trigger] s.ref_counts@[j].well_formed()
+            &&& s.ref_counts@[j].constant() == (s.inst, j)
+            &&& s.ref_counts@[j].constant().0 == s.inst
+            &&& s.ref_counts@[j].constant().1 == j
+        } by {}
+        assert(s.exc_locked.well_formed() && s.exc_locked.constant() == s.inst);
         s
     }
 }
