@@ -12,7 +12,7 @@ pub axiom fn tracked_swap<V>(tracked a: &mut V, tracked b: &mut V)
         *final(b) == *old(a),
 ;
 
-/// Converts a borrowed value to a borrowed `Tracked` of that value.
+/// Converts a `tracked` borrowed value to a borrowed `Tracked` of that value.
 pub axiom fn tracked_ref<'a, T: ?Sized>(tracked t: &'a T) -> (tracked out: &'a Tracked<T>)
     ensures
         &**out == t,
