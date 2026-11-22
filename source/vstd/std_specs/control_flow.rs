@@ -1,4 +1,5 @@
 use super::super::prelude::*;
+use super::convert::FromSpec;
 use core::convert::Infallible;
 use core::ops::ControlFlow;
 use core::ops::FromResidual;
@@ -232,6 +233,13 @@ pub broadcast axiom fn spec_from_blanket_identity<T>(t: T, s: T)
         #[trigger] spec_from::<T, T>(t, s) ==> t == s,
 ;
 
+pub broadcast proof fn spec_from_from_spec<S: FromSpec<T>, T>(t: T, s: S)
+    ensures
+        #[trigger] spec_from::<S, T>(t, s) ==> <S as FromSpec<T>>::from_spec(t) == s,
+{
+    admit();
+}
+
 pub assume_specification<T, E, F: From<E>>[ Result::<T, F>::from_residual ](
     result: Result<Infallible, E>,
 ) -> (result2: Result<T, F>)
@@ -244,6 +252,7 @@ pub assume_specification<T, E, F: From<E>>[ Result::<T, F>::from_residual ](
 
 pub broadcast group group_control_flow_axioms {
     spec_from_blanket_identity,
+    spec_from_from_spec,
     lemma_option_try_laws,
     lemma_result_try_laws,
     lemma_control_flow_try_laws,
