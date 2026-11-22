@@ -173,7 +173,6 @@ Layout axioms (`source/vstd/layout.rs`, beyond the cfgs):
 
 New axioms outside raw_ptr:
 - `source/vstd/std_specs/control_flow.rs`: `spec_from_from_spec` (`admit()`, in `group_control_flow_axioms`)
-- `source/vstd/std_specs/option.rs`: `Option::tracked_mut_borrow`
 - `source/vstd/modes.rs`, `seq.rs`, `slice.rs`, `type_representation.rs`, `transmute.rs`, layout (above)
 Delete before merge:
 - `raw_ptr_old.rs`
@@ -198,8 +197,13 @@ Out of this series:
    `wrapping.rs` `count_ones`, `utf8.rs`, `map.rs`, `resource/impls/map.rs`). Independent.
    `endian.rs` includes `digit_to_int`, the workaround for the `CastToInteger` bug (main's #2908);
    it can be removed once upstream fixes the bug (not urgent).
-2. `verus_verify_core` cfgs: `builtin` cfg rearrangement and the "Add cfg" list, `core_special_setup.rs`.
+2. `verus_verify_core` cfgs: `builtin` crate-level feature cfg rearrangement and the "Add cfg" list,
+   `core_special_setup.rs` (its `Option`/`Result`/`unwrap`/`len` specs, not its `Tracked` `Deref` impls).
    Independent. Resolve the "match rustlib defs" TODO first.
+   `Tracked`'s `Deref`/`DerefMut` cfgs and the test's matching impls go in 5, so 2 and 5 can merge in either order.
+   Also resolve `slice_index_get`'s diagnostic item (commented out in #2634, reason unknown; `SliceIndexGet` is registered but unused)
+   once rustlib builds: it's uncommented on verify-rustlib-update-1.100.0 (vstd builds);
+   if rustlib core builds with it too, PR 2 leaves it as on main, otherwise PR 2 carries the comment-out with a reason.
 3. Shadow data (compiler). Original PR + proof support + soundness fixes as one PR, separate commits.
    If too big, split into syntax/attributes/`rust_to_vir` and `vir` AST → SST → AIR.
    Includes `iter.rs`'s `cfg_attr(verus_verify_core, verifier::shadow_data)` on `Iterator::next`.
@@ -209,28 +213,41 @@ Out of this series:
      (they exist only in the new `raw_ptr/ptr_specs.rs`; main has no `cast_mut_ref_to_ptr`).
    - Whichever of 3/4 lands second rebases: both add a `UnaryOp` variant to the same match arms
      (`interpreter.rs`, `triggers.rs`, `triggers_auto.rs`), plus possibly adjacent items in `builtin`, `verus_items.rs`, `ast.rs`.
-PRs 1–7 can run in parallel.
+PRs 1–6 (including 6a–c) can run in parallel.
 
 5. `Tracked`/`Ghost: ?Sized` (`builtin`) + `modes.rs`: `tracked_ref`, `TrivialOwnership` + impls, `tracked_from_spec`
    (the new axioms take `T: ?Sized`, so they need the `builtin` change).
-6 + 7 go out as **one PR**, with a commit for each (independent, no shared files; both are prerequisites of 8).
-   List its new axioms and trusted specs in the PR description.
-6. Tracked `Seq`, slice and `Option` operations:
-   - `seq.rs`: `tracked_borrow_subrange(_mut)`, `tracked_split_borrow_mut` (`external_body`),
-     `tracked_add_borrow(_mut)` (axioms), `tracked_skip`, `tracked_add` made `pub` (proved).
-   - `slice.rs`: `tracked_slice_index`, `tracked_slice_subrange`.
-   - `option.rs`: `Option::tracked_mut_borrow` (axiom).
-   - Dedupe against main's slice `tracked_borrow`/`tracked_borrow_mut` (`tracked_slice_index` ≈ `tracked_borrow`).
-   - Not here: `slice.rs` cfgs (→ 2); `slice_index_get`'s commented-out diagnostic item and `const` (from the shadow data commit; check why).
-7. Other vstd specs and axioms (none depend on raw_ptr). Same PR as 6.
-   - `layout.rs` ("Layout axioms" above): `layout_for_val_is_valid` takes `&V` (no users in vstd),
-     `layout_of_sized`, `layout_of_str`'s size, the pointer-metadata axiom
+   Also all other `Tracked` changes: `builtin`'s `not(verus_verify_core)` cfg on `Tracked`'s `Deref`/`DerefMut` impls,
+   and `core_special_setup.rs`'s replacement `impl<A: ?Sized> Deref`/`DerefMut for Tracked<A>`.
+6. vstd specs and axioms needed by 8, as **three independent PRs** (no shared files; all prerequisites of 8).
+   None depend on raw_ptr. List each PR's new axioms and trusted specs in its description.
+   `pr-vstd-specs-axioms` holds all three combined (reference only).
+   - 6a. Layout axioms (branch `pr-vstd-layout`), `layout.rs` ("Layout axioms" above):
+     `layout_for_val_is_valid` takes `&V` (no users in vstd),
+     `layout_of_sized`, `layout_of_str`'s size, the pointer-metadata axiom ("unstable assumption")
      (the last two axioms are used by `type_representation.rs`, in 9).
      `layout_of_str`'s size uses `spec_bytes()`, which exists only under `not(verus_verify_core)`,
      so this PR also takes `layout_of_str`'s core/non-core split and the cfg'd `StringSliceAdditionalSpecFns` import (not PR 2).
-   - `control_flow.rs`: `spec_from_from_spec` (axiom via `admit()`).
-   - `std_specs/core.rs`: `ExThin` (used by `raw_ptr/ptr_specs.rs`, in 8).
-8. Raw pointer overhaul, as one PR with two commits so tests never break (squash-merged, so commit 1 needn't build alone). After 3, 4, 5, 6, 7.
+   - 6b. Miscellaneous specs (branch `pr-vstd-misc-specs`):
+     - `control_flow.rs`: `spec_from_from_spec` (axiom via `admit()`).
+     - `std_specs/core.rs`: `ExThin` (used by `raw_ptr/ptr_specs.rs`, in 8).
+     - `option.rs`: `Option::tracked_borrow_mut` (proved; renamed from `tracked_mut_borrow` to match main).
+     - `slice.rs`: `tracked_borrow_subrange` (axiom; renamed from `tracked_slice_subrange` to match `tracked_borrow(_mut)`).
+       No callers; approved by Travis for other users, as the shared counterpart of raw_ptr's `tracked_mut_ref_slice_subrange`.
+       `tracked_slice_index` dropped (duplicates main's slice `tracked_borrow`).
+     - `slice.rs`: `slice_index_get` made `const` (rustlib's `const fn run_utf8_validation` calls it).
+       Only the `const`; its diagnostic item is left as on main.
+     - Not here: `slice.rs` cfgs and `slice_index_get`'s diagnostic item (→ 2).
+   - 6c. `Seq` borrows (branch `pr-vstd-seq-borrows`), `seq.rs`:
+     - Axioms: `tracked_borrow_subrange`, `tracked_borrow_mut_split` (renamed from `tracked_split_borrow_mut`, as `Map`/`IMap`),
+       `tracked_add_borrow(_mut)` (needed only by 8's `join_ref`/`join_mut`; kept).
+     - Proved: `tracked_borrow_subrange_mut` (from `tracked_borrow_mut_split`); `tracked_add` made `pub`.
+     - `tracked_skip` dropped (duplicates `tracked_split_at`).
+     - The description should explain why these re-add axioms to `Seq` (verified in #2625):
+       they borrow ranges and concatenations that aren't parts of the cons-list,
+       and say which raw_ptr functions need them.
+   Callers of the renamed and dropped functions are listed under 8 and 9.
+8. Raw pointer overhaul, as one PR with two commits so tests never break (squash-merged, so commit 1 needn't build alone). After 3, 4, 5, 6a–c.
    - Commit 1 (the one reviewers look at): `raw_ptr/`, `SharedReference` deletion, `group_points_to_lemmas` in `vstd.rs`.
      - Excludes `type_representation_implements_encode_decode` and the two
        "borrow `[T]` as one bigger integer" functions in `points_to_ops.rs` (move to 9),
@@ -242,6 +259,14 @@ PRs 1–7 can run in parallel.
      including main's tests ported to the new API (`atomic_lib.rs`, `std.rs`, `raw_ptrs.rs` `ptr_ref2_lifetime`)
      and the `examples/state_machines/dist_rwlock.rs` proof fix (fragile with the new `group_raw_ptr_axioms`).
      Port `exec_spec/mem_contents.rs` to `TypedValue` and un-ignore its 3 tests, or call them out in the PR description.
+   - Callers to update for 6b's and 6c's renames and removals (do this on verify-rustlib first):
+     - `tracked_slice_index` (dropped) → main's `slice::tracked_borrow`: `raw_ptr/points_to_ops.rs` (2 calls).
+     - `Seq::tracked_skip` (dropped; duplicates `tracked_split_at`) → `tracked_split_at`: `raw_ptr/points_to_ops.rs` (1 call).
+     - `Seq::tracked_split_borrow_mut` → `tracked_borrow_mut_split` (matches `Map`/`IMap`):
+       `raw_ptr/points_to_collections.rs` (3 calls), `raw_ptr/points_to_ops.rs` (1 call).
 9. Type representation + transmute: `type_representation.rs`, `transmute.rs` (+ their `vstd.rs` modules), the bridging axiom,
    the two bigger-integer borrow functions (which also use `TrivialOwnership` from 5). After 8.
    rustlib needs this before building against main.
+   - Callers to update for 6b's renames and removals:
+     - `tracked_slice_index` (dropped) → main's `slice::tracked_borrow`: `type_representation.rs` (1 call).
+     - rustlib: `Option::tracked_mut_borrow` → `tracked_borrow_mut` in `alloc/src/raw_vec/mod.rs` (1 call).
