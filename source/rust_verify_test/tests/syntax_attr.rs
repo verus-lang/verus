@@ -442,7 +442,7 @@ test_verify_one_file! {
         #[verus_spec]
         fn test_call_mut_tracked(x: u32) {
             proof_decl!{
-                let tracked mut y = 0;
+                let tracked mut y: int = 0;
             }
             {#[verus_spec(with Tracked(&mut y), Ghost(0) => _)]
             test_mut_tracked(1);
@@ -522,7 +522,7 @@ test_verify_one_file! {
 
         #[verifier::external]
         fn external_call_with_dummy(x: u32) -> u32 {
-            #[verus_spec(with Tracked::assume_new(), Ghost::assume_new() => _)]
+            #[verus_spec(with Tracked::<&mut int>::assume_new(), Ghost::<u32>::assume_new() => _)]
             test_mut_tracked(0)
         }
 
@@ -586,7 +586,7 @@ test_verify_one_file! {
         fn test_cal_mut_tracked(x: u32) {
             proof_decl!{
                 let ghost mut z = 0u32;
-                let tracked mut y = 0;
+                let tracked mut y: int = 0;
             }
             if #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))] test_mut_tracked(1) == 0 {
                 proof!{
@@ -629,7 +629,7 @@ test_verify_one_file! {
         fn test_cal_mut_tracked(x: u32) {
             proof_decl!{
                 let ghost mut z = 0u32;
-                let tracked mut y = 0;
+                let tracked mut y: int = 0;
             }
             if {
                 proof_with!{Tracked(&mut y), Ghost(0) => Ghost(z)} test_mut_tracked(1)
@@ -822,12 +822,12 @@ test_verify_one_file! {
 
         #[verus_spec(r => ensures r == 1)]
         pub fn call() -> u8 {
-            // the verified call infers T = u64 from the ghost argument,
-            // the compiled call `h(3)` infers T = i32
+            // the ghost argument must not make the verified call infer T = u64,
+            // while the compiled call `h(3)` infers T = i32
             proof_with!{Ghost(5u64)}
             h(3)
         }
-    } => Err(err) => assert_vir_error_msg(err, "in the compiled program, this call to `h` has different type arguments than in the verified program")
+    } => Err(err) => assert_vir_error_msg(err, "cannot infer this ghost/tracked argument's type")
 }
 
 test_verify_one_file! {

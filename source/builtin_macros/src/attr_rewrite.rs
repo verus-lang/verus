@@ -1747,9 +1747,21 @@ fn rewrite_with_expr(
         syn::Expr::Call(syn::ExprCall { args, .. })
         | syn::Expr::MethodCall(syn::ExprMethodCall { args, .. }) => {
             for arg in inputs {
+                // An extra argument's type is inferred from the argument alone, so it
+                // cannot steer the inference of the executable program's types.
+                // An untyped integer literal carries no type information.
+                let no_infer = compiled_call.is_some() && !is_untyped_int_literal(&arg);
+                let span = arg.span();
                 let arg =
                     syntax::rewrite_expr(erase.clone(), false, arg.into_token_stream().into());
-                args.push(syn::Expr::Verbatim(arg.into()));
+                let arg = proc_macro2::TokenStream::from(arg);
+                let arg = if no_infer {
+                    quote_spanned_builtin!(verus_builtin, span =>
+                        #verus_builtin::ghost_arg_no_infer(#arg))
+                } else {
+                    arg
+                };
+                args.push(syn::Expr::Verbatim(arg));
             }
         }
         _ => {}
@@ -1802,6 +1814,28 @@ fn rewrite_with_expr(
         });
     }
     x_declares
+}
+
+/// `0`, `Ghost(0)` or `Tracked(0)`, with an unsuffixed integer literal
+fn is_untyped_int_literal(e: &verus_syn::Expr) -> bool {
+    match e {
+        verus_syn::Expr::Paren(p) => is_untyped_int_literal(&p.expr),
+        verus_syn::Expr::Group(g) => is_untyped_int_literal(&g.expr),
+        verus_syn::Expr::Lit(verus_syn::ExprLit { lit: verus_syn::Lit::Int(i), .. }) => {
+            i.suffix().is_empty()
+        }
+        verus_syn::Expr::Call(verus_syn::ExprCall { func, args, .. }) if args.len() == 1 => {
+            let verus_syn::Expr::Path(path) = &**func else { return false };
+            let Some(name) = path.path.get_ident() else { return false };
+            (name == "Ghost" || name == "Tracked")
+                && matches!(
+                    &args[0],
+                    verus_syn::Expr::Lit(verus_syn::ExprLit { lit: verus_syn::Lit::Int(i), .. })
+                        if i.suffix().is_empty()
+                )
+        }
+        _ => false,
+    }
 }
 
 fn proof_with_callee_path(span: proc_macro2::Span) -> TokenStream {

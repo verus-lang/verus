@@ -138,7 +138,7 @@ fn _VERUS_VERIFIED_f(a: u64, verus_tmp_b: Tracked<u64>) -> u64 {
 
 fn caller() {
     let r = ::verus_builtin::proof_with_callee(
-        f(0, Tracked(1u64)),
+        f(0, ::verus_builtin::ghost_arg_no_infer(Tracked(1u64))),
         f(0),
     );
 }
@@ -150,6 +150,11 @@ The call site appends them to the call, and passes the call a second time, as th
 compiled program writes it, to the `proof_with_callee` marker. When ghost code is
 erased, the macro emits just `f(0)`.
 
+Each extra is wrapped as `ghost_arg_no_infer(extra)`, whose result type is inferred
+from the parameter alone, so a ghost argument cannot fix the type of an executable
+local or generic argument. An unsuffixed integer literal (`0`, `Ghost(0)`) carries no
+type information and is passed directly.
+
 ### Stage 3 — after the AST rewrite
 
 After name resolution and before AST lowering (at the start of `construct_vir_crate`), the pass
@@ -158,7 +163,7 @@ redirects the first copy to the counterpart of the function it resolves to:
 ```rust
 fn caller() {
     let r = ::verus_builtin::proof_with_callee(
-        _VERUS_VERIFIED_f(0, Tracked(1u64)),
+        _VERUS_VERIFIED_f(0, ::verus_builtin::ghost_arg_no_infer(Tracked(1u64))),
         f(0),
     );
 }
@@ -186,11 +191,16 @@ verified or run; it is erased, with its closures, before borrow checking.
 
 It also checks (`proof_with_check::check_proof_with_args`) that the two copies have the
 same receiver and arguments, as source code resolved the same way, so a hand-written
-marker cannot verify one call and compile another.
+marker cannot verify one call and compile another, and that each extra is wrapped by
+`ghost_arg_no_infer` or is an unsuffixed integer literal. When a wrapper is lowered,
+`check::check_ghost_arg_no_infer` requires it to be an argument of a counterpart call
+and its argument and result types to be equal, and lowers it as its argument; MIR
+lowers it as the identity.
 A `with` function whose own generic is used only by ghost/tracked parameters or results
 is rejected, since the executable call could not infer it.
 
-`proof_with_callee` ties the result types of the two copies.
+`proof_with_callee` ties the result types of the two copies; `ghost_arg_no_infer` keeps
+the extras from driving that inference.
 
 ### What VIR sees
 

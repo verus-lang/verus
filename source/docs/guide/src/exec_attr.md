@@ -90,6 +90,12 @@ Macro expressions in ghost/tracked initializers remain supported.
    a `requires false` precondition, ensuring that improper use of `proof_with!`
    will cause a verification failure when called from verified code.
 
+   Ghost/tracked arguments must not change how Rust infers the types of the
+   executable program, so each argument's type is inferred from the argument
+   alone, not from the callee's parameter: write `let tracked mut y: int = 0;`
+   rather than `let tracked mut y = 0;`. Only an integer literal without a suffix,
+   such as `Ghost(0)`, takes its type from the parameter.
+
 Here is an example:
 
 ```rust

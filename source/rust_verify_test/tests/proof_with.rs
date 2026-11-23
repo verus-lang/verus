@@ -39,7 +39,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     // The verified and unverified copies of a call with different arguments are rejected.
-    #[test] test_wrong_proof_with_callee code! {
+    #[test] test_mismatched_args code! {
         use vstd::prelude::*;
 
         #[verus_spec(with Ghost(g): Ghost<u8>)]
@@ -49,7 +49,7 @@ test_verify_one_file! {
         #[cfg(verus_keep_ghost_body)]
         #[verus_verify]
         fn caller(x: u8, y: u8) {
-            let _ = vstd::prelude::proof_with_callee(f(y, vstd::prelude::ghost_exec(x)), f(x));
+            let _ = vstd::prelude::proof_with_callee(f(y, vstd::prelude::ghost_arg_no_infer(vstd::prelude::ghost_exec(x))), f(x));
         }
     } => Err(e) => assert_vir_error_msg(e, "the two copies of the call must be the same code")
 }
@@ -65,7 +65,7 @@ test_verify_one_file! {
         macro_rules! forge {
             ($x:ident) => {
                 vstd::prelude::proof_with_callee(
-                    f({ let x = 2; x }, vstd::prelude::ghost_exec(1u8)),
+                    f({ let x = 2; x }, vstd::prelude::ghost_arg_no_infer(vstd::prelude::ghost_exec(1u8))),
                     f({ let x = 2; $x }),
                 )
             };
@@ -96,7 +96,7 @@ test_verify_one_file! {
         #[verus_verify]
         fn caller(x: u8) {
             let _ = vstd::prelude::proof_with_callee(
-                f({ use b::Tr as _; x.foo() }, vstd::prelude::ghost_exec(1u8)),
+                f({ use b::Tr as _; x.foo() }, vstd::prelude::ghost_arg_no_infer(vstd::prelude::ghost_exec(1u8))),
                 f({ use a::Tr as _; x.foo() }),
             );
         }
@@ -114,9 +114,25 @@ test_verify_one_file! {
         #[cfg(verus_keep_ghost_body)]
         #[verus_verify]
         fn caller(x: u8) {
-            let _ = vstd::prelude::proof_with_callee(f(x, vstd::prelude::ghost_exec(x)), { f(x) });
+            let _ = vstd::prelude::proof_with_callee(f(x, vstd::prelude::ghost_arg_no_infer(vstd::prelude::ghost_exec(x))), { f(x) });
         }
     } => Err(e) => assert_vir_error_msg(e, "ill-formed `proof_with!` call")
+}
+
+test_verify_one_file! {
+    #[test] test_hir_conformance_unwrapped_extra_rejected code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(with Ghost(g): Ghost<u8>)]
+        fn f(x: u8) -> u8 { x }
+
+        // Only the verification run redirects the hand-written call.
+        #[cfg(verus_keep_ghost_body)]
+        #[verus_verify]
+        fn caller(x: u8) {
+            let _ = vstd::prelude::proof_with_callee(f(x, vstd::prelude::ghost_exec(x)), f(x));
+        }
+    } => Err(e) => assert_vir_error_msg(e, "unexpected extra argument")
 }
 
 test_verify_one_file! {
@@ -153,12 +169,108 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_with_ghost_inference_rejected code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(with Ghost(g): Ghost<T>)]
+        fn f<T>(x: T) -> usize { core::mem::size_of::<T>() }
+
+        #[verus_spec]
+        fn caller() -> usize {
+            proof_with! { Ghost(5u8) }
+            f(1)
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot infer this ghost/tracked argument's type")
+}
+
+test_verify_one_file! {
+    #[test] test_with_ghost_inference_through_local_rejected code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(with Ghost(g): Ghost<T>)]
+        fn f<T>(x: T) -> usize { core::mem::size_of::<T>() }
+
+        #[verus_spec]
+        fn caller() -> usize {
+            let x = 1;
+            proof_with! { Ghost(5u8) }
+            f(x)
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot infer this ghost/tracked argument's type")
+}
+
+test_verify_one_file! {
+    #[test] test_with_ghost_arg_bound_to_local code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(with Ghost(g): Ghost<T>)]
+        fn f<T>(x: T) -> usize { core::mem::size_of::<T>() }
+
+        #[verus_spec(with Ghost(g): Ghost<int>)]
+        fn h() {}
+
+        #[verus_spec]
+        fn caller(g: Ghost<u32>) -> usize {
+            let x: u32 = 1;
+            proof_with! { g }
+            let r = f(x);
+            proof_with! { Ghost(0) }
+            h();
+            // an untyped literal does not fix `y`'s type, which stays `i32`
+            let y = 1;
+            proof_with! { Ghost(0) }
+            let _ = f(y);
+            r
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_with_ghost_only_generic_rejected code! {
         use vstd::prelude::*;
 
         #[verus_spec(with Ghost(g): Ghost<B>)]
         fn f<A, B>(x: A) {}
     } => Err(e) => assert_vir_error_msg(e, "generic parameter `B` is used only by ghost/tracked")
+}
+
+test_verify_one_file! {
+    #[test] test_with_ghost_inference_without_callee_generics_rejected code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(with Ghost(g): Ghost<u8>)]
+        fn f() {}
+
+        #[verus_spec]
+        fn caller() -> usize {
+            let x = 1;
+            proof_with! { Ghost(x) }
+            f();
+            core::mem::size_of_val(&x)
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot infer this ghost/tracked argument's type")
+}
+
+test_verify_one_file! {
+    #[test] test_with_ghost_inference_in_loop_rejected code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(with Ghost(g): Ghost<u8>)]
+        fn f() {}
+
+        #[verus_spec]
+        fn caller(flag: bool) -> usize {
+            let x = 1;
+            loop {
+                if flag {
+                    proof_with! { Ghost(x) }
+                    f();
+                }
+                break;
+            }
+            core::mem::size_of_val(&x)
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot infer this ghost/tracked argument's type")
 }
 
 test_verify_one_file_with_options! {
@@ -443,7 +555,7 @@ test_verify_one_file! {
     => Err(e) => {
         // one error per case, so no case can stop being rejected unnoticed
         assert_eq!(e.errors.len(), 4);
-        assert_rust_error_msgs(e, &["mismatched types"; 4]);
+        assert_vir_error_msgs(e, &["cannot infer this ghost/tracked argument's type"; 4]);
     }
 }
 

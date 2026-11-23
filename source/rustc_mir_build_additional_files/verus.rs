@@ -138,6 +138,8 @@ pub struct VerusErasureCtxt {
     pub mutable_reference_tie_fn_def_id: DefId,
     pub two_phase_mutable_reference_tie_fn_def_id: DefId,
     pub get_first_fn_def_id: DefId,
+    /// `ghost_arg_no_infer` calls are lowered as the identity.
+    pub ghost_arg_no_infer_fn_def_id: DefId,
 }
 
 // TODO: we can simplify some of this; e.g., return the VerusErasureCtxt through

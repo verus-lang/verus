@@ -4,13 +4,19 @@
 //! The rewrite runs before type checking so that rustc checks the extra ghost/tracked
 //! arguments. The macro emits the call a second time, without them, as the compiled copy
 //! of `proof_with_callee`; `crate::rust_to_vir_expr::check_proof_with_callee` checks that
-//! the two calls agree after type checking, and [`check_proof_with_args`] checks that
-//! the two calls have the same arguments apart from the extra arguments.
+//! the two calls agree after type checking.
+//! The macro passes each extra argument through `ghost_arg_no_infer`, so that the
+//! extra arguments cannot steer type inference; [`check_proof_with_args`] checks that
+//! the two calls have the same arguments apart from the wrapped extra arguments, and
+//! [`check_ghost_arg_no_infer`] checks that each wrapper is the identity.
 //! Pre-type-check counterpart lookup lives in [`crate::proof_with_ast_rewrite`].
 
 use crate::attributes::{is_unverified_stub, is_verified_counterpart};
 use crate::context::{BodyCtxt, Context};
 use crate::util::{err_span, err_span_vec};
+use crate::verus_items::{
+    BuiltinFunctionItem, CompilableOprItem, SpecLiteralItem, UnaryOpItem, VerusItem,
+};
 use rustc_data_structures::sorted_map::SortedMap;
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::intravisit::{self, Visitor};
@@ -19,7 +25,10 @@ use rustc_hir::{
     PathSegment,
 };
 use rustc_hir_pretty::{Nested, PpAnn, State};
-use rustc_middle::ty::{self, AssocKind, Ty, TyCtxt, TyKind, TypeSuperVisitable, TypeVisitable};
+use rustc_middle::ty::{
+    self, AssocKind, GenericArgsRef, Ty, TyCtxt, TyKind, TypeSuperVisitable, TypeVisitable,
+    TypingEnv,
+};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Symbol;
@@ -27,7 +36,8 @@ use std::collections::HashMap;
 use vir::ast::VirErr;
 
 /// Checks that the verified call of a `proof_with_callee` has the receiver and arguments
-/// of the compiled call, followed by the extra arguments.
+/// of the compiled call, followed by extra arguments that are each wrapped by
+/// `ghost_arg_no_infer` or are untyped integer literals.
 /// The callees are compared by `check_proof_with_callee`.
 pub(crate) fn check_proof_with_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
@@ -61,7 +71,62 @@ pub(crate) fn check_proof_with_args<'tcx>(
             "ill-formed `proof_with!` call: the two copies of the call must be the same code",
         );
     }
+    for extra in &ver[comp.len()..] {
+        if !is_ghost_arg_no_infer_call(bctx, extra) && !is_untyped_int_literal(bctx, extra) {
+            return err_span(
+                extra.span,
+                "ill-formed `proof_with!` call: unexpected extra argument",
+            );
+        }
+    }
     Ok(())
+}
+
+fn verus_item_of<'tcx>(bctx: &BodyCtxt<'tcx>, callee: &'tcx Expr<'tcx>) -> Option<VerusItem> {
+    let ExprKind::Path(qpath) = &callee.kind else {
+        return None;
+    };
+    let id = bctx.types.qpath_res(qpath, callee.hir_id).opt_def_id()?;
+    bctx.ctxt.get_verus_item(id).cloned()
+}
+
+fn is_ghost_arg_no_infer_call<'tcx>(bctx: &BodyCtxt<'tcx>, e: &'tcx Expr<'tcx>) -> bool {
+    matches!(&e.kind, ExprKind::Call(callee, [_])
+        if verus_item_of(bctx, callee)
+            == Some(VerusItem::BuiltinFunction(BuiltinFunctionItem::GhostArgNoInfer)))
+}
+
+/// Whether `e` is `0`, `Ghost(0)` or `Tracked(0)` with an unsuffixed integer literal.
+/// Its type is only required to be some integer type, which cannot change how the
+/// program's types are inferred, so it may take its type from the parameter.
+fn is_untyped_int_literal<'tcx>(bctx: &BodyCtxt<'tcx>, e: &'tcx Expr<'tcx>) -> bool {
+    let mut e = e;
+    let mut wrapped = false;
+    loop {
+        match &e.kind {
+            ExprKind::Block(rustc_hir::Block { stmts: [], expr: Some(inner), .. }, None)
+            | ExprKind::DropTemps(inner) => e = inner,
+            ExprKind::Call(callee, [inner]) => match verus_item_of(bctx, callee) {
+                Some(VerusItem::CompilableOpr(
+                    CompilableOprItem::GhostExec | CompilableOprItem::TrackedExec,
+                )) if !wrapped => {
+                    wrapped = true;
+                    e = inner;
+                }
+                Some(VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Integer))) => {
+                    return true;
+                }
+                _ => return false,
+            },
+            ExprKind::Lit(lit) => {
+                return matches!(
+                    lit.node,
+                    rustc_ast::LitKind::Int(_, rustc_ast::LitIntType::Unsuffixed)
+                );
+            }
+            _ => return false,
+        }
+    }
 }
 
 /// Rejects calls to a verified counterpart other than the verified call of a
@@ -103,6 +168,46 @@ pub(crate) fn check_direct_call<'tcx>(
             tcx.item_name(f)
         ),
     )
+}
+
+/// Checks a `ghost_arg_no_infer(arg)` call, which the verifier sees as `arg`.
+/// It must be an argument of a verified counterpart call (`check_proof_with_args` checks
+/// the call's extras are wrapped), and its result type must have been inferred to be its
+/// argument's type, so that the verified call sees the same argument types as the program
+/// would without the wrappers.
+pub(crate) fn check_ghost_arg_no_infer<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    node_args: GenericArgsRef<'tcx>,
+) -> Result<(), VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    let in_counterpart_call = match tcx.parent_hir_node(expr.hir_id) {
+        rustc_hir::Node::Expr(call) => {
+            let is_arg = match &call.kind {
+                ExprKind::Call(_, args) | ExprKind::MethodCall(_, _, args, _) => {
+                    args.iter().any(|a| a.hir_id == expr.hir_id)
+                }
+                _ => false,
+            };
+            is_arg
+                && crate::rust_to_vir_expr::resolved_callee(bctx, call)
+                    .is_some_and(|(id, _)| is_verified_counterpart(def_attrs(tcx, id)))
+        }
+        _ => false,
+    };
+    if !in_counterpart_call {
+        return err_span(expr.span, "`ghost_arg_no_infer` is reserved for `proof_with!` calls");
+    }
+    let env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+    let tys = tcx.normalize_erasing_regions(env, ty::Unnormalized::new_wip(node_args));
+    if tys.type_at(0) != tys.type_at(1) {
+        return err_span(
+            expr.span,
+            "`proof_with!` cannot infer this ghost/tracked argument's type from the \
+             argument alone; specify its type explicitly",
+        );
+    }
+    Ok(())
 }
 
 /// Rejects a `with ..` function whose own type or const generic is used only by the
