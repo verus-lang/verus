@@ -1154,11 +1154,13 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             let place = Place::from(local);
 
             // Make sure we drop (parts of) the argument even when not matched on.
-            self.schedule_drop_value(
-                param.pat.as_ref().map_or(expr_span, |pat| pat.span),
-                argument_scope,
-                local,
-            );
+            if !crate::builder::verus_builder::skip_param_drop(self, param) {
+                self.schedule_drop_value(
+                    param.pat.as_ref().map_or(expr_span, |pat| pat.span),
+                    argument_scope,
+                    local,
+                );
+            }
 
             let Some(ref pat) = param.pat else {
                 continue;

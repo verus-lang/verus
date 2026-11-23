@@ -216,3 +216,42 @@ pub fn build_mir_full_erasure<'tcx>(
         },
     }
 }
+
+/// Ghost code never runs drop, so we skip emitting drops for ghost temporaries
+/// (and for drop-and-replace assignments in ghost code). See `GhostDrops`.
+pub(super) fn skip_temp_drop<'a, 'tcx>(this: &Builder<'a, 'tcx>, expr_id: ExprId) -> bool {
+    match &this.verus_extra_thir {
+        Some(extra_thir) => extra_thir.ghost_drops.skip_temp_drop(expr_id),
+        None => false,
+    }
+}
+
+/// Skip emitting drops for ghost variables.
+pub(super) fn skip_var_drop<'a, 'tcx>(
+    this: &Builder<'a, 'tcx>,
+    var: rustc_middle::thir::LocalVarId,
+) -> bool {
+    match &this.verus_extra_thir {
+        Some(extra_thir) => extra_thir.ghost_drops.skip_var_drop(var),
+        None => false,
+    }
+}
+
+/// Skip emitting the drop for a ghost parameter.
+pub(super) fn skip_param_drop<'a, 'tcx>(
+    this: &Builder<'a, 'tcx>,
+    param: &rustc_middle::thir::Param<'tcx>,
+) -> bool {
+    let Some(extra_thir) = &this.verus_extra_thir else {
+        return false;
+    };
+    if extra_thir.ghost_drops.ghost_body {
+        return true;
+    }
+    match param.pat.as_deref().map(|p| &p.kind) {
+        Some(rustc_middle::thir::PatKind::Binding { var, .. }) => {
+            extra_thir.ghost_drops.skip_var_drop(*var)
+        }
+        _ => false,
+    }
+}
