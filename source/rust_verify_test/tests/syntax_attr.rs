@@ -733,7 +733,7 @@ test_verify_one_file! {
             proof_with!{Ghost(0u8)}
             f(7)
         }
-    } => Err(err) => assert_vir_error_msg(err, "in the compiled program, `f` here resolves to `call::f`, not to `f` (declared with `#[verus_spec(with ...)]`)")
+    } => Err(err) => assert_vir_error_msg(err, "`f` does not accept extra ghost/tracked arguments: it is not declared with `#[verus_spec(with ..)]`")
 }
 
 test_verify_one_file_with_options! {

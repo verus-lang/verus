@@ -2659,6 +2659,7 @@ impl Verifier {
         spans: &SpanContext,
         other_vir_crates: Vec<Krate>,
         diagnostics: &impl air::messages::Diagnostics,
+        proof_with: Arc<crate::proof_with_ast_rewrite::ProofWithCtx>,
     ) -> Result<bool, (Vec<VirErr>, Vec<vir::ast::VirErrAs>, Option<QueryError>)> {
         if self.args.no_lifetime {
             rustc_mir_build_verus::verus::set_verus_aware_def_ids(Arc::new(HashSet::new()));
@@ -2733,6 +2734,7 @@ impl Verifier {
             verus_items,
             self.args.vstd == crate::config::Vstd::NoVstd,
             self.crate_id.clone().expect("crate_id"),
+            proof_with,
         );
 
         let ctxt_diagnostics = ctxtx.diagnostics.clone();
@@ -3152,7 +3154,6 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         }
 
         rustc_interface::passes::write_dep_info(tcx);
-        self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
 
         let time_import0 = Instant::now();
         let imported =
@@ -3168,9 +3169,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             };
         let time_import1 = Instant::now();
         self.verifier.time_import = time_import1 - time_import0;
-        let verus_items = Arc::new(crate::verus_items::from_diagnostic_items(tcx));
-        self.verifier.verus_items = Some(verus_items.clone());
-        crate::erase::setup_full_erasure_ctxt(tcx, &verus_items);
+        // Both mk_crate_id and from_diagnostic_items can lower HIR.
+        let proof_with = crate::proof_with_ast_rewrite::rewrite_crate(tcx);
         let spans = SpanContextX::new(
             tcx,
             tcx.stable_crate_id(LOCAL_CRATE),
@@ -3178,6 +3178,18 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             imported.metadatas.into_iter().map(|c| (c.crate_id, c.original_files)).collect(),
             self.verus_externs.as_ref(),
         );
+        let proof_with = match proof_with {
+            Ok(proof_with) => proof_with,
+            Err(err) => {
+                Reporter::new(&spans, compiler).report_as(&err.to_any(), MessageLevel::Error);
+                self.verifier.encountered_vir_error = true;
+                return rustc_driver::Compilation::Stop;
+            }
+        };
+        self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
+        let verus_items = Arc::new(crate::verus_items::from_diagnostic_items(tcx));
+        self.verifier.verus_items = Some(verus_items.clone());
+        crate::erase::setup_full_erasure_ctxt(tcx, &verus_items);
 
         {
             let reporter = Reporter::new(&spans, compiler);
@@ -3190,6 +3202,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 &spans,
                 imported.vir_crates,
                 &reporter,
+                proof_with,
             ) {
                 assert!(errs.len() > 0 || query_err.is_some());
                 for err in errs.into_iter() {

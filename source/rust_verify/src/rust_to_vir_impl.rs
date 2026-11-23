@@ -256,8 +256,7 @@ fn check_verus_spec_with_overrides<'tcx>(
             continue;
         }
         let verified_name = verified.name();
-        let Some(name) =
-            verified_name.as_str().strip_prefix(crate::rust_to_vir_expr::VERUS_VERIFIED_PREFIX)
+        let Some(name) = verified_name.as_str().strip_prefix(crate::attributes::VERIFIED_PREFIX)
         else {
             continue;
         };

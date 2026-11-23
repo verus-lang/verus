@@ -53,6 +53,7 @@ mod no_cheating;
 mod observers;
 mod pre_header;
 pub mod profiler;
+mod proof_with_ast_rewrite;
 mod query;
 mod resolve_traits;
 pub mod reveal_hide;
