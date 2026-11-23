@@ -872,6 +872,7 @@ fn synthesize_extension_impls(
             owning_module: ti.x.owning_module.clone(),
             auto_imported: ti.x.auto_imported,
             external_trait_blanket: false,
+            is_external: ti.x.is_external,
             assume_external_impl: false,
             is_unsafe: false,
         };
@@ -1771,7 +1772,8 @@ pub(crate) fn find_trait_impl_from_extension(
 }
 
 /// An impl of TSpecImpl attaches specifications (via TSpec) to the matching impl of T.
-/// If the impl of T is not verified (e.g. it is written outside verus! or marked external),
+/// If the impl of T is not verified (e.g. it is written outside verus!, marked external,
+/// or only declared via assume_specification),
 /// nothing checks the impl of T against these specifications,
 /// so the impl of TSpecImpl is an assumption and must be marked as such
 /// with #[verifier::assume_external_impl].
@@ -1813,7 +1815,7 @@ fn check_assume_external_impl(
         // so it only inherits the default specifications from TSpec
         return Ok(());
     }
-    match (origin.x.auto_imported, extension.x.assume_external_impl) {
+    match (origin.x.is_external, extension.x.assume_external_impl) {
         (true, false) => Err(error(
             &extension.span,
             format!(

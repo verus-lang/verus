@@ -1236,6 +1236,7 @@ fn add_fndef_axioms_to_function(
                 owning_module: None,
                 auto_imported: true,
                 external_trait_blanket: false,
+                is_external: true,
                 assume_external_impl: false,
                 is_unsafe: false,
             };
@@ -1568,6 +1569,7 @@ fn add_tuple_auto_impl(
         owning_module: None,
         auto_imported: true,
         external_trait_blanket: false,
+        is_external: true,
         assume_external_impl: false,
         is_unsafe: false,
     };
@@ -1769,6 +1771,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             owning_module: None,
             auto_imported: true,
             external_trait_blanket: false,
+            is_external: true,
             assume_external_impl: false,
             is_unsafe: false,
         };

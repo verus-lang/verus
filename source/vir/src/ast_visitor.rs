@@ -1430,6 +1430,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             owning_module,
             auto_imported,
             external_trait_blanket,
+            is_external,
             assume_external_impl,
             is_unsafe,
         } = &imp.x;
@@ -1446,6 +1447,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 owning_module: owning_module.clone(),
                 auto_imported: *auto_imported,
                 external_trait_blanket: *external_trait_blanket,
+                is_external: *is_external,
                 assume_external_impl: *assume_external_impl,
                 is_unsafe: *is_unsafe,
             })

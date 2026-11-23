@@ -29,6 +29,89 @@ test_verify_crates! {
 }
 
 test_verify_one_file! {
+    #[test] spec_impl_for_assume_specification_impl_requires_attr code! {
+        use vstd::prelude::*;
+        pub trait T {
+            fn f() -> bool;
+        }
+
+        verus! {
+        pub trait Obj {
+            fn value(&self) -> u8;
+        }
+        }
+
+        // dyn types are not auto-imported, so this impl is only declared via assume_specification
+        impl T for dyn Obj {
+            fn f() -> bool {
+                true
+            }
+        }
+
+        verus! {
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            fn f() -> (r: bool) ensures r == Self::s();
+            spec fn s() -> bool;
+        }
+
+        pub assume_specification[<dyn Obj as T>::f]() -> (r: bool)
+            ensures r;
+
+        impl TSpecImpl for dyn Obj {
+            open spec fn s() -> bool {
+                false
+            }
+        }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "mark this impl with #[verifier::assume_external_impl]")
+}
+
+test_verify_one_file! {
+    #[test] spec_impl_for_assume_specification_impl_with_attr code! {
+        use vstd::prelude::*;
+        pub trait T {
+            fn f() -> bool;
+        }
+
+        verus! {
+        pub trait Obj {
+            fn value(&self) -> u8;
+        }
+        }
+
+        // dyn types are not auto-imported, so this impl is only declared via assume_specification
+        impl T for dyn Obj {
+            fn f() -> bool {
+                true
+            }
+        }
+
+        verus! {
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            fn f() -> (r: bool) ensures r == Self::s();
+            spec fn s() -> bool;
+        }
+
+        pub assume_specification[<dyn Obj as T>::f]() -> (r: bool)
+            ensures r;
+
+        #[verifier::assume_external_impl]
+        impl TSpecImpl for dyn Obj {
+            open spec fn s() -> bool {
+                false
+            }
+        }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] external_trait_supertrait_associated_type verus_code! {
         #[verifier::external]
         trait Build<A>: Sized {

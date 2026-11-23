@@ -85,6 +85,7 @@ fn trait_impl_to_vir<'tcx>(
     module_path: Path,
     auto_imported: bool,
     external_trait_blanket: bool,
+    is_external: bool,
     assume_external_impl: bool,
     is_unsafe: bool,
 ) -> Result<Option<(Path, Typs, TraitImpl)>, VirErr> {
@@ -159,6 +160,7 @@ fn trait_impl_to_vir<'tcx>(
         owning_module: Some(module_path),
         auto_imported,
         external_trait_blanket,
+        is_external,
         assume_external_impl,
         is_unsafe: is_unsafe,
     };
@@ -582,6 +584,7 @@ pub(crate) fn translate_impl<'tcx>(
                 module_path.clone(),
                 false,
                 vattrs.external_trait_blanket,
+                false,
                 vattrs.assume_external_impl,
                 *safety != Safety::Safe,
             )
@@ -930,6 +933,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             module_path,
             true,
             false,
+            true,
             false,
             tcx.trait_def(trait_ref.def_id()).safety != Safety::Safe,
         );
@@ -1075,6 +1079,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             module_path,
             false,
             false,
+            true,
             false,
             tcx.trait_def(trait_did).safety != Safety::Safe,
         )? {
