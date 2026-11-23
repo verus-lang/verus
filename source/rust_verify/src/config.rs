@@ -755,6 +755,11 @@ pub fn parse_args_with_imports(
     {
         error("`-V sundance` cannot be combined with `-V cvc5` or `-V cvc5-smtlib`".to_string());
     }
+    if extended.contains_key(EXTENDED_SUNDANCE) && extended.contains_key(EXTENDED_AXIOM_USAGE_INFO)
+    {
+        // axiom usage info is read from an unsat core, which Sundance does not produce
+        error("`-V axiom-usage-info` is not supported with `-V sundance`".to_string());
+    }
     let solver = if extended.contains_key(EXTENDED_CVC5) {
         SmtSolver::Cvc5
     } else if extended.contains_key(EXTENDED_SUNDANCE) {
