@@ -1224,12 +1224,42 @@ fn proof_with_callee_path(span: proc_macro2::Span) -> TokenStream {
     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::proof_with_callee)
 }
 
+/// Returns true for `#[verifier::assume_specification]` and
+/// `#[verifier::external_fn_specification]`, in either the `verifier::x` or the
+/// `verifier(x)` form.
+fn is_external_fn_specification_attr(attr: &syn::Attribute) -> bool {
+    let is_name = |n: &str| n == "assume_specification" || n == "external_fn_specification";
+    let segments: Vec<String> = attr.path().segments.iter().map(|s| s.ident.to_string()).collect();
+    match segments.as_slice() {
+        [verifier, name] if verifier == "verifier" => is_name(name),
+        // `assume_specification` inside `verus!` is lowered to this spelling.
+        [verus, internal] if verus == "verus" && internal == "internal" => match &attr.meta {
+            syn::Meta::List(list) => list
+                .parse_args::<syn::Path>()
+                .ok()
+                .and_then(|p| p.get_ident().map(|i| is_name(&i.to_string())))
+                .unwrap_or(false),
+            _ => false,
+        },
+        [verifier] if verifier == "verifier" => match &attr.meta {
+            syn::Meta::List(list) => list
+                .parse_args::<syn::Path>()
+                .ok()
+                .and_then(|p| p.get_ident().map(|i| is_name(&i.to_string())))
+                .unwrap_or(false),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 // Return the original-signature function and rename `fun` to the verified counterpart.
 fn rewrite_unverified_func(
     fun: &mut syn::ItemFn,
     span: proc_macro2::Span,
     erase: EraseGhost,
 ) -> syn::ItemFn {
+    let is_assume_spec = fun.attrs.iter().any(is_external_fn_specification_attr);
     let mut unverified_fun = fun.clone();
     let unimplemented = syn::Stmt::Expr(
         syn::Expr::Verbatim(quote_spanned! {span => ::core::unimplemented!()}),
@@ -1241,7 +1271,11 @@ fn rewrite_unverified_func(
         ),
         Some(syn::token::Semi { spans: [span] }),
     );
-    unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
+    if !is_assume_spec {
+        // `assume_specification` already implies an external body, and marking it
+        // `external_body` explicitly is rejected.
+        unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
+    }
     if !crate::rustdoc::env_rustdoc() {
         unverified_fun.attrs_mut().push(crate::syntax::mk_rust_attr_syn(
             span,
@@ -1260,7 +1294,9 @@ fn rewrite_unverified_func(
         // A const fn keeps its executable code, without the proof code,
         // because const evaluation during type checking may call it.
         if erase.keep() {
-            if fun.sig.constness.is_some() {
+            if is_assume_spec {
+                // Keep the body: its trailing call names the specified function.
+            } else if fun.sig.constness.is_some() {
                 replace_block(EraseGhost::Erase, block, has_external_code_syn(&fun.attrs));
             } else {
                 block.stmts.clear();
@@ -1275,10 +1311,16 @@ fn rewrite_unverified_func(
     fun.attrs.push(mk_verus_attr_syn(span, quote! { verified_with }));
     fun.attrs.push(crate::syntax::mk_rust_attr_syn(span, "allow", quote! {non_snake_case}));
 
-    // In erase mode, we just keep the verified function with unimplemented!()
-    // since we do not need to verifying the function body and only unverified
-    // function is called in erase mode.
-    if erase.erase() {
+    if is_assume_spec {
+        // The counterpart's expanded signature cannot name the external target directly.
+        fun.attrs.retain(|attr| !is_external_fn_specification_attr(attr));
+        fun.attrs.push(mk_verus_attr_syn(span, quote! { external_body }));
+        fun.block.stmts.clear();
+        fun.block.stmts.push(unimplemented);
+    } else if erase.erase() {
+        // In erase mode, we just keep the verified function with unimplemented!()
+        // since we do not need to verifying the function body and only unverified
+        // function is called in erase mode.
         fun.block.stmts.clear();
         fun.block.stmts.push(unimplemented);
     }

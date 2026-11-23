@@ -3170,7 +3170,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         let time_import1 = Instant::now();
         self.verifier.time_import = time_import1 - time_import0;
         // Both mk_crate_id and from_diagnostic_items can lower HIR.
-        let proof_with = crate::proof_with_ast_rewrite::rewrite_crate(tcx);
+        let proof_with = crate::proof_with_ast_rewrite::rewrite_crate(tcx, &imported.vir_crates);
         let spans = SpanContextX::new(
             tcx,
             tcx.stable_crate_id(LOCAL_CRATE),

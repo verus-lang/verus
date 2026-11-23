@@ -8,6 +8,7 @@
 //! The counterpart is found from the resolved `DefId`
 //! ([`ProofWithCtx::find_verified_counterpart`]):
 //! - free function or inherent method: its `_VERUS_VERIFIED_` sibling;
+//! - external function: the counterpart of its local `assume_specification`;
 //!
 //! The callee is rewritten according to what name resolution knows:
 //! - resolved path (`f(..)`, `Tr::m(..)`, `<S as Tr>::m(..)`): its resolution is
@@ -18,7 +19,7 @@
 //! HIR does not exist yet, so local items are read from the AST, and `tcx` is used only
 //! for `def_key`-based queries and the metadata of other crates.
 
-use crate::attributes::is_unverified_stub;
+use crate::attributes::{is_unverified_stub, is_verified_counterpart};
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::visit::{self, AssocCtxt, Visitor};
 use rustc_ast::{
@@ -47,8 +48,11 @@ fn with_name(name: Symbol) -> Symbol {
 
 /// Rewrites the `proof_with!` calls of the crate and returns the index used to check
 /// them after type checking. Must run before HIR lowering takes the AST and the
-/// resolver.
-pub(crate) fn rewrite_crate(tcx: TyCtxt<'_>) -> Result<Arc<ProofWithCtx>, VirErr> {
+/// resolver; `imported` are the VIR crates of the dependencies.
+pub(crate) fn rewrite_crate(
+    tcx: TyCtxt<'_>,
+    imported: &[vir::ast::Krate],
+) -> Result<Arc<ProofWithCtx>, VirErr> {
     // Early lints see the AST as written before our rewrite.
     tcx.ensure_done().early_lint_checks(());
     // Instead of intercepting providers.queries.resolver_for_lowering_raw,
@@ -57,7 +61,7 @@ pub(crate) fn rewrite_crate(tcx: TyCtxt<'_>) -> Result<Arc<ProofWithCtx>, VirErr
     assert!(!krate.is_stolen());
     assert!(!resolver.is_stolen());
     let mut krate = krate.risky_hack_borrow_mut();
-    let ctxt = build_ctxt(tcx, &krate);
+    let ctxt = build_ctxt(tcx, &krate, imported)?;
     let mut rewriter = ProofWithRewriter { tcx, ctxt: &ctxt, error: None };
     rewriter.visit_crate(&mut krate);
     match rewriter.error {
@@ -72,9 +76,33 @@ pub(crate) fn rewrite_crate(tcx: TyCtxt<'_>) -> Result<Arc<ProofWithCtx>, VirErr
 pub(crate) struct ProofWithCtx {
     /// `proof_with_callee`, which may be a local item when the builtins are a module.
     marker: Option<DefId>,
+    verified_with: HashSet<LocalDefId>,
     unverified_stubs: HashSet<LocalDefId>,
     /// Local functions by parent and name.
     local_fns: HashMap<(LocalDefId, Symbol), LocalDefId>,
+    /// External functions are indexed through their local `assume_specification`.
+    external_targets: HashMap<DefId, DefId>,
+    imported_external_targets: HashMap<vir::ast::Path, DefId>,
+}
+
+fn imported_external_proxies(
+    crates: &[vir::ast::Krate],
+) -> impl Iterator<Item = (&vir::ast::Path, &vir::ast::Path)> {
+    crates.iter().flat_map(|krate| {
+        // A proxy declared with `with ..` has its verified counterpart as a sibling.
+        let names: HashSet<&vir::ast::Path> =
+            krate.functions.iter().map(|function| &function.x.name.path).collect();
+        krate.functions.iter().filter_map(move |function| {
+            let proxy = function.x.proxy.as_ref()?;
+            let last = proxy.x.last_segment();
+            let name = last.name()?;
+            let counterpart = proxy.x.replace_last(vir::ast::Segment::V(
+                Arc::new(format!("{VERIFIED_PREFIX}_{name}")),
+                0,
+            ));
+            names.contains(&counterpart).then_some((&function.x.name.path, &proxy.x))
+        })
+    })
 }
 
 /// Whether `attrs` contain `#[verus::internal(name)]`, or `#[verifier::name]` if
@@ -116,6 +144,13 @@ fn unparen(mut expr: &Expr) -> &Expr {
 }
 
 /// The trailing expression of a block, if any.
+fn block_tail(block: &Block) -> Option<&Expr> {
+    match &block.stmts.last()?.kind {
+        StmtKind::Expr(e) => Some(e),
+        _ => None,
+    }
+}
+
 /// Borrows the resolver for reading. Drop the guard before calling `resolver_mut`.
 fn resolver<'tcx>(tcx: TyCtxt<'tcx>) -> MappedReadGuard<'tcx, ResolverAstLowering<'tcx>> {
     tcx.resolver_for_lowering().0.borrow()
@@ -131,10 +166,14 @@ fn full_res(tcx: TyCtxt<'_>, id: NodeId) -> Option<Res<NodeId>> {
     resolver(tcx).partial_res_map.get(&id)?.full_res()
 }
 
-fn build_ctxt<'tcx>(tcx: TyCtxt<'tcx>, krate: &rustc_ast::Crate) -> Arc<ProofWithCtx> {
-    let mut builder = ProofWithCtxBuilder { tcx, ctxt: ProofWithCtx::default() };
+fn build_ctxt<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    krate: &rustc_ast::Crate,
+    imported: &[vir::ast::Krate],
+) -> Result<Arc<ProofWithCtx>, VirErr> {
+    let mut builder = ProofWithCtxBuilder { tcx, ctxt: ProofWithCtx::default(), stubs: Vec::new() };
     builder.visit_crate(krate);
-    let ProofWithCtxBuilder { mut ctxt, .. } = builder;
+    let ProofWithCtxBuilder { mut ctxt, stubs, .. } = builder;
     if ctxt.marker.is_none() {
         let name = Symbol::intern(PROOF_WITH_CALLEE);
         ctxt.marker = tcx
@@ -143,13 +182,21 @@ fn build_ctxt<'tcx>(tcx: TyCtxt<'tcx>, krate: &rustc_ast::Crate) -> Arc<ProofWit
             .find_map(|cnum| tcx.diagnostic_items(*cnum).name_to_id.get(&name))
             .copied();
     }
-    Arc::new(ctxt)
+    for (stub, target) in stubs {
+        if let Some(verified) = ctxt.counterpart_of(tcx, stub.to_def_id()) {
+            ctxt.external_targets.insert(target, verified);
+        }
+    }
+    ctxt.imported_external_targets = imported_external_target_map(tcx, &ctxt, imported)?;
+    Ok(Arc::new(ctxt))
 }
 
 /// Collects the local items that `proof_with!` rewriting needs into a [`ProofWithCtx`].
 struct ProofWithCtxBuilder<'tcx> {
     tcx: TyCtxt<'tcx>,
     ctxt: ProofWithCtx,
+    /// `assume_specification` stubs and the external functions they specify.
+    stubs: Vec<(LocalDefId, DefId)>,
 }
 
 impl ProofWithCtxBuilder<'_> {
@@ -161,6 +208,9 @@ impl ProofWithCtxBuilder<'_> {
         let Some(def_id) = self.def_id(id) else {
             return;
         };
+        if has_ast_attr(attrs, "verified_with", false) {
+            self.ctxt.verified_with.insert(def_id);
+        }
         if has_ast_attr(attrs, "unverified_stub", false) {
             self.ctxt.unverified_stubs.insert(def_id);
         }
@@ -170,6 +220,40 @@ impl ProofWithCtxBuilder<'_> {
             self.ctxt.local_fns.insert((parent, ident.name), def_id);
         }
     }
+
+    /// An external function belongs to a crate that cannot carry a Verus attribute
+    /// naming its counterpart. The link therefore lives on the local
+    /// `assume_specification`, whose trailing body call names the external target.
+    ///
+    /// Unlike `get_external_def_id`, which runs after type checking, this supports only
+    /// a plain path callee.
+    fn index_external_fn_spec(&mut self, item: &Item, body: Option<&Block>) {
+        if !has_ast_attr(&item.attrs, "external_fn_specification", true)
+            || !has_ast_attr(&item.attrs, "unverified_stub", false)
+        {
+            return;
+        }
+        let (Some(def_id), Some(body)) = (self.def_id(item.id), body) else {
+            return;
+        };
+        let mut expr = block_tail(body);
+        while let Some(e) = expr.map(unparen) {
+            match &e.kind {
+                ExprKind::Block(block, _) => expr = block_tail(block),
+                ExprKind::Call(callee, _) => {
+                    let callee = unparen(callee);
+                    if let ExprKind::Path(..) = callee.kind
+                        && let Some(target) =
+                            full_res(self.tcx, callee.id).and_then(|res| res.opt_def_id())
+                    {
+                        self.stubs.push((def_id, target));
+                    }
+                    return;
+                }
+                _ => return,
+            }
+        }
+    }
 }
 
 impl<'ast> Visitor<'ast> for ProofWithCtxBuilder<'_> {
@@ -177,6 +261,7 @@ impl<'ast> Visitor<'ast> for ProofWithCtxBuilder<'_> {
         match &item.kind {
             ItemKind::Fn(f) => {
                 self.index_item(item.id, &item.attrs, Some(f.ident));
+                self.index_external_fn_spec(item, f.body.as_deref());
                 if is_diagnostic_item(&item.attrs, PROOF_WITH_CALLEE) {
                     self.ctxt.marker = self.def_id(item.id).map(LocalDefId::to_def_id);
                 }
@@ -192,6 +277,58 @@ impl<'ast> Visitor<'ast> for ProofWithCtxBuilder<'_> {
         }
         visit::walk_assoc_item(self, item, ctxt);
     }
+}
+
+fn imported_external_target_map(
+    tcx: TyCtxt<'_>,
+    ctxt: &ProofWithCtx,
+    crates: &[vir::ast::Krate],
+) -> Result<HashMap<vir::ast::Path, DefId>, VirErr> {
+    let mut map = HashMap::new();
+    for (target, proxy_path) in imported_external_proxies(crates) {
+        let counterpart = imported_proxy(tcx, proxy_path).and_then(|proxy| {
+            if !ctxt.is_stub(tcx, proxy) {
+                return None;
+            }
+            let counterpart = ctxt.counterpart_of(tcx, proxy)?;
+            ctxt.is_verified_with(tcx, counterpart).then_some(counterpart)
+        });
+        let Some(counterpart) = counterpart else {
+            return Err(vir::messages::error_bare(format!(
+                "could not resolve the imported `proof_with!` counterpart for `{}`; \
+                 make sure the specification crate is referenced by Rust \
+                 (for example, `use spec_crate as _;`) and has been rebuilt",
+                vir::ast_util::path_as_friendly_rust_name(target),
+            )));
+        };
+        // Duplicate specifications are reported when VIR crates are merged.
+        map.insert(target.clone(), counterpart);
+    }
+    Ok(map)
+}
+
+fn imported_proxy(tcx: TyCtxt<'_>, path: &vir::ast::Path) -> Option<DefId> {
+    let krate = tcx
+        .crates(())
+        .iter()
+        .find(|krate| crate::rust_to_vir_path::mk_crate_id(tcx, **krate) == path.krate)?;
+    let mut module = krate.as_def_id();
+    let (last, modules) = path.segments.split_last()?;
+    let name = last.name()?.as_str();
+    for segment in modules {
+        module = tcx.module_children(module).iter().find_map(|child| match child.res {
+            Res::Def(DefKind::Mod, id)
+                if segment.name().is_some_and(|n| child.ident.name.as_str() == n.as_str()) =>
+            {
+                Some(id)
+            }
+            _ => None,
+        })?;
+    }
+    tcx.module_children(module).iter().find_map(|child| match child.res {
+        Res::Def(DefKind::Fn, id) if child.ident.name.as_str() == name => Some(id),
+        _ => None,
+    })
 }
 
 impl ProofWithCtx {
@@ -211,6 +348,14 @@ impl ProofWithCtx {
         self.lookup_counterpart(tcx, original)
     }
 
+    /// Whether `def_id` is marked `#[verus::internal(verified_with)]`.
+    fn is_verified_with(&self, tcx: TyCtxt<'_>, def_id: DefId) -> bool {
+        match def_id.as_local() {
+            Some(local) => self.verified_with.contains(&local),
+            None => is_verified_counterpart(tcx.attrs_for_def(def_id)),
+        }
+    }
+
     /// Whether `def_id` is marked `#[verus::internal(unverified_stub)]`.
     fn is_stub(&self, tcx: TyCtxt<'_>, def_id: DefId) -> bool {
         match def_id.as_local() {
@@ -219,10 +364,20 @@ impl ProofWithCtx {
         }
     }
 
-    /// Looks up a candidate using the stub.
+    /// Looks up a candidate using stubs or external specification maps.
     /// The candidate's `verified_with` marker and call conformance are checked separately.
     fn lookup_counterpart(&self, tcx: TyCtxt<'_>, def_id: DefId) -> Option<DefId> {
-        self.is_stub(tcx, def_id).then(|| self.counterpart_of(tcx, def_id)).flatten()
+        if self.is_stub(tcx, def_id) {
+            return self.counterpart_of(tcx, def_id);
+        }
+        if let Some(found) = self.external_targets.get(&def_id) {
+            return Some(*found);
+        }
+        if !def_id.is_local() {
+            let path = crate::rust_to_vir_path::def_path_to_vir_path(tcx, tcx.def_path(def_id))?;
+            return self.imported_external_targets.get(&path).copied();
+        }
+        None
     }
 
     fn counterpart_of(&self, tcx: TyCtxt<'_>, def_id: DefId) -> Option<DefId> {
@@ -351,7 +506,7 @@ impl<'tcx> ProofWithRewriter<'_, 'tcx> {
     fn rewrite_callee(&mut self, callee: &mut Expr) -> Result<(), VirErr> {
         let callee_id = callee.id;
         let span = callee.span;
-        let ExprKind::Path(_, path) = &mut callee.kind else {
+        let ExprKind::Path(qself, path) = &mut callee.kind else {
             return crate::util::err_span(span, "`with` ghost inputs/outputs: unsupported callee");
         };
 
@@ -382,7 +537,7 @@ impl<'tcx> ProofWithRewriter<'_, 'tcx> {
                     )
                     .primary_span(&crate::spans::err_air_span(def_span)));
                 };
-                self.redirect_path(callee_id, path, verified);
+                self.redirect_path(callee_id, qself, path, def_id, verified);
             }
             // The qualifying type (e.g. `T::Assoc`) resolves during type checking.
             None => {
@@ -394,11 +549,27 @@ impl<'tcx> ProofWithRewriter<'_, 'tcx> {
         Ok(())
     }
 
-    fn redirect_path(&mut self, renamed_id: NodeId, path: &mut Path, verified: DefId) {
+    /// An external specification may use a different item name.
+    fn redirect_path(
+        &mut self,
+        renamed_id: NodeId,
+        qself: &mut Option<Box<rustc_ast::QSelf>>,
+        path: &mut Path,
+        original: DefId,
+        verified: DefId,
+    ) {
         let tcx = self.tcx;
         let kind = tcx.def_kind(verified);
         let res = Res::Def(kind, verified);
         resolver_mut(tcx).partial_res_map.insert(renamed_id, PartialRes::new(res));
+        if kind == DefKind::Fn && tcx.def_kind(original) != DefKind::Fn {
+            // The counterpart of an external method's `assume_specification` is a free
+            // function, which the method's type or trait cannot qualify. Its generic
+            // arguments are inferred, and checked against the executable call's.
+            *qself = None;
+            let n = path.segments.len();
+            path.segments.drain(..n - 1);
+        }
         let last = path.segments.last_mut().expect("path segment");
         self.rename(last, res);
     }

@@ -195,7 +195,7 @@ fn unchecked_def_id_to_vir_path<'tcx>(
     def_path_to_vir_path(tcx, tcx.def_path(def_id))
 }
 
-fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
+pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
     let krate = mk_crate_id(tcx, def_path.krate);
     let mut segments: Vec<Segment> = Vec::new();
     for d in def_path.data.iter() {
