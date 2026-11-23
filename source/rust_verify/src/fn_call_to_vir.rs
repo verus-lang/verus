@@ -1,6 +1,7 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
 use crate::context::{AtomicallyCtxt, BodyCtxt, HeaderSetting};
 use crate::erase::{LoopSpecKind, MiscCall, ResolvedCall};
+use crate::proof_with_to_vir::impl_counterpart;
 use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
@@ -227,10 +228,25 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                 impl_args: _,
                 impl_item_args: _,
                 resolved_item: ResolvedItem::FromTrait(did, args),
-            } => {
+            } => 'trait_default: {
                 // We resolved to the trait method itself, which means this must be
                 // a default method implementation in the trait.
-                // Redirect this to the appropriate per-instance copy of the default method.
+                // Redirect this to the appropriate per-instance copy of the default method,
+                // unless an overriding implementation carries its own body and contract.
+
+                if let Some((id, args)) = impl_counterpart(expr.span, tcx, typing_env, did, args) {
+                    let typs = mk_typ_args(bctx, args, id, expr.span)?;
+                    let impl_paths = get_impl_paths(bctx, id, args, None, const_var, expr.span)?;
+                    let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(id) });
+                    record_name = f.clone();
+
+                    break 'trait_default vir::ast::CallTargetKind::DynamicResolved {
+                        resolved: f,
+                        typs,
+                        impl_paths,
+                        is_trait_default: false,
+                    };
+                }
 
                 let typs = mk_typ_args(bctx, args, did, expr.span)?;
 

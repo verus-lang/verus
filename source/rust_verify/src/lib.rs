@@ -55,6 +55,7 @@ mod pre_header;
 pub mod profiler;
 mod proof_with_ast_rewrite;
 mod proof_with_check;
+mod proof_with_to_vir;
 mod query;
 mod resolve_traits;
 pub mod reveal_hide;

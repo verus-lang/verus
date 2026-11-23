@@ -9,25 +9,28 @@
 //! ([`ProofWithCtx::find_verified_counterpart`]):
 //! - free function or inherent method: its `_VERUS_VERIFIED_` sibling;
 //! - external function: the counterpart of its local `assume_specification`;
+//! - trait method: the method of a companion trait, which has the trait as a supertrait.
 //!
 //! The callee is rewritten according to what name resolution knows:
 //! - resolved path (`f(..)`, `Tr::m(..)`, `<S as Tr>::m(..)`): its resolution is
 //!   replaced ([`ProofWithRewriter::redirect_path`]);
 //! - receiver call (`x.m(..)`) or type-relative path (`T::m(..)`): the method is renamed
-//!   to `_VERUS_VERIFIED_m` before probing
+//!   to `_VERUS_VERIFIED_m`, and its companion traits are added to the traits in scope
 //!   ([`ProofWithRewriter::rewrite_method`]).
 //!
 //! HIR does not exist yet, so local items are read from the AST, and `tcx` is used only
 //! for `def_key`-based queries and the metadata of other crates.
 
-use crate::attributes::{is_unverified_stub, is_verified_counterpart};
+use crate::attributes::{Attr, is_unverified_stub, is_verified_counterpart, parse_attrs_opt};
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::visit::{self, AssocCtxt, Visitor};
 use rustc_ast::{
-    AssocItem, AssocItemKind, AttrKind, Attribute, Block, Expr, ExprKind, Item, ItemKind,
-    LocalKind, NodeId, Path, PathSegment, StmtKind,
+    AssocItem, AssocItemKind, AttrKind, Attribute, Block, Expr, ExprKind, GenericBound, Item,
+    ItemKind, LocalKind, NodeId, Path, PathSegment, StmtKind,
 };
+use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
 use rustc_data_structures::sync::{MappedReadGuard, MappedWriteGuard};
+use rustc_hir::TraitCandidate;
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::middle::resolve::{PartialRes, ResolverAstLowering};
@@ -84,6 +87,10 @@ pub(crate) struct ProofWithCtx {
     /// External functions are indexed through their local `assume_specification`.
     external_targets: HashMap<DefId, DefId>,
     imported_external_targets: HashMap<vir::ast::Path, DefId>,
+    /// The companion traits of each trait, which are generated with it as a supertrait.
+    companions: FxIndexMap<DefId, Vec<DefId>>,
+    /// The names of the counterparts of inherent `with` methods.
+    inherent_counterparts: HashSet<Symbol>,
 }
 
 fn imported_external_proxies(
@@ -183,6 +190,7 @@ fn build_ctxt<'tcx>(
             .find_map(|cnum| tcx.diagnostic_items(*cnum).name_to_id.get(&name))
             .copied();
     }
+    external_companion_traits(tcx, &mut ctxt);
     for (stub, target) in stubs {
         if let Some(verified) = ctxt.counterpart_of(tcx, stub.to_def_id()) {
             ctxt.external_targets.insert(target, verified);
@@ -267,6 +275,28 @@ impl<'ast> Visitor<'ast> for ProofWithCtxBuilder<'_> {
                     self.ctxt.marker = self.def_id(item.id).map(LocalDefId::to_def_id);
                 }
             }
+            ItemKind::Trait(tr) => {
+                if let Some(def_id) = self.def_id(item.id)
+                    && has_ast_attr(&item.attrs, "verified_trait", false)
+                {
+                    let supertraits = tr.bounds.iter().filter_map(|bound| match bound {
+                        GenericBound::Trait(poly) => {
+                            full_res(self.tcx, poly.trait_ref.ref_id)?.opt_def_id()
+                        }
+                        _ => None,
+                    });
+                    self.ctxt.add_companion(def_id.to_def_id(), supertraits);
+                }
+            }
+            ItemKind::Impl(impl_) if impl_.of_trait.is_none() => {
+                for assoc in &impl_.items {
+                    if let AssocItemKind::Fn(f) = &assoc.kind
+                        && has_ast_attr(&assoc.attrs, "verified_with", false)
+                    {
+                        self.ctxt.inherent_counterparts.insert(f.ident.name);
+                    }
+                }
+            }
             _ => {}
         }
         visit::walk_item(self, item);
@@ -277,6 +307,33 @@ impl<'ast> Visitor<'ast> for ProofWithCtxBuilder<'_> {
             self.index_item(item.id, &item.attrs, Some(f.ident));
         }
         visit::walk_assoc_item(self, item, ctxt);
+    }
+}
+
+fn is_companion_trait(attrs: &[rustc_hir::Attribute]) -> bool {
+    parse_attrs_opt(attrs, None).into_iter().any(|a| matches!(a, Attr::VerifiedTrait))
+}
+
+fn external_companion_traits(tcx: TyCtxt<'_>, ctxt: &mut ProofWithCtx) {
+    for cnum in tcx.crates(()) {
+        for trait_def_id in tcx.traits(*cnum) {
+            // The reserved prefix avoids decoding attributes for almost every trait.
+            if !tcx.item_name(*trait_def_id).as_str().starts_with(VERIFIED_PREFIX) {
+                continue;
+            }
+            // Verus attributes are `Unparsed`, for which the deprecation note permits
+            // `get_all_attrs`.
+            #[allow(deprecated)]
+            let attrs = tcx.get_all_attrs(*trait_def_id);
+            if !is_companion_trait(attrs) {
+                continue;
+            }
+            let supertraits = tcx.explicit_super_clauses_of(*trait_def_id).skip_binder();
+            let supertraits = supertraits
+                .iter()
+                .filter_map(|(clause, _)| Some(clause.as_trait_clause()?.def_id()));
+            ctxt.add_companion(*trait_def_id, supertraits);
+        }
     }
 }
 
@@ -340,7 +397,8 @@ impl ProofWithCtx {
         tcx: TyCtxt<'_>,
         original: DefId,
     ) -> Option<DefId> {
-        // Legacy trait counterparts are declared next to the trait method.
+        // Trait calls may resolve to an implementation method, but counterpart lookup
+        // uses the trait declaration's companion traits. Inherent methods keep their DefId.
         let original = if tcx.def_kind(original) == DefKind::AssocFn {
             tcx.associated_item(original).trait_item_def_id().unwrap_or(original)
         } else {
@@ -365,20 +423,28 @@ impl ProofWithCtx {
         }
     }
 
-    /// Looks up a candidate using stubs or external specification maps.
+    /// Looks up a candidate using local stubs, specification maps, or companion traits.
     /// The candidate's `verified_with` marker and call conformance are checked separately.
     fn lookup_counterpart(&self, tcx: TyCtxt<'_>, def_id: DefId) -> Option<DefId> {
-        if self.is_stub(tcx, def_id) {
-            return self.counterpart_of(tcx, def_id);
+        let name = with_name(tcx.item_name(def_id));
+        if !self.is_stub(tcx, def_id) {
+            // Non-stubs may be linked through an `assume_specification` or an
+            // external trait proxy.
+            if let Some(found) = self.external_targets.get(&def_id) {
+                return Some(*found);
+            }
+            if !def_id.is_local()
+                && let Some(found) =
+                    crate::rust_to_vir_path::def_path_to_vir_path(tcx, tcx.def_path(def_id))
+                        .and_then(|path| self.imported_external_targets.get(&path))
+            {
+                return Some(*found);
+            }
+            let parent = tcx.opt_parent(def_id)?;
+            return self.companion_method(tcx, parent, name);
         }
-        if let Some(found) = self.external_targets.get(&def_id) {
-            return Some(*found);
-        }
-        if !def_id.is_local() {
-            let path = crate::rust_to_vir_path::def_path_to_vir_path(tcx, tcx.def_path(def_id))?;
-            return self.imported_external_targets.get(&path).copied();
-        }
-        None
+        self.counterpart_of(tcx, def_id)
+            .or_else(|| self.companion_method(tcx, tcx.opt_parent(def_id)?, name))
     }
 
     fn counterpart_of(&self, tcx: TyCtxt<'_>, def_id: DefId) -> Option<DefId> {
@@ -404,6 +470,30 @@ impl ProofWithCtx {
                 .next()
                 .map(|assoc| assoc.def_id),
             _ => None,
+        }
+    }
+
+    /// Finds a trait method's counterpart by its generated name in a companion
+    /// trait whose supertraits include `trait_def_id`, rather than an inherent impl.
+    fn companion_method(
+        &self,
+        tcx: TyCtxt<'_>,
+        trait_def_id: DefId,
+        name: Symbol,
+    ) -> Option<DefId> {
+        self.companions_of_trait(trait_def_id)
+            .iter()
+            .find_map(|companion| self.child_fn(tcx, *companion, name))
+    }
+
+    /// The companion traits generated for `trait_def_id`.
+    fn companions_of_trait(&self, trait_def_id: DefId) -> &[DefId] {
+        self.companions.get(&trait_def_id).map(Vec::as_slice).unwrap_or_default()
+    }
+
+    fn add_companion(&mut self, companion: DefId, supertraits: impl Iterator<Item = DefId>) {
+        for supertrait in supertraits {
+            self.companions.entry(supertrait).or_default().push(companion);
         }
     }
 }
@@ -492,12 +582,13 @@ impl<'tcx> ProofWithRewriter<'_, 'tcx> {
 
     /// Redirects the verified call of a `proof_with_callee` marker.
     fn redirect(&mut self, call: &mut Expr) -> Result<(), VirErr> {
+        let call_id = call.id;
         match &mut call.kind {
             // Ordinary function paths are already resolved; type-relative qualified
             // paths may still need type checking.
             ExprKind::Call(callee, _) => self.rewrite_callee(callee)?,
             // Receiver methods remain unresolved until type checking.
-            ExprKind::MethodCall(method) => self.rewrite_method(&mut method.seg),
+            ExprKind::MethodCall(method) => self.rewrite_method(call_id, &mut method.seg, false),
             _ => unreachable!("checked by verified_call"),
         }
         Ok(())
@@ -540,17 +631,19 @@ impl<'tcx> ProofWithRewriter<'_, 'tcx> {
                 };
                 self.redirect_path(callee_id, qself, path, def_id, verified);
             }
-            // The qualifying type (e.g. `T::Assoc`) resolves during type checking.
+            // The qualifying type resolves later (e.g. `T::m` or `T::Assoc::m`), so
+            // every companion declaring the renamed method is offered.
             None => {
                 let seg = path.segments.last_mut().expect("path segment");
-                self.rewrite_method(seg);
+                self.rewrite_method(callee_id, seg, true);
             }
             _ => return Err(cannot_redirect()),
         }
         Ok(())
     }
 
-    /// An external specification may use a different item name.
+    /// A qualified trait call must also name the companion trait that declares the
+    /// counterpart. An external specification may use a different item name.
     fn redirect_path(
         &mut self,
         renamed_id: NodeId,
@@ -571,12 +664,88 @@ impl<'tcx> ProofWithRewriter<'_, 'tcx> {
             let n = path.segments.len();
             path.segments.drain(..n - 1);
         }
+        let declares = tcx.opt_parent(verified);
+        if let Some(companion) = declares
+            && declares != tcx.opt_parent(original)
+            && matches!(tcx.def_kind(companion), DefKind::Trait)
+        {
+            if path.segments.len() == 1 {
+                // `use Tr::m; m(..)` has no trait segment to rename, so add one.
+                let mut seg = PathSegment::from_ident(path.segments[0].ident);
+                seg.id = resolver(tcx).next_node_id;
+                resolver_mut(tcx).next_node_id = NodeId::from_u32(seg.id.as_u32() + 1);
+                path.segments.insert(0, seg);
+            }
+
+            let i = path.segments.len() - 2;
+            self.rename(&mut path.segments[i], Res::Def(DefKind::Trait, companion));
+        }
         let last = path.segments.last_mut().expect("path segment");
         self.rename(last, res);
     }
 
-    fn rewrite_method(&self, seg: &mut PathSegment) {
-        seg.ident = Ident::new(with_name(seg.ident.name), seg.ident.span);
+    /// Renames a method segment and records matching companion traits.
+    /// `is_type_relative` is true for a type-relative path `T::m(..)` and false for a
+    /// receiver call `x.m(..)`; `id` identifies the callee path or the call.
+    fn rewrite_method(&mut self, id: NodeId, seg: &mut PathSegment, is_type_relative: bool) {
+        let tcx = self.tcx;
+        let verified_name = with_name(seg.ident.name);
+        seg.ident = Ident::new(verified_name, seg.ident.span);
+
+        // The resolver records candidates for every method call and type-relative path
+        // in the trait map of the enclosing owner.
+        let owner = (resolver(tcx).owners.items())
+            .filter_map(|(owner, info)| Some((*owner, *info.trait_map.get(&id)?)))
+            .get_only();
+        let candidates: &'tcx [TraitCandidate<'tcx>] =
+            owner.map(|(_, candidates)| candidates).unwrap_or_default();
+
+        let ctxt = self.ctxt;
+        let declares = |companion: &DefId| ctxt.child_fn(tcx, *companion, verified_name);
+        // The trait of a type-relative path is unknown until type checking.
+        let companions: FxIndexSet<&DefId> = if is_type_relative {
+            Box::new(ctxt.companions.values().flatten()) as Box<dyn Iterator<Item = &DefId>>
+        } else {
+            Box::new(candidates.iter().flat_map(|c| ctxt.companions_of_trait(c.def_id)))
+        }
+        .filter(|c| declares(c).is_some())
+        .collect();
+
+        // Reusing the recorded imports prevents the source trait import from being
+        // reported as unused.
+        let import_ids: &'tcx [LocalDefId] =
+            candidates.first().map(|c| c.import_ids).unwrap_or(&[]);
+        // The companion traits are usually not imported; without them in scope, type
+        // checking cannot resolve `_VERUS_VERIFIED_m` from the companion that declares it.
+        // Method probing skips duplicate traits, so companions already in scope can be
+        // appended again.
+        let added = companions.iter().map(|companion| TraitCandidate {
+            def_id: **companion,
+            import_ids,
+            lint_ambiguous: false,
+        });
+        let extended = tcx.hir_arena.alloc_from_iter(candidates.iter().cloned().chain(added));
+        if let Some((owner, _)) = owner
+            && let Some(info) = resolver_mut(tcx).owners.get_mut(&owner)
+        {
+            info.trait_map.insert(id, extended);
+        }
+
+        // Not exactly one companion
+        if is_type_relative || companions.len() != 1 {
+            return;
+        }
+        // If there is a inherent method and trait method with verified counterparts, we should not resolve it.
+        // e.g., trait T {#[verus_spec(with ...) fn m();} impl S { #[verus_spec(with ...) fn m() { } } impl T for S { #[verus_spec(with ...) fn m() {}}
+        if ctxt.inherent_counterparts.contains(&verified_name) {
+            return;
+        }
+        // The verified method is resolved directly from the companion trait if there is exactly one companion.
+        if let Some(method_defid) = companions.first().map(|c| *c).and_then(declares) {
+            resolver_mut(tcx)
+                .partial_res_map
+                .insert(seg.id, PartialRes::new(Res::Def(DefKind::AssocFn, method_defid)));
+        }
     }
 
     fn rename(&mut self, seg: &mut PathSegment, res: Res<NodeId>) {

@@ -6,11 +6,11 @@
 //! of `proof_with_callee`; `crate::rust_to_vir_expr::check_proof_with_callee` checks that
 //! the two calls agree after type checking, and [`check_proof_with_args`] checks that
 //! the two calls have the same arguments apart from the extra arguments.
-//! Counterpart lookup lives in [`crate::proof_with_ast_rewrite::ProofWithCtx::find_verified_counterpart`].
+//! Pre-type-check counterpart lookup lives in [`crate::proof_with_ast_rewrite`].
 
 use crate::attributes::{is_unverified_stub, is_verified_counterpart};
-use crate::context::BodyCtxt;
-use crate::util::err_span;
+use crate::context::{BodyCtxt, Context};
+use crate::util::{err_span, err_span_vec};
 use rustc_data_structures::sorted_map::SortedMap;
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::intravisit::{self, Visitor};
@@ -19,7 +19,7 @@ use rustc_hir::{
     PathSegment,
 };
 use rustc_hir_pretty::{Nested, PpAnn, State};
-use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, TypeSuperVisitable, TypeVisitable};
+use rustc_middle::ty::{self, AssocKind, Ty, TyCtxt, TyKind, TypeSuperVisitable, TypeVisitable};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Symbol;
@@ -173,6 +173,35 @@ fn params_in<'tcx>(value: impl TypeVisitable<TyCtxt<'tcx>>) -> Vec<u32> {
     params.0.sort();
     params.0.dedup();
     params.0
+}
+
+/// An override without `with` has no verified counterpart for the body Rust runs.
+pub(crate) fn check_verus_spec_with_overrides<'tcx>(
+    ctxt: &Context<'tcx>,
+    impl_def_id: DefId,
+    trait_def_id: DefId,
+) -> Result<(), Vec<VirErr>> {
+    let tcx = ctxt.tcx;
+    for item in tcx.associated_items(impl_def_id).in_definition_order() {
+        if !matches!(item.kind, AssocKind::Fn { .. }) {
+            continue;
+        }
+        let Some(decl) = item.trait_item_def_id() else { continue };
+        if tcx.parent(decl) == trait_def_id
+            && is_unverified_stub(def_attrs(tcx, decl))
+            && !is_unverified_stub(def_attrs(tcx, item.def_id))
+        {
+            return err_span_vec(
+                tcx.def_span(item.def_id),
+                format!(
+                    "cannot override `{}`: a trait method declared with `#[verus_spec(with ...)]` \
+                     cannot be overridden without repeating the `with` clause",
+                    tcx.def_path_str(decl)
+                ),
+            );
+        }
+    }
+    Ok(())
 }
 
 fn def_attrs<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> &'tcx [rustc_hir::Attribute] {
