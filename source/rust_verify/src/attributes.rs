@@ -1012,6 +1012,8 @@ pub(crate) const VERIFIED_IMPL_PREFIX: &str = "_VERUS_VERIFIED_IMPL_";
 pub(crate) const VERIFIED_TRAIT_PREFIX: &str = "_VERUS_VERIFIED_TRAIT_";
 /// The proc macro uses this prefix for the companion trait that holds overriding bodies.
 pub(crate) const VERIFIED_IMPL_TRAIT_PREFIX: &str = "_VERUS_VERIFIED_IMPL_TRAIT_";
+/// VIR uses this prefix for stubs after assigning the source name to their counterparts.
+pub(crate) const UNVERIFIED_PREFIX: &str = "_VERUS_UNVERIFIED_";
 
 pub(crate) fn is_unverified_stub(attrs: &[Attribute]) -> bool {
     parse_attrs_opt(attrs, None).into_iter().any(|a| matches!(a, Attr::UnverifiedStub))

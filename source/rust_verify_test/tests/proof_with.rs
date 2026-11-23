@@ -1853,6 +1853,137 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// --- `--verify-function` selects the counterpart ---
+
+test_verify_one_file_with_options! {
+    // The counterpart is named after the user's function, so `--verify-function` selects it.
+    #[test] test_verify_function_selects_counterpart
+        ["--verify-function test", "--verify-root"] => code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(r =>
+            with Tracked(b): Tracked<u64>
+            requires b == 1,
+            ensures r == 3u64,
+        )]
+        fn test(a: u64) -> u64 {
+            a
+        }
+    } => Err(err) => assert_eq!(err.errors.len(), 1)
+}
+
+test_verify_one_file_with_options! {
+    // Likewise for an inherent method.
+    #[test] test_verify_function_selects_method_counterpart
+        ["--verify-function S::f", "--verify-root"] => code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        struct S;
+
+        #[verus_verify]
+        impl S {
+            #[verus_spec(r =>
+                with Tracked(b): Tracked<u64>
+                requires b == 1,
+                ensures r == 3u64, // FAILS
+            )]
+            fn f(&self, a: u64) -> u64 {
+                a
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    // Likewise for a trait method; only the named one of several `with` methods is verified.
+    #[test] test_verify_function_selects_trait_method_counterpart
+        ["--verify-function S::g", "--verify-root"] => code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        trait T {
+            #[verus_spec(r =>
+                with Ghost(g): Ghost<int>
+                ensures r == a,
+            )]
+            fn f(&self, a: u64) -> u64;
+
+            #[verus_spec(r =>
+                with Tracked(b): Tracked<u64>
+                requires b == 1,
+                ensures r == 2, // FAILS
+            )]
+            fn g(&self) -> u64;
+        }
+
+        #[verus_verify]
+        struct S;
+
+        #[verus_verify]
+        impl T for S {
+            #[verus_spec(with Ghost(g): Ghost<int>)]
+            fn f(&self, a: u64) -> u64 {
+                a
+            }
+
+            #[verus_spec(with Tracked(b): Tracked<u64>)]
+            fn g(&self) -> u64 {
+                3
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    // Likewise for a method of an external trait.
+    #[test] test_verify_function_selects_external_trait_method_counterpart
+        ["--verify-function S::g", "--verify-root"] => code!{
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        trait T {
+            fn f(&self, a: u64) -> u64;
+            fn g(&self) -> u64;
+        }
+
+        #[verus_verify]
+        struct S;
+
+        #[verus_verify]
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+
+            #[verus_spec(r =>
+                with Ghost(g): Ghost<int>
+                ensures r == a,
+            )]
+            fn f(&self, a: u64) -> u64;
+
+            #[verus_spec(r =>
+                with Tracked(b): Tracked<u64>
+                requires b == 1,
+                ensures r == 2, // FAILS
+            )]
+            fn g(&self) -> u64;
+        }
+
+        #[verus_verify]
+        impl T for S {
+            #[verus_spec(with Ghost(g): Ghost<int>)]
+            fn f(&self, a: u64) -> u64 {
+                a
+            }
+
+            #[verus_spec(with Tracked(b): Tracked<u64>)]
+            fn g(&self) -> u64 {
+                3
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 // --- The verified counterpart is not callable by hand ---
 //
 // It is only reachable through the function it belongs to, with `proof_with!`.

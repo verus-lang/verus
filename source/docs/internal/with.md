@@ -192,6 +192,21 @@ is rejected, since the executable call could not infer it.
 
 `proof_with_callee` ties the result types of the two copies.
 
+### What VIR sees
+
+The counterpart is what carries the specification, so it is the item VIR verifies. To
+keep diagnostics, `--verify-function` and profiler output naming the function the user
+wrote, `rust_to_vir_path::with_fn_path` swaps the two names on the way into VIR:
+
+```
+_VERUS_VERIFIED_f   ->  f
+f (the stub)        ->  _VERUS_UNVERIFIED_f
+```
+
+Both definitions and call sites pass through that mapping, and
+`rust_to_vir_impl::translate_impl_item` names an impl method after the renamed
+declaration so a trait method and its impls agree.
+
 ## The cases
 
 ### 1. Free function
@@ -302,7 +317,9 @@ The price is that a call on a concrete type resolves to the *declaration*, so th
 implementation's own contract would be lost at static dispatch. `fn_call_to_vir` pairs the
 halves back up: when a call resolves to a counterpart declaration,
 `proof_with_check::impl_counterpart` looks for an `_VERUS_VERIFIED_IMPL_TRAIT_Tr` implementation
-of the receiver's type, and uses that method as the resolved target.
+of the receiver's type, and uses that method as the resolved target. Both counterparts
+strip to the same VIR name, so the two halves line up as an ordinary trait method and its
+implementation.
 
 An implementation that overrides `m` but never reaches the macro would otherwise inherit
 the assumed default silently. `check_verus_spec_with_overrides` rejects it: an

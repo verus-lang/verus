@@ -96,20 +96,14 @@ pub(crate) struct ProofWithCtx {
 fn imported_external_proxies(
     crates: &[vir::ast::Krate],
 ) -> impl Iterator<Item = (&vir::ast::Path, &vir::ast::Path)> {
-    crates.iter().flat_map(|krate| {
-        // A proxy declared with `with ..` has its verified counterpart as a sibling.
-        let names: HashSet<&vir::ast::Path> =
-            krate.functions.iter().map(|function| &function.x.name.path).collect();
-        krate.functions.iter().filter_map(move |function| {
-            let proxy = function.x.proxy.as_ref()?;
-            let last = proxy.x.last_segment();
-            let name = last.name()?;
-            let counterpart = proxy.x.replace_last(vir::ast::Segment::V(
-                Arc::new(format!("{VERIFIED_PREFIX}_{name}")),
-                0,
-            ));
-            names.contains(&counterpart).then_some((&function.x.name.path, &proxy.x))
-        })
+    crates.iter().flat_map(|krate| &krate.functions).filter_map(|function| {
+        let proxy = function.x.proxy.as_ref()?;
+        proxy
+            .x
+            .last_segment()
+            .name()
+            .is_some_and(|name| name.starts_with(crate::attributes::UNVERIFIED_PREFIX))
+            .then_some((&function.x.name.path, &proxy.x))
     })
 }
 
@@ -372,7 +366,8 @@ fn imported_proxy(tcx: TyCtxt<'_>, path: &vir::ast::Path) -> Option<DefId> {
         .find(|krate| crate::rust_to_vir_path::mk_crate_id(tcx, **krate) == path.krate)?;
     let mut module = krate.as_def_id();
     let (last, modules) = path.segments.split_last()?;
-    let name = last.name()?.as_str();
+    // VIR renames the stub `f` to `_VERUS_UNVERIFIED_f`.
+    let name = last.name()?.strip_prefix(crate::attributes::UNVERIFIED_PREFIX)?;
     for segment in modules {
         module = tcx.module_children(module).iter().find_map(|child| match child.res {
             Res::Def(DefKind::Mod, id)
