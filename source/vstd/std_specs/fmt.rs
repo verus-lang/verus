@@ -159,14 +159,6 @@ pub assume_specification<'a, const N: usize, const M: usize>[ arguments_new ](
 ) -> Arguments<'a>
 ;
 
-// Formatter functions, including those emitted by #[derive(Debug)]
-// (see rustc_builtin_macros/src/deriving/debug.rs)
-impl<T: core::fmt::Debug + ?Sized> DebugSpecImpl for &T {
-    open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
-        DebugSpec::fmt_req(*self, f)
-    }
-}
-
 pub assume_specification<'a>[ Formatter::<'a>::write_str ](
     f: &mut Formatter<'a>,
     data: &str,
@@ -178,8 +170,6 @@ pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field1_finish ](
     name: &str,
     value1: &dyn core::fmt::Debug,
 ) -> Result<(), Error>
-    requires
-        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
 ;
 
 pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field1_finish ](
@@ -188,8 +178,6 @@ pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field1_finish ](
     name1: &str,
     value1: &dyn core::fmt::Debug,
 ) -> Result<(), Error>
-    requires
-        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
 ;
 
 pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field2_finish ](
@@ -198,9 +186,6 @@ pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field2_finish ](
     value1: &dyn core::fmt::Debug,
     value2: &dyn core::fmt::Debug,
 ) -> Result<(), Error>
-    requires
-        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
 ;
 
 pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field2_finish ](
@@ -211,9 +196,6 @@ pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field2_finish ](
     name2: &str,
     value2: &dyn core::fmt::Debug,
 ) -> Result<(), Error>
-    requires
-        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
 ;
 
 pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field3_finish ](
@@ -223,10 +205,6 @@ pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field3_finish ](
     value2: &dyn core::fmt::Debug,
     value3: &dyn core::fmt::Debug,
 ) -> Result<(), Error>
-    requires
-        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value3.fmt_req(f2),
 ;
 
 pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field3_finish ](
@@ -239,10 +217,6 @@ pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field3_finish ](
     name3: &str,
     value3: &dyn core::fmt::Debug,
 ) -> Result<(), Error>
-    requires
-        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value3.fmt_req(f2),
 ;
 
 pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field4_finish ](
@@ -253,11 +227,6 @@ pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field4_finish ](
     value3: &dyn core::fmt::Debug,
     value4: &dyn core::fmt::Debug,
 ) -> Result<(), Error>
-    requires
-        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value3.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value4.fmt_req(f2),
 ;
 
 pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field4_finish ](
@@ -272,11 +241,6 @@ pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field4_finish ](
     name4: &str,
     value4: &dyn core::fmt::Debug,
 ) -> Result<(), Error>
-    requires
-        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value3.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value4.fmt_req(f2),
 ;
 
 pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field5_finish ](
@@ -288,12 +252,6 @@ pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field5_finish ](
     value4: &dyn core::fmt::Debug,
     value5: &dyn core::fmt::Debug,
 ) -> Result<(), Error>
-    requires
-        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value3.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value4.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value5.fmt_req(f2),
 ;
 
 pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field5_finish ](
@@ -310,12 +268,6 @@ pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field5_finish ](
     name5: &str,
     value5: &dyn core::fmt::Debug,
 ) -> Result<(), Error>
-    requires
-        forall|f2: &Formatter<'a>| value1.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value2.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value3.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value4.fmt_req(f2),
-        forall|f2: &Formatter<'a>| value5.fmt_req(f2),
 ;
 
 pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_fields_finish ](
@@ -323,9 +275,6 @@ pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_fields_finish ](
     name: &str,
     values: &[&dyn core::fmt::Debug],
 ) -> Result<(), Error>
-    requires
-        forall|i: int, f2: &Formatter<'a>|
-            0 <= i < values@.len() ==> #[trigger] values@[i].fmt_req(f2),
 ;
 
 pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_fields_finish ](
@@ -336,8 +285,6 @@ pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_fields_finish ](
 ) -> Result<(), Error>
     requires
         names@.len() == values@.len(),
-        forall|i: int, f2: &Formatter<'a>|
-            0 <= i < values@.len() ==> #[trigger] values@[i].fmt_req(f2),
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]

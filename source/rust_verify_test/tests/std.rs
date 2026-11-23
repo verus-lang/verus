@@ -3195,45 +3195,16 @@ test_verify_one_file! {
         #[derive(Debug)]
         pub struct G<A> { pub a: A, pub b: u8 }
 
-        impl<A: Debug> DebugSpecImpl for G<A> {
-            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
-                forall|f2: &Formatter<'_>| #[trigger] DebugSpec::fmt_req(&self.a, f2)
-            }
-        }
-
         #[derive(Debug)]
         pub struct G6<A>(pub A, pub A, pub A, pub A, pub A, pub A);
 
-        impl<A: Debug> DebugSpecImpl for G6<A> {
-            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
-                &&& forall|f2: &Formatter<'_>| #[trigger] DebugSpec::fmt_req(&self.0, f2)
-                &&& forall|f2: &Formatter<'_>| #[trigger] DebugSpec::fmt_req(&self.1, f2)
-                &&& forall|f2: &Formatter<'_>| #[trigger] DebugSpec::fmt_req(&self.2, f2)
-                &&& forall|f2: &Formatter<'_>| #[trigger] DebugSpec::fmt_req(&self.3, f2)
-                &&& forall|f2: &Formatter<'_>| #[trigger] DebugSpec::fmt_req(&self.4, f2)
-                &&& forall|f2: &Formatter<'_>| #[trigger] DebugSpec::fmt_req(&self.5, f2)
-            }
-        }
 
         #[derive(Debug)]
         pub enum E<A> { None, Some(A) }
 
-        impl<A: Debug> DebugSpecImpl for E<A> {
-            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
-                match self {
-                    E::None => true,
-                    E::Some(a) => forall|f2: &Formatter<'_>| #[trigger] DebugSpec::fmt_req(a, f2),
-                }
-            }
-        }
-
         // nested derived types
         #[derive(Debug)]
         struct Outer { g: G<u32>, e: E<G<u8>>, g6: G6<u8> }
-
-        impl DebugSpecImpl for Outer {
-            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool { true }
-        }
 
         fn test(o: &Outer) {
             let _ = vstd::pervasive::__new_argument(o);
@@ -3250,10 +3221,6 @@ test_verify_one_file! {
         #[derive(Debug)]
         struct P { x: u8, y: u8 }
 
-        impl DebugSpecImpl for P {
-            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool { true }
-        }
-
         fn test() {
             let p = P { x: 1, y: 2 };
             let s = format!("{:?}", p);
@@ -3262,38 +3229,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] derive_debug_field_fmt_req_fails verus_code! {
-        use vstd::prelude::*;
-        use core::fmt::{Debug, Error, Formatter};
-        use vstd::std_specs::fmt::DebugSpecImpl;
-
-        struct K;
-
-        impl Debug for K {
-            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> { Ok(()) }
-        }
-
-        impl DebugSpecImpl for K {
-            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool { false }
-        }
-
-        #[derive(Debug)] struct T1(K); // FAILS
-        #[derive(Debug)] struct T5(u8, u8, u8, u8, K); // FAILS
-        #[derive(Debug)] struct T6(u8, u8, u8, u8, u8, K); // FAILS
-        #[derive(Debug)] struct S1 { k: K } // FAILS
-        #[derive(Debug)] struct S5 { a: u8, b: u8, c: u8, d: u8, k: K } // FAILS
-        #[derive(Debug)] struct S6 { a: u8, b: u8, c: u8, d: u8, e: u8, k: K } // FAILS
-        #[derive(Debug)] enum E { A, B(K) } // FAILS
-
-        #[derive(Debug)] enum F { A, B(u8) }
-    } => Err(err) => assert_fails(err, 7)
-}
-
-test_verify_one_file! {
-    #[test] derive_debug_generic_without_spec_fails verus_code! {
+    #[test] derive_debug_generic_without_spec_ok verus_code! {
         use vstd::prelude::*;
 
         #[derive(Debug)] // FAILS
         struct G<A> { a: A }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }
