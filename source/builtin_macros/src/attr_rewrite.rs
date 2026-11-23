@@ -1128,14 +1128,8 @@ fn rewrite_with_expr(
     let mut compiled_call: Option<Expr> = None;
     if outputs.is_some() || inputs.len() > 0 {
         match expr {
-            syn::Expr::Call(_) => {
+            syn::Expr::Call(_) | syn::Expr::MethodCall(_) => {
                 compiled_call = Some(expr.clone());
-            }
-            syn::Expr::MethodCall(_) => {
-                compiled_call = Some(expr.clone());
-                let syn::Expr::MethodCall(method) = expr else { unreachable!() };
-                let name = &method.method;
-                method.method = syn::Ident::new(&format!("{VERIFIED}_{name}"), name.span());
             }
             syn::Expr::Try(syn::ExprTry { expr, .. }) => {
                 let call_with_spec = verus_syn::WithSpecOnExpr {

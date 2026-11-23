@@ -13,8 +13,9 @@
 //! The callee is rewritten according to what name resolution knows:
 //! - resolved path (`f(..)`, `Tr::m(..)`, `<S as Tr>::m(..)`): its resolution is
 //!   replaced ([`ProofWithRewriter::redirect_path`]);
-//! - type-relative path (`T::m(..)`): the method is renamed before probing;
-//! - receiver call (`x.m(..)`): the macro retains the existing method rename.
+//! - receiver call (`x.m(..)`) or type-relative path (`T::m(..)`): the method is renamed
+//!   to `_VERUS_VERIFIED_m` before probing
+//!   ([`ProofWithRewriter::rewrite_method`]).
 //!
 //! HIR does not exist yet, so local items are read from the AST, and `tcx` is used only
 //! for `def_key`-based queries and the metadata of other crates.
@@ -495,8 +496,8 @@ impl<'tcx> ProofWithRewriter<'_, 'tcx> {
             // Ordinary function paths are already resolved; type-relative qualified
             // paths may still need type checking.
             ExprKind::Call(callee, _) => self.rewrite_callee(callee)?,
-            // The macro has already renamed a receiver method.
-            ExprKind::MethodCall(_) => {}
+            // Receiver methods remain unresolved until type checking.
+            ExprKind::MethodCall(method) => self.rewrite_method(&mut method.seg),
             _ => unreachable!("checked by verified_call"),
         }
         Ok(())

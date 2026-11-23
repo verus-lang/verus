@@ -112,6 +112,39 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_with_shadow_through_deref_rejected code! {
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        struct Inner;
+        #[verus_verify]
+        struct Outer { inner: Inner }
+
+        #[verus_verify]
+        impl Inner {
+            #[verus_spec(r => with Ghost(g): Ghost<int> ensures r == 1)]
+            fn foo(&self) -> u32 { 1 }
+        }
+
+        impl core::ops::Deref for Outer {
+            type Target = Inner;
+            fn deref(&self) -> &Inner { &self.inner }
+        }
+
+        #[verus_verify]
+        impl Outer {
+            fn foo(&self) -> u32 { 2 }
+        }
+
+        #[verus_spec(r => ensures r == 1)]
+        fn caller(x: &Outer) -> u32 {
+            proof_with! { Ghost(0) }
+            x.foo()
+        }
+    } => Err(e) => assert_vir_error_msg(e, "which is not declared with `#[verus_spec(with ..)]`")
+}
+
+test_verify_one_file! {
     #[test] test_with_ghost_only_generic_rejected code! {
         use vstd::prelude::*;
 
@@ -169,6 +202,33 @@ test_verify_one_file! {
         fn call_free() {
             proof_with!{Tracked(1u64), Ghost(2u32)}
             free_fn(0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // An inherent method with extra Tracked and Ghost inputs.
+    #[test] test_attribute_form_inherent_method code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        struct A {
+            a: u64,
+        }
+
+        impl A {
+            #[verus_spec(
+                with Tracked(b): Tracked<u64>, Ghost(c): Ghost<u32>
+                requires self.a == 0, b == 1, c == 2,
+            )]
+            fn m(&self) {}
+        }
+
+        #[verus_spec]
+        fn call_method() {
+            let a = A { a: 0 };
+            proof_with!{Tracked(1u64), Ghost(2u32)}
+            a.m();
         }
     } => Ok(())
 }
@@ -710,6 +770,53 @@ test_verify_one_file! {
         #[verus_spec]
         fn bad() {
             let _x = _VERUS_VERIFIED_f(Tracked::assume_new());
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot be called directly")
+}
+
+const STRUCT_WITH_TRACKED_METHOD: &str = code_str! {
+    use vstd::prelude::*;
+
+    #[verus_verify]
+    struct S;
+
+    #[verus_verify]
+    impl S {
+        #[verus_spec(r =>
+            with Tracked(t): Tracked<u64>
+            ensures r == 1,
+        )]
+        fn m(&self) -> u64 {
+            1
+        }
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_counterpart_direct_method_call_rejected
+        STRUCT_WITH_TRACKED_METHOD.to_string() + code_str!{
+        #[verus_spec]
+        fn bad(s: &S) {
+            let _x = s._VERUS_VERIFIED_m(Tracked::assume_new());
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot be called directly")
+}
+
+test_verify_one_file! {
+    #[test] test_counterpart_direct_method_call_nested_rejected
+        STRUCT_WITH_TRACKED_METHOD.to_string() + code_str!{
+        #[verus_spec(r =>
+            with Tracked(t): Tracked<u64>
+            ensures r == x,
+        )]
+        fn id(x: u64) -> u64 {
+            x
+        }
+
+        #[verus_spec]
+        fn bad_nested(s: &S) {
+            proof_with!{Tracked(1u64)}
+            let _x = id(s._VERUS_VERIFIED_m(Tracked::assume_new()));
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot be called directly")
 }
