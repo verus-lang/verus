@@ -10,6 +10,11 @@ use sise::TreeNode as Node;
 pub struct PreludeConfig {
     pub arch_word_bits: crate::ast::ArchWordBits,
     pub smt_encoding: SmtEncoding,
+    /// Include the axioms about `real`.
+    /// Sundance rejects any assertion that mentions the Real sort, so these axioms are left out
+    /// for Sundance. (The declarations remain, so the AIR still typechecks, and a query that uses
+    /// `real` gets an "unsupported theory" error from Sundance.)
+    pub real_axioms: bool,
 }
 
 pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<Node> {
@@ -1062,7 +1067,23 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         )))
     );
     prelude.extend(height_axioms);
+    if !config.real_axioms {
+        let real_atoms = ["Real", RADD, RSUB, RMUL, RDIV, BOX_REAL, UNBOX_REAL, TYPE_ID_REAL];
+        prelude.retain(|node| match node {
+            Node::List(nodes) if matches!(nodes.first(), Some(Node::Atom(a)) if a == "axiom") => {
+                !mentions_atom(node, &real_atoms)
+            }
+            _ => true,
+        });
+    }
     prelude
+}
+
+fn mentions_atom(node: &Node, atoms: &[&str]) -> bool {
+    match node {
+        Node::Atom(a) => atoms.contains(&a.as_str()),
+        Node::List(nodes) => nodes.iter().any(|n| mentions_atom(n, atoms)),
+    }
 }
 
 pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {

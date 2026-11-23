@@ -11,6 +11,7 @@ pub mod profiler;
 pub mod query_result_observer;
 pub mod remove_asserts;
 pub mod scope_map;
+mod smt_batch;
 pub mod smt_process;
 
 #[macro_use]

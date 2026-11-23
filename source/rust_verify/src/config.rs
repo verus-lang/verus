@@ -115,6 +115,7 @@ const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
 const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
 const EXTENDED_CVC5: &str = "cvc5";
 const EXTENDED_CVC5_SMTLIB: &str = "cvc5-smtlib";
+const EXTENDED_SUNDANCE: &str = "sundance";
 const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
 const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
 const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
@@ -134,6 +135,10 @@ const EXTENDED_KEYS: &[(&str, &str)] = &[
     ),
     (EXTENDED_CVC5, "Use the cvc5 SMT solver, rather than the default (Z3)"),
     (EXTENDED_CVC5_SMTLIB, "Use cvc5-compatible SMT-LIB with the default Z3 solver"),
+    (
+        EXTENDED_SUNDANCE,
+        "Use the Sundance SMT solver, rather than the default (Z3) (experimental; failing assertions are not localized, and real arithmetic is not supported)",
+    ),
     (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
     (
         EXTENDED_USE_CRATE_NAME,
@@ -745,7 +750,18 @@ pub fn parse_args_with_imports(
     if extended.contains_key(EXTENDED_CVC5) && extended.contains_key(EXTENDED_CVC5_SMTLIB) {
         error("`-V cvc5` and `-V cvc5-smtlib` are mutually exclusive".to_string());
     }
-    let solver = if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 };
+    if extended.contains_key(EXTENDED_SUNDANCE)
+        && (extended.contains_key(EXTENDED_CVC5) || extended.contains_key(EXTENDED_CVC5_SMTLIB))
+    {
+        error("`-V sundance` cannot be combined with `-V cvc5` or `-V cvc5-smtlib`".to_string());
+    }
+    let solver = if extended.contains_key(EXTENDED_CVC5) {
+        SmtSolver::Cvc5
+    } else if extended.contains_key(EXTENDED_SUNDANCE) {
+        SmtSolver::Sundance
+    } else {
+        SmtSolver::Z3
+    };
     let smt_encoding = if extended.contains_key(EXTENDED_CVC5_SMTLIB) {
         SmtEncoding::Cvc5
     } else {

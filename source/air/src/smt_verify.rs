@@ -129,13 +129,19 @@ impl SmtSolver {
                 "(:reason-unknown \"max. resource limit exceeded\")",
             ],
             SmtSolver::Cvc5 => &["(:reason-unknown resourceout)"],
+            SmtSolver::Sundance => &["(:reason-unknown timeout)"],
         }
+    }
+
+    /// Does the solver take its rlimit from `(set-option :rlimit N)` before each check-sat?
+    pub(crate) fn sets_rlimit_per_check_sat(&self) -> bool {
+        matches!(self, SmtSolver::Z3 | SmtSolver::Sundance)
     }
 
     pub fn reason_unknown_incomplete_str(&self) -> &str {
         match self {
             SmtSolver::Z3 => "(:reason-unknown \"(incomplete",
-            SmtSolver::Cvc5 => "(:reason-unknown incomplete)",
+            SmtSolver::Cvc5 | SmtSolver::Sundance => "(:reason-unknown incomplete)",
         }
     }
 }
@@ -221,7 +227,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         context.smt_log.log_assert(&None, &disabled_expr);
     }
 
-    if matches!(context.solver, SmtSolver::Z3) {
+    if context.solver.sets_rlimit_per_check_sat() {
         context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
         context.set_solver_option_u32("rlimit", context.rlimit, false);
     }
@@ -266,6 +272,14 @@ pub(crate) fn smt_check_assertion<'ctx>(
         } else if line == "unknown" || line == "cvc5 interrupted by timeout." {
             assert!(unsat == None);
             unsat = Some(SmtOutput::Unknown);
+        } else if let Some(msg) = line.strip_prefix(crate::smt_batch::SOLVER_FAILURE_PREFIX) {
+            // The solver could not process the query (e.g. it uses an unsupported theory)
+            assert!(unsat == None);
+            diagnostics.report(&context.message_interface.bare(
+                crate::messages::MessageLevel::Warning,
+                format!("{} could not check the query: {}", context.solver.name(), msg).as_str(),
+            ));
+            unsat = Some(SmtOutput::Unknown);
         } else if context.ignore_unexpected_smt {
             diagnostics.report(&context.message_interface.bare(
                 crate::messages::MessageLevel::Warning,
@@ -276,7 +290,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         }
     }
 
-    if matches!(context.solver, SmtSolver::Z3) {
+    if context.solver.sets_rlimit_per_check_sat() {
         context.smt_log.log_set_option("rlimit", "0");
         context.set_solver_option_u32("rlimit", 0, false);
     }
@@ -461,11 +475,11 @@ fn confirm_label(context: &mut Context, infos: &Vec<AssertionInfo>, i: usize) ->
             context.smt_log.log_assert(&None, &mk_not(&ident_var(&info.label)));
         }
     }
-    if matches!(context.solver, SmtSolver::Z3) {
+    if context.solver.sets_rlimit_per_check_sat() {
         context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
     }
     context.smt_log.log_word("check-sat");
-    if matches!(context.solver, SmtSolver::Z3) {
+    if context.solver.sets_rlimit_per_check_sat() {
         context.smt_log.log_set_option("rlimit", "0");
     }
     context.smt_log.log_pop();
@@ -489,11 +503,11 @@ fn confirm_label(context: &mut Context, infos: &Vec<AssertionInfo>, i: usize) ->
 /// popped after the observer has run.
 fn restore_model_for_observer(context: &mut Context, infos: &Vec<AssertionInfo>, i: usize) -> bool {
     fn check_sat(context: &mut Context) -> bool {
-        if matches!(context.solver, SmtSolver::Z3) {
+        if context.solver.sets_rlimit_per_check_sat() {
             context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
         }
         context.smt_log.log_word("check-sat");
-        if matches!(context.solver, SmtSolver::Z3) {
+        if context.solver.sets_rlimit_per_check_sat() {
             context.smt_log.log_set_option("rlimit", "0");
         }
         let smt_data = context.smt_log.take_pipe_data();
