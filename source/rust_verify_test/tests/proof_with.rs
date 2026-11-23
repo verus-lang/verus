@@ -3,6 +3,14 @@
 mod common;
 use common::*;
 
+fn assert_missing_proof_with_fails(err: TestErr) {
+    assert_vir_error_msg(
+        err.clone(),
+        "Use `proof_with!(...)` before this call to pass the ghost arguments",
+    );
+    assert_one_fails(err);
+}
+
 // Tests for `#[verus_spec(with ..)]`: extra ghost/tracked inputs and outputs.
 //
 // A call site written as `proof_with!{..} f(..)` is redirected to the verified
@@ -304,8 +312,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // A wrong extra argument fails the precondition; omitting `proof_with!` hits `requires(false)`.
-    #[test] test_proof_with_failed_or_missing code!{
+    #[test] test_proof_with_failed_requires code!{
         use vstd::prelude::*;
 
         #[verus_spec(
@@ -320,12 +327,28 @@ test_verify_one_file! {
             proof_with!{Tracked(2u64)}
             test(0); // FAILS
         }
+    } => Err(e) => {
+        assert_vir_error_msg(e.clone(), "precondition not satisfied");
+        assert_one_fails(e);
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_missing code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(
+            with Tracked(b): Tracked<u64>
+            requires b == 1,
+        )]
+        fn test(a: u64) {
+        }
 
         #[verus_spec]
         fn call_missing() {
             test(0); // FAILS
         }
-    } => Err(e) => assert_fails(e, 2)
+    } => Err(e) => assert_missing_proof_with_fails(e)
 }
 
 test_verify_one_file! {
@@ -732,20 +755,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // Without `proof_with!` the call hits `requires(false)`; a wrong extra argument fails `requires`.
-    #[test] test_external_fn_missing_or_failed_requires
+    #[test] test_external_fn_missing_proof_with
         EXTERNAL_FN_NEGATE_BOOL.to_string() + code_str!{
         #[verus_spec]
         fn call_missing() {
             let ret = negate_bool(true, 1); // FAILS
         }
+    } => Err(e) => assert_missing_proof_with_fails(e)
+}
 
+test_verify_one_file! {
+    #[test] test_external_fn_failed_requires
+        EXTERNAL_FN_NEGATE_BOOL.to_string() + code_str!{
         #[verus_spec]
         fn call_wrong_arg() {
             proof_with!{Tracked(99u8)}
             let ret = negate_bool(true, 1); // FAILS
         }
-    } => Err(e) => assert_fails(e, 2)
+    } => Err(e) => {
+        assert_vir_error_msg(e.clone(), "precondition not satisfied");
+        assert_one_fails(e);
+    }
 }
 
 test_verify_one_file! {
@@ -1773,7 +1803,7 @@ test_verify_one_file! {
         fn test() {
             let r = S.f(7); // FAILS
         }
-    } => Err(e) => assert_one_fails(e)
+    } => Err(e) => assert_missing_proof_with_fails(e)
 }
 
 test_verify_one_file! {

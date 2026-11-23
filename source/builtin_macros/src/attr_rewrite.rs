@@ -1480,9 +1480,12 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                         block.stmts.insert(
                             0,
                             syn::Stmt::Expr(
-                                syn::Expr::Verbatim(
-                                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::requires([false])),
-                                ),
+                                syn::Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                                    #verus_builtin::requires([
+                                        #[verifier::custom_err("Use `proof_with!(...)` before this call to pass the ghost arguments")]
+                                        (false)
+                                    ])
+                                )),
                                 Some(syn::token::Semi { spans: [span] }),
                             ),
                         );
@@ -1856,9 +1859,12 @@ fn rewrite_unverified_func(
         Some(syn::token::Semi { spans: [span] }),
     );
     let precondition_false = syn::Stmt::Expr(
-        syn::Expr::Verbatim(
-            quote_spanned_builtin!(verus_builtin, span => #verus_builtin::requires([false])),
-        ),
+        syn::Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+            #verus_builtin::requires([
+                #[verifier::custom_err("Use `proof_with!(...)` before this call to pass the ghost arguments")]
+                (false)
+            ])
+        )),
         Some(syn::token::Semi { spans: [span] }),
     );
     if !is_assume_spec {
