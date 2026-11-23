@@ -574,6 +574,7 @@ pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
 /// This does _not_ drop the contents. If the memory is already initialized,
 /// this could leak allocations or resources, so care should be taken to not overwrite an object that should be dropped.
 /// This is appropriate for initializing uninitialized memory, or overwriting memory that has previously been [read](ptr_mut_read) from.
+#[vcheck(T = u32)]
 #[inline(always)]
 #[verifier::external_body]
 pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v: T)
@@ -597,6 +598,7 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
 ///
 /// TODO: This needs to be made more general (i.e., should be able to read a Copy type
 /// without destroying it; should be able to leave the bytes intact without uninitializing them).
+#[vcheck(T = u32)]
 #[inline(always)]
 #[verifier::external_body]
 pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: T)
@@ -615,6 +617,7 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
 
 /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
+#[vcheck(T = u32)]
 #[inline(always)]
 #[verifier::external_body]
 pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)

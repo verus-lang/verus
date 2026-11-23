@@ -12,7 +12,8 @@
 //! paths into vstd itself:
 //!
 //! - `::verus_spec_check_vstd_ext` becomes `crate::contrib::spec_check`, which provides the
-//!   same items over vstd's own `contrib::exec_spec`;
+//!   same items over vstd's own types (`contrib::exec_spec`, and the tracked-permission guards
+//!   in `resource`);
 //! - the engine's macros `::verus_spec_check::verus_spec_check_{un,}verified` become this
 //!   crate's [`verus_spec_check_unverified!`] / [`verus_spec_check_verified!`], again
 //!   through `crate::contrib::spec_check`;

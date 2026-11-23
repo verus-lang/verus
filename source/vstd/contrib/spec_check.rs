@@ -8,9 +8,11 @@
 //!
 //! The generated harnesses refer to `::verus_spec_check_vstd_ext`, which a standalone
 //! verus-spec-check project depends on. vstd can't, so `vstd_spec_check` points those paths
-//! here, and this module provides the same items over vstd's own `contrib::exec_spec`.
-//! Its `resource` module (harnesses over tracked permissions) is not provided yet.
+//! here, and this module provides the same items over vstd's own types: `contrib::exec_spec`,
+//! [`exec_mem_contents_from_option`], and [`resource`] (harnesses over tracked permissions).
 #![allow(unused_imports)]
+
+pub mod resource;
 
 pub use super::exec_spec::*;
 
