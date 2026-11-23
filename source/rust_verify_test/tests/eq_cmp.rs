@@ -466,7 +466,7 @@ test_verify_one_file! {
             a.eq(&a)
         }
         }
-    } => Err(err) => assert_vir_error_msg(err, "mark this impl with #[verifier::assume_external_impl]")
+    } => Err(err) => assert_vir_error_msg(err, "so the specifications in this impl are unverified assumptions")
 }
 
 test_verify_one_file! {
@@ -493,7 +493,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "mark this impl with #[verifier::assume_external_impl]")
+    } => Err(err) => assert_vir_error_msg(err, "so the specifications in this impl are unverified assumptions")
 }
 
 test_verify_one_file! {
@@ -520,7 +520,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "mark this impl with #[verifier::assume_external_impl]")
+    } => Err(err) => assert_vir_error_msg(err, "so the specifications in this impl are unverified assumptions")
 }
 
 test_verify_one_file! {
@@ -563,7 +563,7 @@ test_verify_one_file! {
                 None
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "mark this impl with #[verifier::assume_external_impl]")
+    } => Err(err) => assert_vir_error_msg(err, "so the specifications in this impl are unverified assumptions")
 }
 
 test_verify_one_file! {
@@ -666,7 +666,7 @@ test_verify_one_file! {
                 self.x == other.x
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "#[verifier::assume_external_impl] is unnecessary")
+    } => Err(err) => assert_vir_error_msg(err, "`#[verifier::assume_external_impl]` is unnecessary")
 }
 
 test_verify_one_file! {
@@ -681,7 +681,7 @@ test_verify_one_file! {
                 self.x == other.x
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "#[verifier::assume_external_impl] is only allowed on impls of external trait extensions")
+    } => Err(err) => assert_vir_error_msg(err, "`#[verifier::assume_external_impl]` is only allowed on impls of external trait extensions")
 }
 
 test_verify_one_file! {

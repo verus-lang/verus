@@ -1819,18 +1819,20 @@ fn check_assume_external_impl(
         (true, false) => Err(error(
             &extension.span,
             format!(
-                "the matching impl for {} is not verified, \
-                so the specifications in this impl are unverified assumptions about it; \
-                mark this impl with #[verifier::assume_external_impl] to accept these assumptions",
+                "the matching impl for `{}` is not verified, \
+                so the specifications in this impl are unverified assumptions about it",
                 path_as_friendly_rust_name(origin_trait_path),
             ),
         )
-        .secondary_label(&origin.span, "unverified impl")),
+        .secondary_label(&origin.span, "unverified impl")
+        .help(
+            "mark this impl with `#[verifier::assume_external_impl]` to accept these assumptions",
+        )),
         (false, true) => Err(error(
             &extension.span,
             format!(
-                "#[verifier::assume_external_impl] is unnecessary, \
-                because the matching impl for {} is not external",
+                "`#[verifier::assume_external_impl]` is unnecessary, \
+                because the matching impl for `{}` is verified",
                 path_as_friendly_rust_name(origin_trait_path),
             ),
         )

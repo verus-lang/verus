@@ -138,7 +138,7 @@ fn trait_impl_to_vir<'tcx>(
     } else if assume_external_impl {
         return err_span(
             span,
-            "#[verifier::assume_external_impl] is only allowed on impls of external trait extensions (e.g. PartialEqSpecImpl)",
+            "`#[verifier::assume_external_impl]` is only allowed on impls of external trait extensions (e.g. `PartialEqSpecImpl`)",
         );
     }
     let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_no_polarity(

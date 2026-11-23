@@ -325,8 +325,8 @@ Applies to an impl of an [external trait extension](./external_trait_specificati
 trait such as `PartialEqSpecImpl` or `IteratorSpecImpl`.
 The spec functions in such an impl become part of the specification of the matching impl of
 the original trait (e.g. `PartialEq`).
-If that matching impl is not verified (because it is written outside `verus!`
-or marked `#[verifier::external]`), nothing checks that it satisfies these specifications,
+If that matching impl is not verified (because it is written outside `verus!`,
+marked `#[verifier::external]`, or only declared via `assume_specification` on its methods), nothing checks that it satisfies these specifications,
 so Verus requires this attribute to mark the specifications as trusted assumptions:
 
 ```rust
@@ -344,3 +344,5 @@ impl PartialEqSpecImpl for S {
 ```
 
 The attribute is rejected if the matching impl is verified, and it is not allowed with `--no-cheating`.
+A matching impl inside `verus!` counts as verified even if some of its methods are
+`#[verifier::external_body]`; those methods are already marked as assumptions.

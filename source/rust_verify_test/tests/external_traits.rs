@@ -25,7 +25,7 @@ test_verify_crates! {
             // The extension is local even though the executable impl is imported.
             impl TSpecImpl for S { open spec fn s() -> bool { true } }
         },
-    ] => Err(err) => assert_vir_error_msg(err, "mark this impl with #[verifier::assume_external_impl]")
+    ] => Err(err) => assert_vir_error_msg(err, "so the specifications in this impl are unverified assumptions")
 }
 
 test_verify_one_file! {
@@ -66,7 +66,7 @@ test_verify_one_file! {
             }
         }
         }
-    } => Err(err) => assert_vir_error_msg(err, "mark this impl with #[verifier::assume_external_impl]")
+    } => Err(err) => assert_vir_error_msg(err, "so the specifications in this impl are unverified assumptions")
 }
 
 test_verify_one_file! {
