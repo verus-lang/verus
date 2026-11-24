@@ -322,6 +322,12 @@ pub fn krate_infer_resolution(
     let mut errors = vec![];
     for function in &mut Arc::make_mut(&mut krate).functions {
         if let Some(res_info) = infos.get(&function.x.name) {
+            if let Err(err) =
+                crate::pin_new_unchecked::check_function(function, res_info, &datatypes, &functions)
+            {
+                errors.push(err);
+                continue;
+            }
             let new_body = infer_resolution(
                 &function.x.params,
                 &function.x.body.as_ref().unwrap(),
@@ -2194,7 +2200,7 @@ pub fn pattern_all_bound_vars_with_ownership(
 }
 
 /// See `moves_and_muts_for_place_being_matched`
-fn moves_and_muts_for_pattern(
+pub(crate) fn moves_and_muts_for_pattern(
     pattern: &Pattern,
     datatypes: &HashMap<Path, Datatype>,
     modes: &HashMap<VarIdent, Mode>,

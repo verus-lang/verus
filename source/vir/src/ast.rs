@@ -1649,6 +1649,9 @@ pub struct FunctionAttrsX {
     /// Is this the `clone` method of a `Clone` impl for a type that also implements
     /// `TrivialClone`? If so, we add the postcondition `ensures ret == self`.
     pub has_trivial_clone: bool,
+    /// Is this the specification for `Pin::new_unchecked`? Calls to this function
+    /// are subject to extra restrictions (see `pin_new_unchecked.rs`).
+    pub is_pin_new_unchecked: bool,
 }
 
 /// Function specification of its invariant mask

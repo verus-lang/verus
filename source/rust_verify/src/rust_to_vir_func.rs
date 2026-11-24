@@ -310,6 +310,7 @@ fn handle_autospec<'tcx>(
                     is_async: false,
                     is_drop: false,
                     has_trivial_clone: false,
+                    is_pin_new_unchecked: false,
                 }),
                 decreases_len: 0,
                 returns: false,
@@ -1617,6 +1618,7 @@ fn make_attributes<'tcx>(
         is_async: is_async,
         is_drop: is_drop,
         has_trivial_clone: false, // set later, see rust_to_vir_impl::set_trivial_clone_attrs
+        is_pin_new_unchecked: false,
     };
     Ok(Arc::new(fattrs))
 }
@@ -2226,7 +2228,7 @@ pub(crate) fn check_item_fn<'tcx>(
         _ => false,
     };
 
-    let fattrs = make_attributes(
+    let mut fattrs = make_attributes(
         ctxt,
         id,
         &vattrs,
@@ -2238,6 +2240,9 @@ pub(crate) fn check_item_fn<'tcx>(
         matches!(kind, FunctionKind::TraitMethodDecl { has_default: false, .. }),
         is_drop,
     )?;
+    if external_id.is_some() && external_id == ctxt.tcx.lang_items().new_unchecked_fn() {
+        Arc::make_mut(&mut fattrs).is_pin_new_unchecked = true;
+    }
 
     // This function is marked 'private' at the source level to prevent the user from
     // calling it. But we translate things to point to it internally, so we need to

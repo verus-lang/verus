@@ -514,6 +514,7 @@ fn mk_spec_function_stub(
                 is_drop: false,
                 create_open_invariant_credit: false,
                 has_trivial_clone: false,
+                is_pin_new_unchecked: false,
                 assume_compatibility_with_trait_spec: false,
             }),
         },
