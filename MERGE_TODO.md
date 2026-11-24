@@ -60,6 +60,50 @@ the rest are for later.
    take `verify-rustlib`'s side at the `TODO(verify-rustlib-transmute-v2)` spots,
    and drop the `SharedReference` parts of `TRUSTED_REVIEW.md` and `TODO.md` (`SharedReference` is deleted).
 
+## Rust 1.100 update: steps 4-5 (rustlib branch `update-1.100.0`)
+
+Remove each item once it's done.
+
+1. **Port errors to expect** (from the merge; `MERGE_DECISIONS.md` follow-up 5):
+   - main's iterator API (`will_return_none` / `initial_value_relation` → `produces`)
+     in `core/src/str/validations.rs`, `alloc/src/vec/into_iter.rs` and `alloc/src/collections/linked_list.rs`;
+   - main's unguarded slice `IterMut` / `iter_mut` specs possibly clashing with rustlib's;
+   - the new `builtin/src/lib.rs` attributes (rustlib's core includes it as a module);
+   - specs using vstd APIs main changed (`Option::into_iter`, `SliceIndex`).
+2. **Check in the first build:**
+   - `const impl` / `const unsafe impl` in annotated code, and `const` on the `ExSliceIndex` external trait spec
+     (if `external_trait_extension` rejects it, drop only `const`);
+   - `const` closures with an `ensures` (`layout_array` / `finish_grow`, `alloc/src/raw_vec/mod.rs`);
+   - `#[derive_const]` (`Global`, `Alignment`), `#[rustc_comptime]` intrinsics `size_of` / `align_of` (called by `mem::SIZE` / `ALIGN`);
+   - `#[unstable(feature = "allocator_api")]` on Box's Verus-only functions (stable in 1.100; probably `allocator_ext`);
+   - `SliceIndex`'s `impl(crate)` restriction against the `ExSliceIndex` spec;
+   - `current_memory`'s `self.ptr.into()` resolving to vstd's identity `FromSpecImpl<T> for T`
+     (if not, put `impl<T> From<T> for T` in `verus!`);
+   - the `IntoIter::next` changes in rustlib items 9 and 10, and `NonNull`'s pattern-type field (rustlib item 16).
+3. **After the port errors** (approved):
+   - `dealloc_verus` takes `NonNull<u8>` and the runtime path calls `dealloc_nonnull` (send the spec text first);
+   - `#[verus::trusted] // just for closure` on `dealloc_nonnull`, `realloc_nonnull` (`alloc/src/alloc.rs`),
+     `forget_remaining_elements_and_dealloc` and `dealloc_only` (`alloc/src/vec/into_iter.rs`);
+   - try `LinkedList::front_mut`'s proof before the borrow (dropping `res`); keep it only if it verifies;
+   - remove the remaining `CHANGED (1.100)` / `TODO(1.100)` comments
+     (`CHANGED` marks only differences from the library, not version history).
+4. **Re-check that the verified `Global` and `Box` code follows 1.100's call graph** (`alloc/src/alloc.rs`, `alloc/src/boxed.rs`;
+   `GLOBAL_ALLOC_PLAN.md` claims it does, checked against 1.95; nothing checks it automatically,
+   `--no-cheating` only checks that trusted code stays closed).
+   Upstream 1.100 changes (`diff -u library-1.95.0/alloc/src/alloc.rs library-1.100.0/alloc/src/alloc.rs`):
+   - `__rust_dealloc` / `__rust_realloc` take `NonNull<u8>`;
+   - `dealloc` / `realloc` now call new private `dealloc_nonnull` / `realloc_nonnull`;
+   - `deallocate_impl_runtime` calls `dealloc_nonnull(ptr, layout)` (ours: `dealloc_verus(ptr.as_ptr(), ...)`);
+   - `grow_impl_runtime` / `shrink_impl_runtime` call `realloc_nonnull` (rustlib dropped the realloc path);
+   - `NonNull::slice_from_raw_parts` → `cast_slice` (done in the verified code; see rustlib item 12).
+   Update `GLOBAL_ALLOC_PLAN.md`'s call-graph description to match.
+   `Box` (`diff -u library-1.95.0/alloc/src/boxed.rs library-1.100.0/alloc/src/boxed.rs`; mostly docs and attributes):
+   - `new_in` / `try_new_in` / `new_uninit_in` dropped their `where A: Allocator` clauses (same calls);
+   - `into_unique` was removed;
+   - `Drop` for `Box` was restructured (still `Layout::for_value_raw` then `deallocate`);
+   - check that the axiomatized `new_in`, `from_raw_in_untyped_with_typed_value` and
+     `into_non_null_with_allocator_untyped_with_typed_value` still describe what 1.100's bodies do.
+
 ## rustlib side (later)
 
 1. **Bring `port-raw-ptr-final` up to date with `main`.**
@@ -85,3 +129,55 @@ the rest are for later.
    - `LinkedList<T>` and its `IntoIter`:
      `LinkedListGhost::ptrs` is a `Seq<*mut Node<T>>`; use `*const Node<T>` or `NonNull<Node<T>>`,
      then restore std's `assert_covariance` check at the end of `linked_list.rs`.
+9. **Verify `IntoIter::next`'s end check** (rustlib `alloc/src/vec/into_iter.rs`),
+    `self.ptr == unsafe { *((&self.end as *const *const T) as *const NonNull<T>) }`
+    (upstream's `non_null!(self.end, T)` without the raw borrow):
+    - vstd: a permission cast from `PointsTo<*const T>` to `PointsTo<NonNull<T>>`
+      (a replacement for the old `cast_points_to`), to justify the read;
+    - rustlib: a spec for `PartialEq for NonNull<T>` (`core/src/ptr/non_null.rs`, now outside `verus!`).
+10. **`IntoIter::next`'s read** (rustlib `alloc/src/vec/into_iter.rs`) now calls `ptr.read_verus(...)` inline
+    instead of the `read_front` helper.
+    If that doesn't verify (the helper's comment says inlining breaks the type invariant), switch back to `read_front`;
+    if it does, take `read_front` out.
+11. **(Lower priority) Bring `Vec::into_iter` closer to upstream** (rustlib `alloc/src/vec/mod.rs`):
+    upstream's order and single `unsafe` block, reading through `me` (the `ManuallyDrop`),
+    and the `IntoIter { .. }` literal instead of `IntoIter::new_verified`;
+    only taking the permission before `ManuallyDrop::new` and `read_alloc` would stay `CHANGED`.
+    Needs specs for `ManuallyDrop::new` and its `Deref` (`core/src/mem/manually_drop.rs` has none),
+    and a way to prove `IntoIter::wf()` (closed in `into_iter.rs`) from `vec/mod.rs`.
+12. **Specs for `cast_slice`** (rustlib core: `<*const T>::cast_slice`, `<*mut T>::cast_slice`, `NonNull::cast_slice`; all outside `verus!`),
+    which verified code now calls as upstream 1.100 does:
+    `NonNull::slice_from_raw_parts` (`core/src/ptr/non_null.rs`),
+    `alloc_impl_runtime_verus` (`alloc/src/alloc.rs`),
+    and `ops::Range`'s `get_unchecked_verus` / `get_unchecked_mut_verus` (`core/src/str/traits.rs`).
+    New specs, so propose them for approval first.
+13. **See whether rustlib's `core/src/lib.rs` and `alloc/src/lib.rs` can differ less from the library**
+    (commented-out features and lints, added attributes and modules); many of the changes will probably have to stay.
+14. **Switch `count_ones` to vstd's `nat_count_ones`** once the rustlib port is done and rustlib's vstd includes PR 1a (`pr-vstd-arithmetic`),
+    which drops `wrapping.rs`'s per-type `count_ones`, `lemma_count_ones_is_pow2` and `group_count_ones_is_pow2`:
+    - `specs/intrinsics.rs`: `spec_count_ones::<$t>(x) as nat == $modname::count_ones(x)` → `nat_count_ones(x as nat)`;
+    - `core/src/num/uint_macros.rs` `is_power_of_two`: `broadcast use crate::vstd::wrapping::group_count_ones_is_pow2`
+      → `crate::vstd::bits::lemma_nat_count_ones_is_pow2`.
+15. **Port `str` indexing by `ops::Range<usize>` to 1.100's structure** (rustlib `core/src/str/traits.rs`; before item 17).
+    Upstream's `get` / `get_mut` / `index` / `index_mut` for `ops::Range<usize>` now delegate to `range::Range::from(self)`,
+    and the logic moved to `SliceIndex<str> for range::Range<usize>`, which uses a new helper, `check_range`.
+    rustlib still has the 1.95 bodies in the `ops::Range` impl (marked `CHANGED: original: range::Range::from(self)...`).
+    - Code: the four `ops::Range` bodies become upstream's delegations;
+      put the `range::Range<usize>` impl in `verus!` with the verified bodies (trusted `get_unchecked(_mut)`, a `SliceIndexVerus` impl);
+      a verified `check_range` (upstream's form, with `add_verus` / `read_verus`).
+    - Specs and proofs: `SliceIndexSpecImpl` for `range::Range<usize>`,
+      a spec for `From<ops::Range<T>> for range::Range<T>` (`core/src/range.rs`),
+      a spec for `check_range` (in bounds and both ends on char boundaries),
+      and the moved proofs.
+16. **`NonNull` in 1.100** (rustlib `core/src/ptr/non_null.rs`; before item 17):
+    - Upstream changed the field from `pointer: *const T` (with `#[rustc_layout_scalar_valid_range_start(1)]`, now removed from core)
+      to the pattern type `pointer: pattern_type!(*const T is !null)`.
+      rustlib keeps 1.100's struct (marked `TODO(1.100)`), but the specs and proofs still treat `pointer` as a `*const T`
+      (`View`, `to_inner`, `nonnull_transmutable`, `lemma_nonnull_transmutable`, the `NonNull { pointer: p }` constructions).
+      Check whether Verus supports pattern types; if not, work around it or keep the 1.95 field.
+    - Then review this file's diff from the library on its own.
+17. **(Last) Review the differences from the library** once the Rust 1.100 update (rustlib branch `update-1.100.0`) builds and verifies,
+    and after the other 1.100 items above:
+    go through `diff -r library-1.100.0 verified-1.100.0`
+    and undo changes that aren't needed (code that can match upstream again,
+    workarounds Verus no longer needs, comments that describe version history instead of a difference from the library).

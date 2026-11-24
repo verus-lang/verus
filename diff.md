@@ -146,10 +146,11 @@ Endian:
 - `source/vstd/endian.rs`
 
 Other proved lemmas:
-- `source/vstd/wrapping.rs`: `count_ones`, `lemma_count_ones_is_pow2` (+ group)
+- `source/vstd/bits.rs`: `nat_count_ones` (moved from `std_specs/bits.rs`, which re-exports it), `lemma_nat_count_ones_pos`, `lemma_nat_count_ones_is_pow2`
+  (replaces verify-rustlib's per-type `count_ones` / `lemma_count_ones_is_pow2` / `group_count_ones_is_pow2` in `wrapping.rs`, which duplicated main's `nat_count_ones` from #3513)
 - `source/vstd/utf8.rs`: `is_char_boundary_split`, `valid_utf8_subrange`
 - `source/vstd/map.rs`: stronger ensures (`final(self).dom() == key_map.dom()`)
-- `source/vstd/resource/impls/map.rs`: two asserts in a proof
+- `source/vstd/resource/impls/map.rs`: two asserts in a proof (from `mut_ref_ptr`, #2518; in PR 4, not 1)
 
 Add cfg:
 - `source/vstd/atomic.rs`
@@ -193,12 +194,18 @@ Out of this series:
 - Iterator examples + `Option::into_iter` spec (37cd71da7): a small standalone PR, or drop.
 - Workaround, delete-before-merge files, `Cargo.lock` (probably drop).
 
-1. Arithmetic, endian and other proved lemmas (`div_mod.rs`, `power2.rs`, `endian.rs`,
-   `wrapping.rs` `count_ones`, `utf8.rs`, `map.rs`, `resource/impls/map.rs`). Independent.
-   `endian.rs` includes `digit_to_int`, the workaround for the `CastToInteger` bug (main's #2908);
-   it can be removed once upstream fixes the bug (not urgent).
+1. Proved lemmas, as **three independent PRs** (branched from main at cc615f27c):
+   - 1a. Arithmetic (branch `pr-vstd-arithmetic`): `div_mod.rs`, `power2.rs`, `bits.rs` + `std_specs/bits.rs`
+     (`nat_count_ones` moved to `bits.rs`, with `lemma_nat_count_ones_is_pow2`; `wrapping.rs` unchanged).
+   - 1b. Endian (branch `pr-vstd-endian`): `endian.rs`.
+     Includes `digit_to_int`, the workaround for the `CastToInteger` bug (main's #2908);
+     it can be removed once upstream fixes the bug (not urgent).
+   - 1c. Other lemmas (branch `pr-vstd-misc-lemmas`): `utf8.rs`, plus `map.rs`'s stronger
+     `tracked_map_keys_in_place` ensures (from #2609, "Changes for verifying `LinkedList`", merged only into verify-rustlib).
+   - `resource/impls/map.rs`'s two asserts are not in 1: they come from `mut_ref_ptr` (#2518) and are already in 4 (`pr-mut-ref-ptr`).
 2. `verus_verify_core` cfgs: `builtin` crate-level feature cfg rearrangement and the "Add cfg" list,
    `core_special_setup.rs` (its `Option`/`Result`/`unwrap`/`len` specs, not its `Tracked` `Deref` impls).
+   Also takes `option.rs`'s `#[cfg(not(verus_verify_core))]` on `Option::as_mut` (the other half of #2609; see 1c).
    Independent. Resolve the "match rustlib defs" TODO first.
    `Tracked`'s `Deref`/`DerefMut` cfgs and the test's matching impls go in 5, so 2 and 5 can merge in either order.
    Also resolve `slice_index_get`'s diagnostic item (commented out in #2634, reason unknown; `SliceIndexGet` is registered but unused)
