@@ -529,6 +529,7 @@ pub broadcast proof fn lemma_fundamental_div_mod(x: int, d: int)
 
 /// Proof that dividing `x` by `c * d` is equivalent to first dividing
 /// `x` by `c` and then dividing the result by `d`.
+#[verifier::spinoff_prover]
 pub broadcast proof fn lemma_div_denominator(x: int, c: int, d: int)
     requires
         0 <= x,
@@ -1446,6 +1447,26 @@ pub broadcast proof fn lemma_mul_mod_noop_general(x: int, y: int, m: int)
     lemma_mul_mod_noop_left(x, y, m);
     lemma_mul_mod_noop_right(x, y, m);
     lemma_mul_mod_noop_right(x % m, y, m);
+}
+
+/// Proof that if `x` is divisible by `m`, then `x * y` is divisible by `m`.
+pub broadcast proof fn lemma_mul_mod_equiv_zero(x: int, y: int, m: int)
+    requires
+        m > 0,
+        x % m == 0,
+    ensures
+        #[trigger] ((x * y) % m) == 0,
+{
+    assert((x % m) * y == 0);
+    calc! {
+        (==)
+        0; {}
+        ((x % m) * y) % m; {
+            broadcast use lemma_mul_mod_noop_left;
+
+        }
+        x * y % m;
+    }
 }
 
 /// Proof that modulo distributes over multiplication, provided you do
