@@ -100,7 +100,7 @@ This is the only list of follow-ups; the sections below point here.
    - Check that rustlib's core builds with the new `builtin/src/lib.rs` attributes
      (it includes `builtin/src/lib.rs` as a module, like `test_is_core`).
 
-**Upstream reports**
+**Upstream reports** (optional; drafts for 6 and 7 in `UPSTREAM_REPORTS.md`, not filed)
 
 6. `CastToInteger` (item 1), with the `s.push(d as int)` repro; once fixed, `digit_to_int` can go.
 7. `external_trait_extension` (`builtin_macros/src/syntax_trait.rs`) doesn't copy the trait's `cfg` attributes
