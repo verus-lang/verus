@@ -133,3 +133,20 @@ test_verify_one_file! {
         assert!(err.errors[0].message.contains("expected `,`, found end of `cfg_attr` input"));
     }
 }
+
+test_verify_one_file! {
+    #[test] exec_expr_erase_ghost_erases_proof_blocks verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut y: u64 = 0;
+            let z: u64 = 7;
+            {
+                let ghost mut y: u64 = 0;
+                verus_exec_expr_erase_ghost!({ proof { y = z; } });
+                assert(y == 0);
+            }
+            assert(y == 0);
+        }
+    } => Ok(())
+}

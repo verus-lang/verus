@@ -229,7 +229,7 @@ use rustc_middle::thir::{
     Arm, ArmId, Block, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, LogicalOp, Pat, PatKind,
     Stmt, StmtId, StmtKind, Thir,
 };
-use rustc_middle::ty::{GenericArg, Region, RegionExt, RegionKind, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{GenericArg, Ty, TyCtxt, TyKind};
 use rustc_span::Span;
 use rustc_span::Symbol;
 
@@ -292,6 +292,10 @@ pub(crate) fn expr_post<'tcx>(
                     hir_expr.span,
                     ty,
                 );
+                // The shadow assignment is ghost code, so it shouldn't drop the old shadow value
+                // (or the new value, if the assignment unwinds)
+                crate::verus::mark_ghost_expr(cx, shadow_assign);
+                crate::verus::mark_ghost_expr(cx, shadow_rhs);
                 sequence_2_unit_exprs(cx, &erasure_ctxt, hir_expr, main_assign, shadow_assign)
             } else {
                 kind
@@ -1230,6 +1234,13 @@ fn is_shadow_var_id(enclosing_def_id: LocalDefId, v: LocalVarId) -> bool {
     modifier_offset == 1
 }
 
+/// Is this an `x_shadow` or `x_half2` identifier? (i.e., a var for the shadow place)
+pub(crate) fn is_any_shadow_var_id(enclosing_def_id: LocalDefId, v: LocalVarId) -> bool {
+    let v_id = v.0.owner.def_id.local_def_index.as_usize();
+    let main_id = enclosing_def_id.local_def_index.as_usize();
+    matches!(v_id.checked_sub(main_id), Some(1 | 3))
+}
+
 /// Inverse of `modded_local_var_id`: map an `x_shadow`/`x_half1`/`x_half2` identifier
 /// back to `x` (and map any other identifier to itself).
 pub(crate) fn original_local_var_id(enclosing_def_id: LocalDefId, v: LocalVarId) -> LocalVarId {
@@ -1345,7 +1356,7 @@ fn shadow_place_rec<'tcx>(
         | ExprKind::LogicalOp { .. }
         | ExprKind::Unary { .. }
         | ExprKind::Cast { .. }
-        | ExprKind::Use { .. }
+        | ExprKind::ValueExpr { .. }
         | ExprKind::NeverToAny { .. }
         | ExprKind::PointerCoercion { .. }
         | ExprKind::Loop { .. }
@@ -1506,11 +1517,8 @@ pub(crate) fn shadow_var_uses<'tcx>(
         }
 
         let kind = ExprKind::Borrow { borrow_kind: BorrowKind::Shared, arg: e };
-        let ref_ty = cx.tcx.mk_ty_from_kind(TyKind::Ref(
-            Region::new_from_kind(cx.tcx, RegionKind::ReErased),
-            ty,
-            Mutability::Not,
-        ));
+        let ref_ty =
+            cx.tcx.mk_ty_from_kind(TyKind::Ref(cx.tcx.lifetimes.re_erased, ty, Mutability::Not));
         let e = expr_id_from_kind(cx, kind, local_use.root_hir_id, local_use.span, ref_ty);
 
         v.push(e);
@@ -1535,11 +1543,8 @@ pub(crate) fn shadow_var_use<'tcx>(
     let e = expr_id_from_kind(cx, kind, expr.hir_id, expr.span, ty);
 
     let kind = ExprKind::Borrow { borrow_kind: BorrowKind::Shared, arg: e };
-    let ref_ty = cx.tcx.mk_ty_from_kind(TyKind::Ref(
-        Region::new_from_kind(cx.tcx, RegionKind::ReErased),
-        ty,
-        Mutability::Not,
-    ));
+    let ref_ty =
+        cx.tcx.mk_ty_from_kind(TyKind::Ref(cx.tcx.lifetimes.re_erased, ty, Mutability::Not));
     let e = expr_id_from_kind(cx, kind, expr.hir_id, expr.span, ref_ty);
 
     shadow_ghost_value_kind_with_args(cx, erasure_ctxt, expr.hir_id, expr.span, ty, vec![e])
@@ -1646,11 +1651,8 @@ fn shadow_apply_projection_inner<'tcx>(
     let projected_arg =
         expr_id_from_kind(cx, projected_arg_kind, hir_expr.hir_id, hir_expr.span, p.ty);
     let borrow_kind = ExprKind::Borrow { borrow_kind, arg: projected_arg };
-    let ref_ty = cx.tcx.mk_ty_from_kind(TyKind::Ref(
-        Region::new_from_kind(cx.tcx, RegionKind::ReErased),
-        p.ty,
-        Mutability::Not,
-    ));
+    let ref_ty =
+        cx.tcx.mk_ty_from_kind(TyKind::Ref(cx.tcx.lifetimes.re_erased, p.ty, Mutability::Not));
     expr_id_from_kind(cx, borrow_kind, hir_expr.hir_id, hir_expr.span, ref_ty)
 }
 
@@ -1664,11 +1666,8 @@ pub(crate) fn shadow_use_stmt<'tcx>(
     let ty = cx.thir.exprs[shadow_expr].ty;
 
     let kind = ExprKind::Borrow { borrow_kind: BorrowKind::Shared, arg: shadow_expr };
-    let ref_ty = cx.tcx.mk_ty_from_kind(TyKind::Ref(
-        Region::new_from_kind(cx.tcx, RegionKind::ReErased),
-        ty,
-        Mutability::Not,
-    ));
+    let ref_ty =
+        cx.tcx.mk_ty_from_kind(TyKind::Ref(cx.tcx.lifetimes.re_erased, ty, Mutability::Not));
     let e = expr_id_from_kind(cx, kind, hir_expr.hir_id, hir_expr.span, ref_ty);
 
     let stmt = Stmt {

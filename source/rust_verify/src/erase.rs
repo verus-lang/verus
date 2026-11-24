@@ -606,8 +606,11 @@ pub(crate) fn prepare_local_def_id<'tcx>(
 /// Should a call to the given verus item be erased in full-erasure mode?
 /// (See `FullErasureCtxt` in rustc_mir_build/verus.rs)
 fn full_erasure_erases_call(verus_item: &VerusItem) -> bool {
-    use crate::verus_items::CompilableOprItem;
+    use crate::verus_items::{BuiltinFunctionItem, CompilableOprItem};
     match verus_item {
+        // Replaced by its compiled argument (see `FullErasureCtxt`)
+        VerusItem::BuiltinFunction(BuiltinFunctionItem::ProofWithCallee) => false,
+
         VerusItem::Spec(_)
         | VerusItem::Quant(_)
         | VerusItem::Directive(_)
@@ -685,7 +688,7 @@ pub(crate) fn setup_full_erasure_ctxt<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     verus_items: &VerusItems,
 ) {
-    use crate::verus_items::BuiltinTypeItem;
+    use crate::verus_items::{BuiltinFunctionItem, BuiltinTypeItem};
 
     let ghost = verus_items.name_to_id.get(&VerusItem::BuiltinType(BuiltinTypeItem::Ghost));
     let tracked = verus_items.name_to_id.get(&VerusItem::BuiltinType(BuiltinTypeItem::Tracked));
@@ -708,6 +711,11 @@ pub(crate) fn setup_full_erasure_ctxt<'tcx>(
         .filter(|(_, verus_item)| full_erasure_erases_call(verus_item))
         .map(|(def_id, _)| *def_id)
         .collect();
+    let proof_with_callee_fn_def_id = verus_items
+        .name_to_id
+        .get(&VerusItem::BuiltinFunction(BuiltinFunctionItem::ProofWithCallee))
+        .copied()
+        .expect("proof_with_callee function");
 
     let ghost_detection = rustc_mir_build_verus::verus::GhostDetectionCtxt {
         erase_call_fns,
@@ -720,6 +728,7 @@ pub(crate) fn setup_full_erasure_ctxt<'tcx>(
     rustc_mir_build_verus::verus::set_full_erasure_ctxt(Arc::new(
         rustc_mir_build_verus::verus::FullErasureCtxt {
             ghost_detection: Arc::new(ghost_detection),
+            proof_with_callee_fn_def_id,
         },
     ));
 }

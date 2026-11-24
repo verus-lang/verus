@@ -2131,3 +2131,54 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] proof_with_exec_temp_drop_requires_borrow_live ["--no-erasure-check", "--edition 2021"] => code! {
+        use vstd::prelude::*;
+        verus! {
+            struct X { }
+            struct W<'a> { r: &'a X }
+            impl<'a> Drop for W<'a> {
+                #[verifier::external_body]
+                fn drop(&mut self) opens_invariants none no_unwind { }
+            }
+        }
+
+        #[verus_spec(with Ghost(g): Ghost<u8>)]
+        fn f<'a>(w: &W<'a>) -> u8 { 0 }
+
+        #[verus_spec]
+        fn test() -> u8 {
+            let x = X { };
+            // The call to `f` is exec code (even though `proof_with_callee` is a verus builtin),
+            // so the temporary `W { .. }` is dropped, after `x` (in edition 2021)
+            proof_with!{Ghost(0u8)}
+            f(&W { r: &x })
+        }
+    } => Err(err) => assert_rust_error_msg(err, "`x` does not live long enough")
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_with_ghost_arg_temp_not_dropped ["--edition 2021"] => code! {
+        use vstd::prelude::*;
+        verus! {
+            tracked struct X { }
+            tracked struct W<'a> { tracked r: &'a X }
+            impl<'a> Drop for W<'a> {
+                #[verifier::external_body]
+                fn drop(&mut self) opens_invariants none no_unwind { }
+            }
+        }
+
+        #[verus_spec(with Tracked(w): Tracked<&W>)]
+        fn f() -> u8 { 0 }
+
+        #[verus_spec]
+        fn test() -> u8 {
+            proof_decl!{ let tracked x = X { }; }
+            // Ghost code never runs drop, so the temporary `W { .. }` is not dropped
+            proof_with!{Tracked(&W { r: &x })}
+            f()
+        }
+    } => Ok(())
+}

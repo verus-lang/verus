@@ -9,7 +9,7 @@ use crate::ast_to_sst::{
     expr_to_pure_exp_check_with_typ_substs, expr_to_pure_exp_skip_checks, expr_to_stm_opt,
     expr_to_stm_or_error, stms_to_one_stm,
 };
-use crate::ast_util::{is_body_visible_to, unit_typ};
+use crate::ast_util::{conjoin, is_body_visible_to, mk_implies, unit_typ};
 use crate::context::{Ctx, FunctionCtx};
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
@@ -428,9 +428,18 @@ pub fn func_decl_to_sst(
             .fndef_axioms
             .as_ref()
             .expect("expected FnDef axioms to have been generated in ast_simplify");
+        let bounds =
+            crate::traits::trait_bounds_to_ast(ctx, &function.span, &function.x.typ_bounds);
         for fndef_axiom in fndef_axioms.iter() {
+            let fndef_axiom = match &fndef_axiom.x {
+                ExprX::Quant(q, bs, body) if bounds.len() > 0 => {
+                    let body = mk_implies(&body.span, &conjoin(&body.span, &bounds), body);
+                    fndef_axiom.new_x(ExprX::Quant(*q, bs.clone(), body))
+                }
+                _ => fndef_axiom.clone(),
+            };
             let mut state = State::new(diagnostics);
-            let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, fndef_axiom)?;
+            let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, &fndef_axiom)?;
             let exp = state.finalize_exp(ctx, &exp)?;
             state.finalize()?;
 

@@ -532,6 +532,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enum_to_int verus_code! {
+        use vstd::prelude::*;
         #[derive(Copy, Clone)]
         enum E {
             A,
@@ -554,6 +555,7 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] test_enum_to_int_overflow ["--compile"] => verus_code! {
+        use vstd::prelude::*;
         #[derive(Copy, Clone)]
         enum E {
             A,
@@ -619,6 +621,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enum_to_int_proof verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)]
         enum E {
             A,
@@ -635,6 +639,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enums_with_signed_representations_issue2767 verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)] #[repr(i8)] enum E8 { A = -1, B = 0, C = 1 }
         #[derive(Copy, Clone)] #[repr(i16)] enum E16 { A = -1, B = 0, C = 1 }
         #[derive(Copy, Clone)] #[repr(i32)] enum E32 { A = -1, B = 0, C = 1 }
@@ -672,6 +678,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enums_with_unsigned_representations verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)] #[repr(u8)] enum E8 { A = 0xff, B = 0, C = 1 }
         #[derive(Copy, Clone)] #[repr(u16)] enum E16 { A = 0xffff, B = 0, C = 1 }
         #[derive(Copy, Clone)] #[repr(u32)] enum E32 { A = 0xffff_ffff, B = 0, C = 1 }
@@ -709,6 +717,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enums_with_overflow verus_code! {
+        use vstd::prelude::*;
+
         #[allow(overflowing_literals)]
         #[derive(Copy, Clone)] #[repr(i8)] enum Ei8 { A = 255, B = 0 }
 
@@ -730,6 +740,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enums_with_arch_dependent verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Copy, Clone)] #[repr(isize)] enum Eisize { A = 0x8000_0000, B = 0 }
         #[derive(Copy, Clone)] #[repr(usize)] enum Eusize { A = 0x1_0000_0000, B = 0 }
 

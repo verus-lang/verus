@@ -351,7 +351,7 @@ test_verify_one_file! {
         {
             match n {
                 Nat::Zero => 0,
-                Nat::Succ(box m) => height(m),
+                Nat::Succ(deref!(m)) => height(m),
             }
         }
     } => Ok(())
@@ -1360,6 +1360,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] derive_regression_1575 verus_code! {
+        use vstd::prelude::*;
+
         #[derive(Clone, Copy)]
         enum A { A, }
 

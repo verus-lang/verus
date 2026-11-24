@@ -24,16 +24,18 @@ git checkout $BASE
 GIT_BASE_HASH=$(git rev-parse HEAD)
 
 cd $VERUS_TMP_DIR
-mkdir source
-mkdir source/rustc_hir_typeck
-mkdir source/rustc_hir_typeck/src
-mkdir source/rustc_mir_transform
-mkdir source/rustc_mir_transform/src
+mkdir -p source/rustc_hir_typeck_closure_files/src
+mkdir -p source/rustc_mir_transform/src
 cp -r $RUST_DIR/compiler/rustc_mir_build $VERUS_TMP_DIR/source/
+cp -r $RUST_DIR/compiler/rustc_hir_typeck $VERUS_TMP_DIR/source/
 cp -r $RUST_DIR/compiler/rustc_hir_analysis $VERUS_TMP_DIR/source/
 cp -r $RUST_DIR/compiler/rustc_const_eval $VERUS_TMP_DIR/source/
-cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/upvar.rs $VERUS_TMP_DIR/source/rustc_hir_typeck/src/
-cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/expr_use_visitor.rs $VERUS_TMP_DIR/source/rustc_hir_typeck/src/
+cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/upvar.rs $VERUS_TMP_DIR/source/rustc_hir_typeck_closure_files/src/
+cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/expr_use_visitor.rs $VERUS_TMP_DIR/source/rustc_hir_typeck_closure_files/src/
+cp -r $RUST_DIR/compiler/rustc_const_eval $VERUS_TMP_DIR/source/
+cp -r $RUST_DIR/compiler/rustc_mir_transform/src/ctfe_limit.rs $VERUS_TMP_DIR/source/rustc_mir_transform/src/
+cp -r $RUST_DIR/compiler/rustc_mir_transform/src/promote_consts.rs $VERUS_TMP_DIR/source/rustc_mir_transform/src/
+cp -r $RUST_DIR/compiler/rustc_mir_transform/src/required_consts.rs $VERUS_TMP_DIR/source/rustc_mir_transform/src/
 cp -r $RUST_DIR/compiler/rustc_mir_transform/src/promote_consts.rs $VERUS_TMP_DIR/source/rustc_mir_transform/src/
 cp -r $RUST_DIR/compiler/rustc_mir_transform/src/required_consts.rs $VERUS_TMP_DIR/source/rustc_mir_transform/src/
 cp -r $RUST_DIR/compiler/rustc_mir_transform/src/ctfe_limit.rs $VERUS_TMP_DIR/source/rustc_mir_transform/src/
@@ -46,16 +48,18 @@ GIT_UPDATED_HASH=$(git rev-parse HEAD)
 
 cd $VERUS_TMP_DIR
 git rm -r source
-mkdir source
-mkdir source/rustc_hir_typeck
-mkdir source/rustc_hir_typeck/src
-mkdir source/rustc_mir_transform
-mkdir source/rustc_mir_transform/src
+mkdir -p source/rustc_hir_typeck_closure_files/src
+mkdir -p source/rustc_mir_transform/src
 cp -r $RUST_DIR/compiler/rustc_mir_build $VERUS_TMP_DIR/source/
+cp -r $RUST_DIR/compiler/rustc_hir_typeck $VERUS_TMP_DIR/source/
 cp -r $RUST_DIR/compiler/rustc_hir_analysis $VERUS_TMP_DIR/source/
 cp -r $RUST_DIR/compiler/rustc_const_eval $VERUS_TMP_DIR/source/
-cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/upvar.rs $VERUS_TMP_DIR/source/rustc_hir_typeck/src/
-cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/expr_use_visitor.rs $VERUS_TMP_DIR/source/rustc_hir_typeck/src/
+cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/upvar.rs $VERUS_TMP_DIR/source/rustc_hir_typeck_closure_files/src/
+cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/expr_use_visitor.rs $VERUS_TMP_DIR/source/rustc_hir_typeck_closure_files/src/
+cp -r $RUST_DIR/compiler/rustc_const_eval $VERUS_TMP_DIR/source/
+cp -r $RUST_DIR/compiler/rustc_mir_transform/src/ctfe_limit.rs $VERUS_TMP_DIR/source/rustc_mir_transform/src/
+cp -r $RUST_DIR/compiler/rustc_mir_transform/src/promote_consts.rs $VERUS_TMP_DIR/source/rustc_mir_transform/src/
+cp -r $RUST_DIR/compiler/rustc_mir_transform/src/required_consts.rs $VERUS_TMP_DIR/source/rustc_mir_transform/src/
 cp -r $RUST_DIR/compiler/rustc_mir_transform/src/promote_consts.rs $VERUS_TMP_DIR/source/rustc_mir_transform/src/
 cp -r $RUST_DIR/compiler/rustc_mir_transform/src/required_consts.rs $VERUS_TMP_DIR/source/rustc_mir_transform/src/
 cp -r $RUST_DIR/compiler/rustc_mir_transform/src/ctfe_limit.rs $VERUS_TMP_DIR/source/rustc_mir_transform/src/
@@ -73,4 +77,3 @@ echo ""
 
 echo "Diff prepared. When you're ready to apply it, run:"
 echo "git cherry-pick $GIT_COMMIT"
-
