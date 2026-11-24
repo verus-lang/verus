@@ -302,3 +302,92 @@ test_verify_one_file! {
     } => Err(_) => () // currently rejected because closures can't mutably borrow captured vars;
                        // otherwise, rejected by the pin_new_unchecked check
 }
+
+test_verify_one_file! {
+    #[test] pin_new_unchecked_ok_assign_and_repin PIN_STRUCTS.to_string() + verus_code_str! {
+        fn test() {
+            let mut s = S { a: A { }, b: 7 };
+            let p = unsafe { Pin::new_unchecked(&mut s) };
+            s.b = 8;
+            let q = unsafe { Pin::new_unchecked(&mut s) };
+            s = S { a: A { }, b: 9 };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] pin_new_unchecked_mut_borrow_after PIN_STRUCTS.to_string() + verus_code_str! {
+        fn test() {
+            let mut s = S { a: A { }, b: 7 };
+            let p = unsafe { Pin::new_unchecked(&mut s) };
+            let r = &mut s;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+}
+
+test_verify_one_file! {
+    #[test] pin_new_unchecked_mut_borrow_before PIN_STRUCTS.to_string() + verus_code_str! {
+        fn test() {
+            let mut s = S { a: A { }, b: 7 };
+            let r = &mut s;
+            let p = unsafe { Pin::new_unchecked(&mut s) };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+}
+
+test_verify_one_file! {
+    #[test] pin_new_unchecked_mut_borrow_field PIN_STRUCTS.to_string() + verus_code_str! {
+        fn test() {
+            let mut s = S { a: A { }, b: 7 };
+            let p = unsafe { Pin::new_unchecked(&mut s) };
+            let r = &mut s.b;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+}
+
+test_verify_one_file! {
+    #[test] pin_new_unchecked_mut_borrow_swap PIN_STRUCTS.to_string() + verus_code_str! {
+        fn test() {
+            let mut s = S { a: A { }, b: 7 };
+            let mut t = S { a: A { }, b: 8 };
+            let p = unsafe { Pin::new_unchecked(&mut s) };
+            core::mem::swap(&mut s, &mut t);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+}
+
+test_verify_one_file! {
+    #[test] pin_new_unchecked_mut_borrow_method PIN_STRUCTS.to_string() + verus_code_str! {
+        impl S {
+            fn set(&mut self) { self.b = 0; }
+        }
+
+        fn test() {
+            let mut s = S { a: A { }, b: 7 };
+            let p = unsafe { Pin::new_unchecked(&mut s) };
+            s.set();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+}
+
+test_verify_one_file! {
+    #[test] pin_new_unchecked_mut_borrow_pattern PIN_STRUCTS.to_string() + verus_code_str! {
+        fn test() {
+            let mut s = S { a: A { }, b: 7 };
+            let p = unsafe { Pin::new_unchecked(&mut s) };
+            let S { a: ref mut a1, .. } = s;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+}
+
+test_verify_one_file! {
+    #[test] pin_new_unchecked_mut_borrow_match PIN_STRUCTS.to_string() + verus_code_str! {
+        fn test() {
+            let mut s = S { a: A { }, b: 7 };
+            let p = unsafe { Pin::new_unchecked(&mut s) };
+            match s {
+                S { ref mut b, .. } => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+}
