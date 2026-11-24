@@ -235,7 +235,8 @@ pub broadcast axiom fn spec_from_blanket_identity<T>(t: T, s: T)
 
 pub broadcast proof fn spec_from_from_spec<S: FromSpec<T>, T>(t: T, s: S)
     ensures
-        #[trigger] spec_from::<S, T>(t, s) ==> <S as FromSpec<T>>::from_spec(t) == s,
+        #[trigger] spec_from::<S, T>(t, s) && <S as FromSpec<T>>::obeys_from_spec()
+            ==> <S as FromSpec<T>>::from_spec(t) == s,
 {
     admit();
 }
