@@ -30,6 +30,30 @@ use crate::messages::{AstId, Span, error};
 use crate::resolution_inference::ResolutionInfo;
 use std::collections::{HashMap, HashSet};
 
+const PIN_ERROR_MSG: &str = "possible safety violation: unable to check that the argument to `Pin::new_unchecked` obeys pinning restrictions";
+
+const COND_ARG: &str =
+    "the argument must be a mutable borrow of a local variable, e.g., `Pin::new_unchecked(&mut x)`";
+const COND_NOT_IN_CLOSURE: &str = "the call must not be inside a closure";
+const COND_NO_MOVE: &str =
+    "the local variable must not be moved (in whole or in part) anywhere in the function";
+const COND_NO_MUT_BORROW: &str = "the local variable must not be mutably borrowed (in whole or in part) anywhere in the function, other than by `Pin::new_unchecked`";
+const COND_NO_CAPTURE: &str = "the local variable must not be captured by any closure";
+
+const CONDITIONS: [&str; 5] =
+    [COND_ARG, COND_NOT_IN_CLOSURE, COND_NO_MOVE, COND_NO_MUT_BORROW, COND_NO_CAPTURE];
+
+/// Builds the error, with one help message listing all the conditions and a second
+/// help message naming the specific condition that is violated.
+fn pin_error(span: &Span, violated: &str) -> VirErr {
+    let mut help = "Verus requires the following conditions to be met:".to_string();
+    for c in CONDITIONS {
+        help += "\n  - ";
+        help += c;
+    }
+    error(span, PIN_ERROR_MSG).help(help).help(format!("this condition is violated: {violated}"))
+}
+
 struct Visitor<'a> {
     info: &'a ResolutionInfo,
     datatypes: &'a HashMap<Path, Datatype>,
@@ -129,16 +153,13 @@ impl<'a> Visitor<'a> {
 
     fn check_call(&mut self, expr: &Expr, args: &[Expr]) -> Result<(), VirErr> {
         if self.closure_depth > 0 {
-            return Err(error(
-                &expr.span,
-                "Verus does not support `Pin::new_unchecked` inside a closure; \
-                the argument must be a mutable borrow of a local variable of the enclosing function",
-            ));
+            return Err(pin_error(&expr.span, COND_NOT_IN_CLOSURE)
+                .primary_label(&expr.span, "`Pin::new_unchecked` is called inside a closure"));
         }
         let arg_err = || {
-            error(
+            pin_error(&expr.span, COND_ARG).primary_label(
                 &expr.span,
-                "the argument to `Pin::new_unchecked` must be a mutable borrow of a local variable (e.g., `Pin::new_unchecked(&mut x)`)",
+                "the argument is not a mutable borrow of a local variable",
             )
         };
         if args.len() != 1 {
@@ -249,35 +270,20 @@ pub(crate) fn check_function(
     visitor.visit_expr(body)?;
 
     for (x, call_span) in visitor.pinned.iter() {
-        if let Some(move_span) = visitor.moved.get(x) {
-            return Err(error(
-                move_span,
-                format!(
-                    "cannot move out of `{}` because it is pinned by `Pin::new_unchecked`",
-                    crate::def::user_local_name(x)
-                ),
-            )
-            .secondary_label(call_span, "pinned here"));
-        }
-        if let Some(borrow_span) = visitor.mut_borrowed.get(x) {
-            return Err(error(
-                borrow_span,
-                format!(
-                    "cannot mutably borrow `{}` because it is pinned by `Pin::new_unchecked`",
-                    crate::def::user_local_name(x)
-                ),
-            )
-            .secondary_label(call_span, "pinned here"));
-        }
-        if let Some(capture_span) = visitor.captured.get(x) {
-            return Err(error(
-                capture_span,
-                format!(
-                    "`{}` cannot be captured by a closure because it is pinned by `Pin::new_unchecked`",
-                    crate::def::user_local_name(x)
-                ),
-            )
-            .secondary_label(call_span, "pinned here"));
+        let name = crate::def::user_local_name(x);
+        let violation = if let Some(span) = visitor.moved.get(x) {
+            Some((span, format!("`{name}` is moved here"), COND_NO_MOVE))
+        } else if let Some(span) = visitor.mut_borrowed.get(x) {
+            Some((span, format!("`{name}` is mutably borrowed here"), COND_NO_MUT_BORROW))
+        } else if let Some(span) = visitor.captured.get(x) {
+            Some((span, format!("`{name}` is captured by a closure here"), COND_NO_CAPTURE))
+        } else {
+            None
+        };
+        if let Some((span, label, cond)) = violation {
+            return Err(pin_error(call_span, cond)
+                .primary_label(call_span, format!("`{name}` is pinned here"))
+                .secondary_label(span, label));
         }
     }
     Ok(())

@@ -115,6 +115,17 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+fn assert_pin_error(err: TestErr, label: &str) {
+    assert_eq!(err.errors.len(), 1);
+    let e = &err.errors[0];
+    assert!(e.message.contains(
+        "possible safety violation: unable to check that the argument to `Pin::new_unchecked` obeys pinning restrictions"
+    ));
+    assert!(e.rendered.contains("Verus requires the following conditions to be met:"));
+    assert!(e.rendered.contains(label));
+    assert!(e.rendered.contains("this condition is violated:"));
+}
+
 const PIN_STRUCTS: &str = verus_code_str! {
     use vstd::prelude::*;
     use core::pin::Pin;
@@ -130,7 +141,7 @@ test_verify_one_file! {
         fn test(s: &mut S) {
             let p = unsafe { Pin::new_unchecked(s) };
         }
-    } => Err(err) => assert_vir_error_msg(err, "the argument to `Pin::new_unchecked` must be a mutable borrow of a local variable")
+    } => Err(err) => assert_pin_error(err, "the argument is not a mutable borrow of a local variable")
 }
 
 test_verify_one_file! {
@@ -138,7 +149,7 @@ test_verify_one_file! {
         fn test(s: &mut S) {
             let p = unsafe { Pin::new_unchecked(&mut *s) };
         }
-    } => Err(err) => assert_vir_error_msg(err, "the argument to `Pin::new_unchecked` must be a mutable borrow of a local variable")
+    } => Err(err) => assert_pin_error(err, "the argument is not a mutable borrow of a local variable")
 }
 
 test_verify_one_file! {
@@ -147,7 +158,7 @@ test_verify_one_file! {
             let mut s = S { a: A { }, b: 7 };
             let p = unsafe { Pin::new_unchecked(&mut s.a) };
         }
-    } => Err(err) => assert_vir_error_msg(err, "the argument to `Pin::new_unchecked` must be a mutable borrow of a local variable")
+    } => Err(err) => assert_pin_error(err, "the argument is not a mutable borrow of a local variable")
 }
 
 test_verify_one_file! {
@@ -156,7 +167,7 @@ test_verify_one_file! {
             let s = S { a: A { }, b: 7 };
             let p = unsafe { Pin::new_unchecked(&s) };
         }
-    } => Err(err) => assert_vir_error_msg(err, "the argument to `Pin::new_unchecked` must be a mutable borrow of a local variable")
+    } => Err(err) => assert_pin_error(err, "the argument is not a mutable borrow of a local variable")
 }
 
 test_verify_one_file! {
@@ -166,7 +177,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             let t = s;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is moved here")
 }
 
 test_verify_one_file! {
@@ -185,7 +196,7 @@ test_verify_one_file! {
                 i = i + 1;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is moved here")
 }
 
 test_verify_one_file! {
@@ -195,7 +206,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             consume(s);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is moved here")
 }
 
 test_verify_one_file! {
@@ -205,7 +216,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             consume(s.a);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is moved here")
 }
 
 test_verify_one_file! {
@@ -215,7 +226,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             s
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is moved here")
 }
 
 test_verify_one_file! {
@@ -225,7 +236,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             s;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is moved here")
 }
 
 test_verify_one_file! {
@@ -235,7 +246,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             let S { a, b } = s;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is moved here")
 }
 
 test_verify_one_file! {
@@ -247,7 +258,7 @@ test_verify_one_file! {
                 S { a, .. } => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is moved here")
 }
 
 test_verify_one_file! {
@@ -257,7 +268,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             let t = S { b: 8, .. s };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is moved here")
 }
 
 test_verify_one_file! {
@@ -267,7 +278,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             let c = || { let r = &s; };
         }
-    } => Err(err) => assert_vir_error_msg(err, "`s` cannot be captured by a closure because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is captured by a closure here")
 }
 
 test_verify_one_file! {
@@ -277,7 +288,7 @@ test_verify_one_file! {
             let c = || { let b = s.b; };
             let p = unsafe { Pin::new_unchecked(&mut s) };
         }
-    } => Err(err) => assert_vir_error_msg(err, "`s` cannot be captured by a closure because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is captured by a closure here")
 }
 
 test_verify_one_file! {
@@ -288,7 +299,7 @@ test_verify_one_file! {
                 let p = unsafe { Pin::new_unchecked(&mut s) };
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `Pin::new_unchecked` inside a closure")
+    } => Err(err) => assert_pin_error(err, "`Pin::new_unchecked` is called inside a closure")
 }
 
 test_verify_one_file! {
@@ -322,7 +333,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             let r = &mut s;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is mutably borrowed here")
 }
 
 test_verify_one_file! {
@@ -332,7 +343,7 @@ test_verify_one_file! {
             let r = &mut s;
             let p = unsafe { Pin::new_unchecked(&mut s) };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is mutably borrowed here")
 }
 
 test_verify_one_file! {
@@ -342,7 +353,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             let r = &mut s.b;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is mutably borrowed here")
 }
 
 test_verify_one_file! {
@@ -353,7 +364,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             core::mem::swap(&mut s, &mut t);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is mutably borrowed here")
 }
 
 test_verify_one_file! {
@@ -367,7 +378,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             s.set();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is mutably borrowed here")
 }
 
 test_verify_one_file! {
@@ -377,7 +388,7 @@ test_verify_one_file! {
             let p = unsafe { Pin::new_unchecked(&mut s) };
             let S { a: ref mut a1, .. } = s;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is mutably borrowed here")
 }
 
 test_verify_one_file! {
@@ -389,5 +400,5 @@ test_verify_one_file! {
                 S { ref mut b, .. } => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot mutably borrow `s` because it is pinned by `Pin::new_unchecked`")
+    } => Err(err) => assert_pin_error(err, "`s` is mutably borrowed here")
 }
