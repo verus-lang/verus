@@ -11,8 +11,8 @@ use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
 use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemId, TraitItemKind};
 use rustc_middle::ty::{
-    AliasTyKind, ClauseKind, TraitPredicate, TraitRef, Ty, TyCtxt, TyKind, TypeFoldable,
-    TypeFolder, TypeSuperFoldable, TypingEnv,
+    AliasTyKind, ClauseKind, TraitClause, TraitRef, Ty, TyCtxt, TyKind, TypeFoldable, TypeFolder,
+    TypeSuperFoldable, TypingEnv,
 };
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -136,9 +136,9 @@ pub(crate) fn external_trait_specification_of<'tcx>(
                         .skip_binder();
                     for (bound, _) in bounds {
                         match bound.kind().skip_binder() {
-                            ClauseKind::Trait(TraitPredicate {
+                            ClauseKind::Trait(TraitClause {
                                 trait_ref,
-                                polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                                polarity: rustc_middle::ty::ClausePolarity::Positive,
                             }) => {
                                 let trait_def_id = trait_ref.def_id;
                                 if Some(trait_def_id) == tcx.lang_items().sized_trait() {
@@ -801,6 +801,7 @@ fn make_trait_decl<'tcx>(
     Ok(FunctionInfo {
         function: vir::def::Spanned::new(method.span.clone(), methodx),
         function_for_autospec: None,
+        autoderive_aux_function: None,
         pre_header: spec_method_info.pre_header.clone(),
         def_id: spec_method_info.def_id,
         body_id: spec_method_info.body_id.clone(),

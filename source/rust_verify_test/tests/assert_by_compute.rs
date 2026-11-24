@@ -1726,3 +1726,31 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] inline_quant_shadows_outer_quant_var verus_code! {
+        spec fn f(x: int) -> int { x }
+
+        #[verifier::inline]
+        spec fn inl(b: int) -> bool { forall|x: int| #[trigger] f(x) == f(b) }
+
+        proof fn test() {
+            assert(forall|x: int| { let y = x; inl(y) }) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_on_seq_not_builtin_seq_fn verus_code! {
+        use vstd::prelude::*;
+        pub trait MyLen {
+            spec fn len(self) -> nat;
+        }
+        impl<A> MyLen for Seq<A> {
+            open spec fn len(self) -> nat { 0 }
+        }
+        proof fn test() {
+            assert(<Seq<u8> as MyLen>::len(Seq::<u8>::empty().push(1u8)) == 1) by (compute); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "which evaluates to false")
+}

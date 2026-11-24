@@ -24,6 +24,8 @@ fn main() {
 /// Inserts the given key, value pair into the map if absent,
 /// does nothing otherwise
 fn insert_if_absent(m: &mut HashMap<u64, u64>, key: u64, value: u64)
+    requires
+        hash_map_wf(old(m)),
     ensures
         !old(m)@.dom().contains(key) ==> final(m)@ =~= old(m)@.insert(key, value),
         old(m)@.dom().contains(key) ==> final(m)@ =~= old(m)@,
@@ -34,6 +36,7 @@ fn insert_if_absent(m: &mut HashMap<u64, u64>, key: u64, value: u64)
 /// If the key is absent, insert 1; else, double it
 fn try_double(m: &mut HashMap<u64, u64>, key: u64)
     requires
+        hash_map_wf(old(m)),
         m@.dom().contains(key) ==> m[key] * 2 <= u64::MAX,
     ensures
         !old(m)@.dom().contains(key) ==> final(m)@ =~= old(m)@.insert(key, 1),

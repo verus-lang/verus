@@ -41,6 +41,9 @@ use vir::context::{WarningConfig, WarningCtx};
 pub(crate) struct State {
     pub(crate) external_info: ExternalInfo,
     pub(crate) fun_warn_configs: HashMap<Fun, WarningConfig>,
+    /// For each `TrivialClone` impl: (span of the `TrivialClone` impl, DefId of the
+    /// corresponding `Clone` impl)
+    pub(crate) trivial_clone_impls: Vec<(rustc_span::Span, DefId)>,
 }
 
 impl State {
@@ -186,7 +189,17 @@ fn check_item<'tcx>(
             no_erasure_needed.push(def_id);
             return Ok(());
         }
-        if vattrs.structural_const_wrapper {
+        // An anonymous `const _: T = { ... };` cannot be referred to, so only the items declared in its
+        // block matter. verus! marks a hand-written one `structural_const_wrapper`; one that another
+        // macro produces (serde's derives, a `macro_rules!`) carries no Verus attribute, and its block
+        // of item statements is not a pure expression ("expected pure mathematical expression"). Both
+        // are ignored the same way: the items inside are visited, and verified, rejected or external,
+        // as at module level.
+        let anonymous_const = matches!(
+            item.kind,
+            ItemKind::Const(ident, ..) if ident.name == rustc_span::symbol::kw::Underscore
+        );
+        if vattrs.structural_const_wrapper || anonymous_const {
             no_erasure_needed.push(def_id);
             return Ok(());
         }
@@ -558,7 +571,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
         .insert(tcx.get_diagnostic_item(rustc_span::sym::Send).expect("send"));
 
     let fun_warn_configs = HashMap::new();
-    let mut state = State { external_info, fun_warn_configs };
+    let mut state = State { external_info, fun_warn_configs, trivial_clone_impls: Vec::new() };
 
     let mut errors = vec![];
 
@@ -582,6 +595,10 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     ctxtx.arch_word_bits = Some(arch_word_bits);
     vir.arch.word_bits = arch_word_bits;
     let ctxt = Rc::new(ctxtx);
+
+    if ctxt.cmd_line_args.no_cheating {
+        errors.extend(crate::no_cheating::check_trust(&ctxt));
+    }
 
     // Find all modules that contain at least 1 item of interest
     let mut used_modules = HashSet::<Path>::new();
@@ -737,6 +754,14 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     }
 
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
+
+    crate::rust_to_vir_impl::set_trivial_clone_attrs(
+        &ctxt,
+        &vir,
+        &mut infos,
+        &state.trivial_clone_impls,
+    )
+    .map_err(|e| (vec![e], None))?;
 
     let anon_consts = collect_anon_consts(&ctxt, &mut state, crate_items);
 

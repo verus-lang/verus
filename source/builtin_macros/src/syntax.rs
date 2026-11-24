@@ -858,17 +858,15 @@ impl Visitor {
             }
             GenericParam::Const(_) => None,
         });
+        let type_params = generics.type_params().map(|param| &param.ident);
 
         self.additional_items.push(parse_quote_spanned!(full_span =>
+            #[verifier::external_body]
+            #(#[verifier::reject_recursive_types(#type_params)])*
             #vis struct #pred_ident #impl_generics #where_clause {
                 _marker: ::core::marker::PhantomData<( #(#marker_types,)* )>,
             }
         ));
-
-        let update_arg: FnArg = parse_quote_spanned_vstd!(vstd, full_span =>
-            tracked #atomic_update: #vstd::atomic::AtomicUpdate
-                < #old_ty, #new_ty, #pred_ident #ty_generics >
-        );
 
         let mut old_pat = TokenStream::new();
         let mut new_pat = TokenStream::new();
@@ -951,9 +949,13 @@ impl Visitor {
             for #pred_ident #ty_generics #where_clause { #impl_members }
         ));
 
-        if self.erase_ghost == EraseGhost::Keep {
-            sig.inputs.push(update_arg);
+        // This is desugared by `rewrite_args_unwrap_ghost_tracked` later.
+        sig.inputs.push(parse_quote_spanned_vstd!(vstd, full_span =>
+            Tracked(#atomic_update): Tracked<#vstd::atomic::AtomicUpdate<
+                #old_ty, #new_ty, #pred_ident #ty_generics>>
+        ));
 
+        if self.erase_ghost == EraseGhost::Keep {
             stmts.push(Stmt::Expr(
                 Expr::Verbatim(quote_spanned_builtin!(builtin, full_span =>
                     #builtin::atomic_spec( #atomic_update )
@@ -1554,7 +1556,8 @@ impl Visitor {
         _con_ty: &Type,
         con_span: Span,
     ) {
-        if matches!(con_mode, FnMode::Spec(_) | FnMode::SpecChecked(_)) {
+        if self.erase_ghost.erase() && matches!(con_mode, FnMode::Spec(_) | FnMode::SpecChecked(_))
+        {
             if let Some(expr) = con_expr.take() {
                 let mut stmts = Vec::new();
                 stmts.push(Stmt::Expr(
@@ -1568,14 +1571,35 @@ impl Visitor {
                 })));
             }
         } else {
+            let ensures = self.take_ghost(con_ensures);
+            if let Some(Ensures { token, mut exprs, attrs }) = ensures {
+                self.inside_ghost += 1;
+                let mut stmts: Vec<Stmt> = Vec::new();
+                if attrs.len() > 0 {
+                    let err = "outer attributes only allowed on function's ensures";
+                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                    stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
+                } else if exprs.exprs.len() > 0 {
+                    for expr in exprs.exprs.iter_mut() {
+                        self.visit_expr_mut(expr);
+                    }
+                    stmts.push(
+                        stmt_with_semi!(builtin, token.span => #builtin::ensures(|| [#exprs]) ),
+                    );
+                }
+                let mut block = std::mem::take(con_block).expect("const-with-ensures block");
+                block.stmts.splice(0..0, stmts);
+                *con_block = Some(block);
+                self.inside_ghost -= 1;
+            }
             if let Some(block) = std::mem::take(con_block) {
                 let expr_block = verus_syn::ExprBlock { attrs: vec![], label: None, block: *block };
                 *con_expr = Some(Box::new(Expr::Block(expr_block)));
                 *con_eq_token = Some(verus_syn::token::Eq { spans: [con_span] });
                 *con_semi_token = Some(Semi { spans: [con_span] });
             }
+            *con_ensures = None;
         }
-        *con_ensures = None;
     }
 
     fn visit_const_or_static(
@@ -1918,7 +1942,6 @@ impl Visitor {
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
         crate::contrib::contrib_preprocess_items(items);
-        self.visit_items_make_unerased_proxies(items);
         crate::syntax_trait::expand_extension_traits(self.erase_ghost.erase_all(), items);
 
         if self.erase_ghost.erase_all() {
@@ -2018,7 +2041,7 @@ impl Visitor {
             };
             if let Some((name, vis, mut attrs)) = erase_fn {
                 let mut item_fn: ItemFn = parse_quote_spanned! {
-                    span => #[allow(unused_imports)] #vis fn #name() { ::core::unimplemented!() }
+                    span => #[allow(non_snake_case)] #[allow(unused_imports)] #vis fn #name() { ::core::unimplemented!() }
                 };
                 filter_ghost_stub_attrs(&mut attrs);
                 // Verbatim items bypass the usual attribute visitor.
@@ -2043,6 +2066,15 @@ impl Visitor {
                                 .map(|s| s.ident.to_string())
                                 .unwrap_or_default();
                             prefix != "verus" && prefix != "verifier"
+                        })
+                        .collect();
+                    // trust carries to the generated lemma
+                    let trust_attrs: Vec<&Attribute> = attrs
+                        .iter()
+                        .filter(|a| {
+                            let segs: Vec<String> =
+                                a.path().segments.iter().map(|s| s.ident.to_string()).collect();
+                            segs == ["verus", "trusted"] || segs == ["verus", "untrusted"]
                         })
                         .collect();
                     let (type_, size_lit, align_lit) = match inner {
@@ -2116,6 +2148,7 @@ impl Visitor {
 
                                 #(#pass_through_attrs)*
                                 #verus_builtin_macros::verus! {
+                                    #(#trust_attrs)*
                                     #[verus::internal(size_of_broadcast_proof)]
                                     #[verifier::external_body]
                                     #[allow(non_snake_case)]
@@ -2434,7 +2467,6 @@ impl Visitor {
 
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
         crate::contrib::contrib_preprocess_impl_items(items);
-        self.visit_impl_items_make_unerased_proxies(items, for_trait);
 
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
@@ -3872,10 +3904,6 @@ impl Visitor {
             return;
         };
 
-        if self.erase_ghost != EraseGhost::Keep {
-            return;
-        };
-
         let span = atomically.span();
         let AtomicallyBlock {
             label,
@@ -3889,8 +3917,16 @@ impl Visitor {
             ..
         } = atomically;
 
+        if self.erase_ghost != EraseGhost::Keep {
+            args.push(Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                #verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!())
+            )));
+
+            return;
+        };
+
         attrs.push(parse_quote_spanned!(span =>
-            #[verifier::atomic_call]
+            #[verus::internal(logatom_function_call)]
         ));
 
         // handle loop invariants
@@ -3988,7 +4024,7 @@ impl Visitor {
             ),
         };
 
-        let extra_arg = quote_spanned_builtin_builtin_macros_vstd!(builtin, _macros, vstd, span =>
+        let extra_arg = quote_spanned_builtin_builtin_macros_vstd!(builtin, _m, vstd, span =>
             #vstd::atomic::atomically({
                 let _verus_internal_identifier_for_closures = #vstd::prelude::dummy_capture_new();
                 |#update_fn_binder, _verus_internal_ghost_atomic_update| {
@@ -6319,7 +6355,7 @@ pub(crate) fn is_external(attrs: &Vec<Attribute>) -> bool {
                     matches!(list.tokens.to_string().as_str(), "external")
                 }
                 _ => false,
-            }
+           }
     })
 }
 

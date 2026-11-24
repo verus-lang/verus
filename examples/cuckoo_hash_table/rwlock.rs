@@ -13,6 +13,7 @@ use vstd::set::*;
 
 tokenized_state_machine!(
 RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
+    #![verifier::prophetic]
     fields {
         #[sharding(constant)]
         pub k: K,
@@ -197,6 +198,7 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
     }
 
     #[invariant]
+    #[verifier::prophetic]
     pub fn sto_user_inv(&self) -> bool {
         self.storage.is_some() ==> Pred::inv(self.k, self.storage.unwrap())
     }
@@ -366,7 +368,7 @@ struct_with_invariants!{
 /// is dropped. You must call [`release_write`](WriteHandle::release_write).
 /// Verus does not check that lock is released.
 pub struct WriteHandle<'a, V, Pred: RwLockPredicate<V>> {
-    tracked handle: Tracked<RwLockToks::writer<Pred, V, InternalPred<V, Pred>>>,
+    handle: Tracked<RwLockToks::writer<Pred, V, InternalPred<V, Pred>>>,
     rwlock: &'a RwLock<V, Pred>,
 }
 
@@ -376,7 +378,7 @@ pub struct WriteHandle<'a, V, Pred: RwLockPredicate<V>> {
 /// is dropped. You must call [`release_read`](ReadHandle::release_read).
 /// Verus does not check that lock is released.
 pub struct ReadHandle<'a, V, Pred: RwLockPredicate<V>> {
-    tracked handle: Tracked<RwLockToks::reader<Pred, V, InternalPred<V, Pred>>>,
+    handle: Tracked<RwLockToks::reader<Pred, V, InternalPred<V, Pred>>>,
     rwlock: &'a RwLock<V, Pred>,
 }
 

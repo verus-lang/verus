@@ -1,7 +1,7 @@
 use vstd::prelude::*;
+use vstd::atomic::*;
 
 verus! {
-
 
 // Library function for use in verified and unverified functions
 pub fn double(x: u16) -> (z: u32)
@@ -26,9 +26,7 @@ trait Trait: View {}
 
 impl<T: View> Trait for Option<T> {}
 
-fn test(f:spec_fn(nat) -> nat) {
-}
-
+fn test(f: spec_fn(nat) -> nat) {}
 
 mod IsNotRegressionIssue1573 {
     enum Test {
@@ -43,6 +41,24 @@ mod IsNotRegressionIssue1573 {
     spec fn is_a(t: Test) -> bool {
         t is A
     }
+}
+
+// Simple logically atomic library function
+
+pub tracked struct Token {
+    pub value: u32,
+}
+
+pub fn logatom_function()
+    atomically (au) {
+        type PredType,
+        (x: Token) -> (y: Commit<Token>),
+        ensures y@ == x,
+    }
+{
+    try_open_atomic_update!(au, token => {
+        Tracked(Commit(token))
+    });
 }
 
 } // verus!

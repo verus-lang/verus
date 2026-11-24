@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::alloc::Allocator;
+use core::alloc::{Allocator, AllocatorClone};
 
 verus! {
 
@@ -48,6 +48,20 @@ pub assume_specification<T: core::default::Default>[ <Arc<
 > as core::default::Default>::default ]() -> (res: Arc<T>)
     ensures
         T::default.ensures((), *res),
+;
+
+pub assume_specification<T: ?Sized, A: AllocatorClone>[ <Rc<T, A> as Clone>::clone ](
+    source: &Rc<T, A>,
+) -> Rc<T, A>
+    returns
+        source,
+;
+
+pub assume_specification<T: ?Sized, A: AllocatorClone>[ <Arc<T, A> as Clone>::clone ](
+    source: &Arc<T, A>,
+) -> Arc<T, A>
+    returns
+        source,
 ;
 
 pub assume_specification<T: Clone, A: Allocator + Clone>[ <Box<T, A> as Clone>::clone ](

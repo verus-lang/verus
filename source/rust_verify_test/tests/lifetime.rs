@@ -1312,16 +1312,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_ghost_fields verus_code! {
-        struct X {
-            u: u64,
+    #[test] tracked_struct_ghost_fields verus_code! {
+        tracked struct X {
+            tracked u: u64,
         }
 
-        // REVIEW: consider requiring structs to be marked 'tracked' or 'ghost' to have
-        // tracked/ghost fields
-        // (note: the reason this test works is that, even though the struct is exec,
-        // it is used in a tracked-mode way)
-        struct S {
+        tracked struct S {
             ghost x: X,
             ghost y: X,
         }
@@ -1334,12 +1330,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_tracked_fields verus_code! {
-        struct X {
-            u: u64,
+    #[test] tracked_struct_tracked_fields verus_code! {
+        tracked struct X {
+            tracked u: u64,
         }
 
-        struct S {
+        tracked struct S {
             tracked x: X,
             tracked y: X,
         }
@@ -1352,17 +1348,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_ghost_fields_2 verus_code! {
-        struct Y {
-            u: u64,
+    #[test] tracked_struct_ghost_fields_2 verus_code! {
+        tracked struct Y {
+            tracked u: u64,
         }
 
-        struct X {
-            u: u64,
-            y: Y,
+        tracked struct X {
+            tracked u: u64,
+            tracked y: Y,
         }
 
-        struct S {
+        tracked struct S {
             ghost x: Y,
             ghost y: Y,
         }
@@ -1375,17 +1371,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_tracked_fields_2 verus_code! {
-        struct Y {
-            u: u64,
+    #[test] tracked_struct_tracked_fields_2 verus_code! {
+        tracked struct Y {
+            tracked u: u64,
         }
 
-        struct X {
-            u: u64,
-            y: Y,
+        tracked struct X {
+            tracked u: u64,
+            tracked y: Y,
         }
 
-        struct S {
+        tracked struct S {
             tracked x: Y,
             tracked y: Y,
         }
@@ -1401,17 +1397,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_ghost_fields_fn_style verus_code! {
-        struct Y {
-            u: u64,
+    #[test] tracked_struct_ghost_fields_fn_style verus_code! {
+        tracked struct Y {
+            tracked u: u64,
         }
 
-        struct X {
-            u: u64,
-            y: Y,
+        tracked struct X {
+            tracked u: u64,
+            tracked y: Y,
         }
 
-        struct S(ghost Y, ghost Y);
+        tracked struct S(ghost Y, ghost Y);
 
         proof fn test(tracked x: &X) {
             // this is ok, both uses of x are in ghost position
@@ -1421,20 +1417,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_struct_tracked_fields_fn_style verus_code! {
-        struct Y {
-            u: u64,
+    #[test] tracked_struct_tracked_fields_fn_style verus_code! {
+        tracked struct Y {
+            tracked u: u64,
         }
 
-        struct X {
-            u: u64,
-            y: Y,
+        tracked struct X {
+            tracked u: u64,
+            tracked y: Y,
         }
 
-        struct S(tracked Y, tracked Y);
+        tracked struct S(tracked Y, tracked Y);
 
         proof fn test(tracked x: &X) {
-            // this is ok, both uses of x are in ghost position
             let tracked s = S(x.y, x.y);
         }
     } => Err(err) => assert_rust_error_msgs(err, &[
@@ -2054,6 +2049,136 @@ test_verify_one_file! {
     #[test] pattern_binding_of_ref_in_spec_code_issue2495 verus_code! {
         fn test(x: &(u64, u64)) {
             assert(({ let (a, b) = x; true }));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] exec_var_drop_requires_borrow_live ["--no-erasure-check"] => verus_code! {
+        use vstd::prelude::*;
+        struct X { }
+        struct W<'a> { r: &'a X }
+        impl<'a> Drop for W<'a> {
+            #[verifier::external_body]
+            fn drop(&mut self) opens_invariants none no_unwind { }
+        }
+        fn test() {
+            let w;
+            {
+                let x = X { };
+                w = W { r: &x };
+            }
+            // `w` is dropped here, which requires the borrow of `x` to still be live
+        }
+    } => Err(err) => assert_rust_error_msg(err, "`x` does not live long enough")
+}
+
+test_verify_one_file! {
+    #[test] tracked_var_not_dropped verus_code! {
+        use vstd::prelude::*;
+        tracked struct X { }
+        tracked struct W<'a> { tracked r: &'a X }
+        impl<'a> Drop for W<'a> {
+            #[verifier::external_body]
+            fn drop(&mut self) opens_invariants none no_unwind { }
+        }
+        fn test() {
+            let tracked w;
+            proof {
+                let tracked x = X { };
+                w = W { r: &x };
+            }
+            // Ghost code never runs drop, so this is fine
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] exec_temp_drop_requires_borrow_live ["--no-erasure-check"] => verus_code! {
+        use vstd::prelude::*;
+        struct X { }
+        struct W<'a> { r: &'a X }
+        impl<'a> Drop for W<'a> {
+            #[verifier::external_body]
+            fn drop(&mut self) opens_invariants none no_unwind { }
+        }
+        fn test() {
+            let mut x = X { };
+            // The temporary `W { .. }` lives until the end of the block
+            let r = &W { r: &x };
+            x = X { };
+            // The temporary is dropped here, which requires the borrow of `x` to still be live
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x` because it is borrowed")
+}
+
+test_verify_one_file! {
+    #[test] ghost_temp_not_dropped verus_code! {
+        use vstd::prelude::*;
+        tracked struct X { }
+        tracked struct W<'a> { tracked r: &'a X }
+        impl<'a> Drop for W<'a> {
+            #[verifier::external_body]
+            fn drop(&mut self) opens_invariants none no_unwind { }
+        }
+        fn test() {
+            proof {
+                let tracked mut x = X { };
+                let tracked r = &W { r: &x };
+                x = X { };
+                // Ghost code never runs drop, so the temporary is not dropped here
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_with_exec_temp_drop_requires_borrow_live ["--no-erasure-check", "--edition 2021"] => code! {
+        use vstd::prelude::*;
+        verus! {
+            struct X { }
+            struct W<'a> { r: &'a X }
+            impl<'a> Drop for W<'a> {
+                #[verifier::external_body]
+                fn drop(&mut self) opens_invariants none no_unwind { }
+            }
+        }
+
+        #[verus_spec(with Ghost(g): Ghost<u8>)]
+        fn f<'a>(w: &W<'a>) -> u8 { 0 }
+
+        #[verus_spec]
+        fn test() -> u8 {
+            let x = X { };
+            // The call to `f` is exec code (even though `proof_with_callee` is a verus builtin),
+            // so the temporary `W { .. }` is dropped, after `x` (in edition 2021)
+            proof_with!{Ghost(0u8)}
+            f(&W { r: &x })
+        }
+    } => Err(err) => assert_rust_error_msg(err, "`x` does not live long enough")
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_with_ghost_arg_temp_not_dropped ["--edition 2021"] => code! {
+        use vstd::prelude::*;
+        verus! {
+            tracked struct X { }
+            tracked struct W<'a> { tracked r: &'a X }
+            impl<'a> Drop for W<'a> {
+                #[verifier::external_body]
+                fn drop(&mut self) opens_invariants none no_unwind { }
+            }
+        }
+
+        #[verus_spec(with Tracked(w): Tracked<&W>)]
+        fn f() -> u8 { 0 }
+
+        #[verus_spec]
+        fn test() -> u8 {
+            proof_decl!{ let tracked x = X { }; }
+            // Ghost code never runs drop, so the temporary `W { .. }` is not dropped
+            proof_with!{Tracked(&W { r: &x })}
+            f()
         }
     } => Ok(())
 }

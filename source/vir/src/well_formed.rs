@@ -35,6 +35,25 @@ struct Ctxt<'a> {
     no_cheating: bool,
 }
 
+impl<'a> Ctxt<'a> {
+    fn assumptions_allowed(&self, function: &Function) -> bool {
+        if function.x.attrs.no_cheating_trusted {
+            return true;
+        }
+        let Some(path) = &function.x.owning_module else {
+            return false;
+        };
+        // vstd is trusted, whether it is its own crate or embedded in core
+        // (along with verus_builtin) via `Vstd::IsCore`
+        path.is_vstd_path()
+            || (path.krate == crate::ast::CrateId::Core
+                && path
+                    .segments
+                    .first()
+                    .is_some_and(|s| s.is_name("vstd") || s.is_name("verus_builtin")))
+    }
+}
+
 pub type DynCompatabilityChecks = Arc<IndexMap<Path, Span>>;
 
 #[derive(Clone)]
@@ -515,6 +534,7 @@ fn check_one_expr(
     emit: &mut EmitErrorState,
     warn_config: &Option<WarningConfig>,
 ) -> Result<(), VirErr> {
+    check_typ(ctxt, &expr.typ, &expr.span, emit)?;
     match &expr.x {
         ExprX::ConstVar(x, _) => {
             check_function_access(ctxt, x, disallow_private_access, &expr.span, emit)?;
@@ -526,7 +546,7 @@ fn check_one_expr(
             body: _,
         } => {
             if attrs.assume_external_allowed && !ctxt.funs.contains_key(x) {
-                if ctxt.no_cheating {
+                if ctxt.no_cheating && !ctxt.assumptions_allowed(function) {
                     return Err(error(
                         &expr.span,
                         "call via `externals_available_without_declaration` not allowed with `--no-cheating`",
@@ -615,7 +635,7 @@ fn check_one_expr(
                 ));
             }
         }
-        ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
+        ExprX::OpenInvariant(_credit, _inv, _binder, body, _atomicity) => {
             assert_no_early_exit_in_inv_block(&body.span, body)?;
         }
         ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
@@ -664,7 +684,7 @@ fn check_one_expr(
             )?;
         }
         ExprX::AssertAssume { is_assume, expr: inner_expr, .. } => {
-            if ctxt.no_cheating && *is_assume {
+            if ctxt.no_cheating && *is_assume && !ctxt.assumptions_allowed(function) {
                 let mut msg =
                     error(&expr.span, "`assume`/`admit` not allowed with `--no-cheating`");
                 if let Some(label) = ast_expr_get_proof_note(inner_expr) {
@@ -942,6 +962,7 @@ fn check_one_place(
     _area: Area,
     emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
+    check_typ(ctxt, &place.typ, &place.span, emit)?;
     match &place.x {
         PlaceX::Field(
             FieldOpr { datatype: Dt::Path(path), variant: _, field: _, get_variant: _, check: _ },
@@ -1363,10 +1384,21 @@ fn check_function_inner(
         ));
     }
 
-    if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
+    if function.x.attrs.exec_assume_termination
+        && ctxt.no_cheating
+        && !ctxt.assumptions_allowed(function)
+    {
         let msg = error(
             &function.span,
             "`#[verifier::assume_termination]` not allowed with `--no-cheating`",
+        );
+        emit.emit_deferred_err(msg);
+    }
+
+    if function.x.attrs.assume_compatibility_with_trait_spec && ctxt.no_cheating {
+        let msg = error(
+            &function.span,
+            "`#[verifier::assume_compatibility_with_trait_spec]` not allowed with `--no-cheating`",
         );
         emit.emit_deferred_err(msg);
     }
@@ -1720,18 +1752,15 @@ fn check_function_inner(
         }
     }
 
-    if ctxt.no_cheating && (function.x.attrs.is_external_body || function.x.proxy.is_some()) {
-        match &function.x.owning_module {
-            // Allow external_body/assume_specification inside vstd
-            Some(path) if path.is_vstd_path() => {}
-            _ => {
-                let msg = error(
-                    &function.span,
-                    "`external_body`/`assume_specification` not allowed with `--no-cheating`",
-                );
-                emit.emit_deferred_err(msg);
-            }
-        }
+    if ctxt.no_cheating
+        && (function.x.attrs.is_external_body || function.x.proxy.is_some())
+        && !ctxt.assumptions_allowed(function)
+    {
+        let msg = error(
+            &function.span,
+            "`external_body`/`assume_specification` not allowed with `--no-cheating`",
+        );
+        emit.emit_deferred_err(msg);
     }
 
     if function.x.attrs.is_drop {
@@ -1764,6 +1793,21 @@ fn check_datatype(ctxt: &Ctxt, dt: &Datatype, emit: &mut EmitErrorState) -> Resu
         for field in variant.fields.iter() {
             let typ = &field.a.0;
             check_typ(ctxt, typ, &dt.span, emit)?;
+
+            if dt.x.mode == Mode::Exec && field.a.1 != Mode::Exec {
+                let (wrapper, mode) = match field.a.1 {
+                    Mode::Spec => ("Ghost", "ghost"),
+                    Mode::Proof => ("Tracked", "tracked"),
+                    Mode::Exec => unreachable!(),
+                };
+                emit.diags.push(VirErrAs::Warning(error(
+                    &dt.span,
+                    "field in an exec-mode datatype cannot have a mode qualifier; this will eventually be a hard error",
+                )
+                .help(format!("try using the `{wrapper:}` type to embed {mode:} data in an exec-mode struct"))
+                .help("if you meant for the datatype to be only used in ghost code, mark it `ghost struct` or `tracked struct`")
+                ));
+            }
         }
     }
 

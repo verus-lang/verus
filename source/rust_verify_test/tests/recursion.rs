@@ -2419,3 +2419,17 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "`decreases_by`/`recommends_by` function cannot have a return value")
 }
+
+test_verify_one_file! {
+    #[test] decreases_swapped_type_args verus_code! {
+        pub trait T {
+            spec fn sz(n: int) -> int;
+        }
+
+        spec fn f<A: T, B: T>(n: int) -> bool
+            decreases A::sz(n)
+        {
+            if 0 <= A::sz(n - 1) < A::sz(n) { !f::<B, A>(n - 1) } else { true } // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

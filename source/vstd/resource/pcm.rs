@@ -2,6 +2,7 @@ use super::super::prelude::*;
 use super::Loc;
 use super::algebra::ResourceAlgebra;
 use super::relations::*;
+use super::trusted;
 
 #[cfg(verus_keep_ghost)]
 use super::super::modes::tracked_swap;
@@ -47,10 +48,9 @@ broadcast use super::super::iset::group_iset_lemmas;
 ///
 /// [VerusSync](https://verus-lang.github.io/verus/state_machines/intro.html) provides a higher-level
 /// "swiss army knife" for building useful ghost resources.
-#[verifier::external_body]
 #[verifier::accept_recursive_types(P)]
 pub tracked struct Resource<P: PCM> {
-    p: core::marker::PhantomData<P>,
+    r: trusted::ra::Resource<P>,
 }
 
 #[cfg(verus_keep_ghost)]
@@ -59,10 +59,9 @@ impl<P: PCM> !Copy for Resource<P> {
 
 }
 
-#[verifier::external_body]
 #[verifier::accept_recursive_types(P)]
 pub tracked struct CopyableResource<P: PCM> {
-    p: core::marker::PhantomData<P>,
+    tracked r: trusted::ra::CopyableResource<P>,
 }
 
 impl<P: PCM> Copy for CopyableResource<P> {
@@ -72,7 +71,7 @@ impl<P: PCM> Copy for CopyableResource<P> {
 impl<P: PCM> Clone for CopyableResource<P> {
     #[verifier::external_body]
     fn clone(&self) -> Self {
-        CopyableResource { p: core::marker::PhantomData }
+        *self
     }
 }
 
@@ -102,37 +101,86 @@ pub trait PCM: ResourceAlgebra {
     ;
 }
 
+/// Every [`PCM`] is an [`RA`](trusted::ra::RA) in the sense of the trusted interface.
+impl<P: PCM> trusted::ra::RA for P {
+    open spec fn valid(self) -> bool {
+        <P as ResourceAlgebra>::valid(self)
+    }
+
+    open spec fn op(a: Self, b: Self) -> Self {
+        <P as ResourceAlgebra>::op(a, b)
+    }
+
+    open spec fn unit() -> Self {
+        <P as PCM>::unit()
+    }
+
+    proof fn associative(a: Self, b: Self, c: Self) {
+        <P as ResourceAlgebra>::associative(a, b, c);
+    }
+
+    proof fn commutative(a: Self, b: Self) {
+        <P as ResourceAlgebra>::commutative(a, b);
+    }
+
+    proof fn valid_op(a: Self, b: Self) {
+        <P as ResourceAlgebra>::valid_op(a, b);
+    }
+
+    proof fn op_unit(self) {
+        <P as PCM>::op_unit(self);
+    }
+
+    proof fn unit_valid() {
+        <P as PCM>::unit_valid();
+    }
+}
+
 impl<P: PCM> Resource<P> {
     /// The underlying value of the resource
-    pub uninterp spec fn value(self) -> P;
+    pub closed spec fn value(self) -> P {
+        self.r.value()
+    }
 
     /// The location of the resource
-    pub uninterp spec fn loc(self) -> Loc;
+    pub closed spec fn loc(self) -> Loc {
+        self.r.loc()
+    }
 
-    // AXIOMS
+    proof fn mk_ref<'a>(tracked r: &'a trusted::ra::Resource<P>) -> (tracked res: &'a Self)
+        ensures
+            res.r == r,
+    {
+        shr_ref_struct_wrap(r, &Self { r: arbitrary() }, "", "r")
+    }
+
     /// Allocate a new resource at a fresh location
     // GHOST-ALLOC rule
-    pub axiom fn alloc(value: P) -> (tracked out: Self)
+    pub proof fn alloc(value: P) -> (tracked out: Self)
         requires
             value.valid(),
         ensures
             out.value() == value,
-    ;
+    {
+        Resource { r: trusted::ra::Resource::alloc(value) }
+    }
 
     /// We can join together two resources at the same location, where we obtain the combination of
     /// the two
     // reverse implication in the GHOST-OP rule
-    pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
+    pub proof fn join(tracked self, tracked other: Self) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
         ensures
             out.loc() == self.loc(),
             out.value() == P::op(self.value(), other.value()),
-    ;
+    {
+        Resource { r: self.r.join(other.r) }
+    }
 
     /// If a resource holds the result of a composition, we can split it into the components
     // implication in the GHOST-OP rule
-    pub axiom fn split(tracked self, left: P, right: P) -> (tracked out: (Self, Self))
+    pub proof fn split(tracked self, left: P, right: P) -> (tracked out: (Self, Self))
         requires
             self.value() == P::op(left, right),
         ensures
@@ -140,14 +188,19 @@ impl<P: PCM> Resource<P> {
             out.1.loc() == self.loc(),
             out.0.value() == left,
             out.1.value() == right,
-    ;
+    {
+        let tracked (a, b) = self.r.split(left, right);
+        (Resource { r: a }, Resource { r: b })
+    }
 
     /// Create a unit at a particular location
-    pub axiom fn create_unit(loc: Loc) -> (tracked out: Self)
+    pub proof fn create_unit(loc: Loc) -> (tracked out: Self)
         ensures
             out.value() == P::unit(),
             out.loc() == loc,
-    ;
+    {
+        Resource { r: trusted::ra::Resource::create_unit(loc) }
+    }
 
     /// Whenever we have a resource, that resource is valid. This intuitively (and inductively)
     /// holds because:
@@ -157,10 +210,12 @@ impl<P: PCM> Resource<P> {
     ///        [`update`](Self::update) for more details. Because of the requirement of that
     ///        updates are frame preserving this means that `join`s remain valid.
     // GHOST-VALID rule
-    pub axiom fn validate(tracked &self)
+    pub proof fn validate(tracked &self)
         ensures
             self.value().valid(),
-    ;
+    {
+        self.r.validate()
+    }
 
     /// This is a more general version of [`update`](Self::update).
     // GHOST-UPDATE rule
@@ -221,10 +276,9 @@ impl<P: PCM> Resource<P> {
     }
 
     // Operations with shared references
-    // AXIOMS on shared references
     /// This is useful when you have two (or more) shared resources and want to learn
     /// that they agree, as you can combine this validate, e.g., `x.join_shared(y).validate()`.
-    pub axiom fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
+    pub proof fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
         &'a Self)
         requires
             self.loc() == other.loc(),
@@ -232,29 +286,37 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             incl(self.value(), out.value()),
             incl(other.value(), out.value()),
-    ;
+    {
+        Self::mk_ref(self.r.join_shared(&other.r))
+    }
 
     /// Extract a shared reference to a preceding element in the extension order from a shared reference.
-    pub axiom fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
+    pub proof fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
         requires
             incl(target, self.value()),
         ensures
             out.loc() == self.loc(),
             out.value() == target,
-    ;
+    {
+        let c = choose|c| P::op(target, c) == self.value();
+        assert(<P as trusted::ra::RA>::op(target, c) == self.value());
+        Self::mk_ref(self.r.weaken(target))
+    }
 
     /// Validate two items at once. If we have two resources at the same location then its
     /// composition is valid.
-    pub axiom fn validate_2(tracked &mut self, tracked other: &Self)
+    pub proof fn validate_2(tracked &mut self, tracked other: &Self)
         requires
             old(self).loc() == other.loc(),
         ensures
             *final(self) == *old(self),
             P::op(final(self).value(), other.value()).valid(),
-    ;
+    {
+        self.r.validate_2(&other.r)
+    }
 
     /// We can do a similar update to [`update_with_shared`](Self::update_with_shared) for non-deterministic updates
-    pub axiom fn update_nondeterministic_with_shared(
+    pub proof fn update_nondeterministic_with_shared(
         tracked self,
         tracked other: &Self,
         new_values: ISet<P>,
@@ -268,7 +330,12 @@ impl<P: PCM> Resource<P> {
         ensures
             out.loc() == self.loc(),
             new_values.contains(out.value()),
-    ;
+    {
+        let ghost bs = set_op(new_values, other.value());
+        let ghost f = |c: P| choose|b: P| #[trigger] bs.contains(b) && P::op(b, c).valid();
+        assert(trusted::ra::set_op(new_values, other.value()) =~= bs);
+        Resource { r: self.r.update_nondeterministic_with_shared(&other.r, new_values, f) }
+    }
 
     // VERIFIED facts about shared references
     /// We can do a similar update to [`update_with_shared`](Self::update_with_shared) for non-deterministic updates
@@ -329,13 +396,15 @@ impl<P: PCM> Resource<P> {
 
     /// Wrap this resource in a type that implements `Copy`,
     /// given that the resource is duplicable.
-    pub axiom fn into_copyable(tracked self, p: P) -> (tracked r: CopyableResource<P>)
+    pub proof fn into_copyable(tracked self, p: P) -> (tracked r: CopyableResource<P>)
         requires
             P::op(P::op(self.value(), self.value()), p) == self.value(),
         ensures
             r.loc() == self.loc(),
             r.value() == self.value(),
-    ;
+    {
+        CopyableResource { r: self.r.into_copyable(p) }
+    }
 }
 
 /// A variant of [`Resource`] that implements `Copy`.
@@ -343,16 +412,22 @@ impl<P: PCM> Resource<P> {
 /// Use [`Self::into_resource`] to get the underlying resource.
 impl<P: PCM> CopyableResource<P> {
     /// The underlying value of the resource
-    pub uninterp spec fn value(self) -> P;
+    pub closed spec fn value(self) -> P {
+        self.r.value()
+    }
 
     /// The location of the resource
-    pub uninterp spec fn loc(self) -> Loc;
+    pub closed spec fn loc(self) -> Loc {
+        self.r.loc()
+    }
 
-    pub axiom fn into_resource(tracked self) -> (tracked r: Resource<P>)
+    pub proof fn into_resource(tracked self) -> (tracked r: Resource<P>)
         ensures
             r.loc() == self.loc(),
             r.value() == self.value(),
-    ;
+    {
+        Resource { r: self.r.into_resource() }
+    }
 }
 
 } // verus!

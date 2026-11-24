@@ -13,7 +13,7 @@
 #![cfg_attr(verus_keep_ghost, feature(atomic_internals))]
 #![cfg_attr(verus_keep_ghost, feature(generic_atomic))]
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
-#![cfg_attr(any(verus_keep_ghost, feature = "allocator"), feature(allocator_api))]
+#![cfg_attr(any(verus_keep_ghost, feature = "allocator"), feature(allocator_ext))]
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
 #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
@@ -32,6 +32,7 @@
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(btree_cursors))]
 #![cfg_attr(verus_keep_ghost, feature(panic_internals))]
 #![cfg_attr(verus_keep_ghost, feature(maybe_uninit_array_assume_init))]
+#![cfg_attr(verus_keep_ghost, feature(trivial_clone))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -142,7 +143,6 @@ pub broadcast group group_vstd_default {
     std_specs::range::group_range_axioms,
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
-    std_specs::fmt::group_fmt_axioms,
     std_specs::manually_drop::group_manually_drop_axioms,
     std_specs::iter::group_iter_axioms,
     std_specs::nonzero::group_nonzero_axioms,

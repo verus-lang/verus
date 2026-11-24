@@ -20,6 +20,9 @@ pub mod ops;
 pub mod pin;
 pub mod ptr;
 
+#[cfg(feature = "std")]
+pub mod process;
+
 #[cfg(feature = "alloc")]
 pub mod btree;
 #[cfg(all(feature = "alloc", feature = "std"))]
