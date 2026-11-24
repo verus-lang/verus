@@ -107,7 +107,7 @@ Verus with the inductive step(s).  Here's the basic skeleton:
 Notice that we've added `assume(false)` to the final tricky case (following the approach
 of [using assert and assume](assert_assume.md) to build our proof).  When we run
 Verus, it succeeds, indicating that Verus doesn't need any help with our base cases.
-The final portion of the proof, however, needs more help (you can confirm this by
+The final portion of the proof, however, needs more help (you can confirm this
 by removing the `assume(false)` and observing that the proof fails).
 The key idea here is to use our induction hypothesis to show that `fib(i)`
 is smaller than both `fib(j - 1)` and `fib(j - 2)`.  We do this via two recursive invocations
@@ -207,7 +207,7 @@ It turns out this assumption eliminates both errors, so we really only need to c
 we've correctly computed the sum of the first `i+1` operations.  If we let `ops_i_plus_1` be `operations@.take((i + 1) as int)` and unfold the definition of `sum`,
 we can see that `sum(ops_i_plus_1) == sum(ops_i_plus_1.drop_last()) + ops_i_plus_1.last()`.
 This means Verus is having trouble determining that the right-hand side matches the value we computed
-(namely `s + operations[i]`).  Lets check that the second term in the two sums match, namely:
+(namely `s + operations[i]`).  Let's check that the second term in the two sums match, namely:
 ```rust
 assert(operations[i as int] == ops_i_plus_1.last());
 ```
@@ -219,7 +219,7 @@ which we can check by writing:
 assert(operations@.take(i as int) == ops_i_plus_1.drop_last());
 ```
 Verus is able to verify this assertion, and not only that, it can then prove our previous assumption that
-`s == sum(operations@.take((i + 1) as int)`, hence completing our proof.  Why does this work?  Stating the
+`s == sum(operations@.take((i + 1) as int))`, hence completing our proof.  Why does this work?  Stating the
 assertion causes Verus to invoke axioms about [sequence extensionality](spec_lib.md), i.e., the conditions
 under which two sequences are equal, which then allows it to prove our sequences are equal, which proves
 the sums are equal, which completes the proof.

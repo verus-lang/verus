@@ -37,7 +37,7 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
         | crate::ast::TypX::Projection { .. }
         | crate::ast::TypX::PointeeMetadata(_)
         | crate::ast::TypX::Opaque { .. } => {
-            return Err(error(span, "this type is not supported in global size_of / align_of"));
+            return Err(error(span, "this type is not supported in global `size_of` / `align_of`"));
         }
 
         crate::ast::TypX::Air(_) | crate::ast::TypX::TypeId => {

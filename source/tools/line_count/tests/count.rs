@@ -13,9 +13,9 @@ fn test_line_count_full() {
     insta::assert_snapshot!(line_count_file("full.rs"), @r"
     | file    | Trusted | Spec | Proof | Exec | Proof+Exec | Comment | Layout | unaccounted | Definitions |
     |---------|---------|------|-------|------|------------|---------|--------|-------------|-------------|
-    | full.rs |       0 |   35 |    15 |   38 |          0 |       7 |      0 | 33          | 1           |
+    | full.rs |       1 |   35 |    14 |   38 |          0 |       7 |      0 |          33 | 1           |
     |---------|---------|------|-------|------|------------|---------|--------|-------------|-------------|
-    | total   |       0 |   35 |    15 |   38 |          0 |       7 |      0 | 33          | 1           |
+    | total   |       1 |   35 |    14 |   38 |          0 |       7 |      0 |          33 | 1           |
     ");
 }
 
@@ -46,9 +46,9 @@ fn test_line_verus_outside() {
     insta::assert_snapshot!(line_count_file("verus_outside.rs"), @r"
     | file             | Trusted | Spec | Proof | Exec | Proof+Exec | Comment | Layout | unaccounted |
     |------------------|---------|------|-------|------|------------|---------|--------|-------------|
-    | verus_outside.rs |       0 |    3 |     0 | 0    | 0          | 0       | 0      | 15          |
+    | verus_outside.rs |       4 |    3 |     0 |    0 | 0          | 0       | 0      | 11          |
     |------------------|---------|------|-------|------|------------|---------|--------|-------------|
-    | total            |       0 |    3 |     0 | 0    | 0          | 0       | 0      | 15          |
+    | total            |       4 |    3 |     0 |    0 | 0          | 0       | 0      | 11          |
     ");
 }
 
@@ -82,5 +82,16 @@ fn test_multiple_item_attributes() {
     | multiple_item_attributes.rs |       3 |    1 |     0 |    0 | 0          | 0       | 0      | 6           |
     |-----------------------------|---------|------|-------|------|------------|---------|--------|-------------|
     | total                       |       3 |    1 |     0 |    0 | 0          | 0       | 0      | 6           |
+    ");
+}
+
+#[test]
+fn test_trusted() {
+    insta::assert_snapshot!(line_count_file("trusted.rs"), @r"
+    | file       | Trusted | Spec | Proof | Exec | Proof+Exec | Comment | Layout | unaccounted |
+    |------------|---------|------|-------|------|------------|---------|--------|-------------|
+    | trusted.rs |      11 |    0 |     2 |    0 | 0          | 0       | 0      | 13          |
+    |------------|---------|------|-------|------|------------|---------|--------|-------------|
+    | total      |      11 |    0 |     2 |    0 | 0          | 0       | 0      | 13          |
     ");
 }

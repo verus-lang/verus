@@ -2,14 +2,14 @@ use crate::ast::{Idents, Path};
 use crate::def::*;
 use crate::sst_to_air::path_to_air_ident;
 use air::ast::Ident;
-use air::context::SmtSolver;
+use air::context::SmtEncoding;
 use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes, nodes_vec};
 use sise::TreeNode as Node;
 
 pub struct PreludeConfig {
     pub arch_word_bits: crate::ast::ArchWordBits,
-    pub solver: SmtSolver,
+    pub smt_encoding: SmtEncoding,
 }
 
 pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<Node> {
@@ -59,20 +59,21 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
     let resolved = str_to_node(HAS_RESOLVED);
     let closure_req = str_to_node(CLOSURE_REQ);
     let closure_ens = str_to_node(CLOSURE_ENS);
+    let closure_opens_invariants = str_to_node(CLOSURE_OPENS_INVARIANTS);
     let default_ens = str_to_node(DEFAULT_ENS);
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
     #[allow(non_snake_case)]
     let Height = str_to_node(T_HEIGHT);
-    let height_axioms = match config.solver {
-        SmtSolver::Z3 => nodes_vec!(
+    let height_axioms = match config.smt_encoding {
+        SmtEncoding::Z3 => nodes_vec!(
         (axiom (forall ((x [Height]) (y [Height])) (!
             (= ([height_lt] x y) (and ([height_le] x y) (not (= x y))))
             :pattern (([height_lt] x y))
             :qid prelude_height_lt
             :skolemid skolem_prelude_height_lt
             )))),
-        SmtSolver::Cvc5 => nodes_vec!(
+        SmtEncoding::Cvc5 => nodes_vec!(
                     (declare-fun partial-order ([Height] [Height]) Bool)
                     (axiom (forall ((x [Height])) (!
                         (partial-order x x)
@@ -238,7 +239,10 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-fun [has_type] ([Poly] [typ]) Bool)
         (declare-fun [sized] ([decoration]) Bool)
         (declare-fun [as_type] ([Poly] [typ]) [Poly])
-        (declare-fun [mk_fun] (Fun) Fun)
+        // Wrap the AIR lambda with the VIR SpecFn type so that the has_type axiom
+        // can trigger on the right SpecFn type (this makes sure that
+        // extensional equality is used with the correct spec_fn domain).
+        (declare-fun [mk_fun] ([typ] Fun) Fun)
         (declare-fun [const_int] ([typ]) Int)
         (declare-fun [const_bool] ([typ]) Bool)
         (declare-fun [mut_ref_current] ([Poly]) [Poly])
@@ -397,12 +401,6 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
             :pattern (([as_type] x t))
             :qid prelude_as_type
             :skolemid skolem_prelude_as_type
-        )))
-        (axiom (forall ((x Fun)) (!
-            (= ([mk_fun] x) x)
-            :pattern (([mk_fun] x))
-            :qid prelude_mk_fun
-            :skolemid skolem_prelude_mk_fun
         )))
         (axiom (forall ((x Bool)) (!
             (= x ([unbox_bool] ([box_bool] x)))
@@ -912,6 +910,14 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-fun [bit_shl] ([Poly] [Poly]) Int)
         (declare-fun [bit_not] ([Poly]) Int)
 
+        // On unbounded ints, NOT is exactly -x - 1
+        (axiom (forall ((x [Poly])) (!
+            (= ([bit_not] x) (- (- 0 ([unbox_int] x)) 1))
+            :pattern (([bit_not] x))
+            :qid prelude_bit_not
+            :skolemid skolem_prelude_bit_not
+        )))
+
         // bounds on bit-ops
 
         // For XOR, AND, and OR:
@@ -1027,6 +1033,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
 
         (declare-fun [closure_req] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly]) Bool)
         (declare-fun [closure_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
+        (declare-fun [closure_opens_invariants] (/*[decoration] skipped */ [typ] [decoration] [typ] [decoration] [typ] [Poly] [Poly]) Poly)
         (declare-fun [default_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
 
         // Decreases
@@ -1294,30 +1301,32 @@ pub(crate) fn ieee_float_prelude() -> Vec<Node> {
     let ieee_float_lt = str_to_node(IEEE_FLOAT_LT);
     let ieee_float_gt = str_to_node(IEEE_FLOAT_GT);
 
+    // Floats are encoded as Int bit patterns. Each operation also takes its operand's float type,
+    // to distinguish values that have same bits but are of different float type (32 vs. 64).
     nodes_vec!(
         (declare-fun [ieee_float_cast] ([typ] [typ] Poly) Poly)
-        (declare-fun [ieee_float_neg] (Int) Int)
-        (declare-fun [ieee_float_floor] (Int) Int)
-        (declare-fun [ieee_float_ceil] (Int) Int)
-        (declare-fun [ieee_float_round] (Int) Int)
-        (declare-fun [ieee_float_round_ties_even] (Int) Int)
-        (declare-fun [ieee_float_trunc] (Int) Int)
-        (declare-fun [ieee_float_is_normal] (Int) Bool)
-        (declare-fun [ieee_float_is_subnormal] (Int) Bool)
-        (declare-fun [ieee_float_is_zero] (Int) Bool)
-        (declare-fun [ieee_float_is_infinite] (Int) Bool)
-        (declare-fun [ieee_float_is_nan] (Int) Bool)
-        (declare-fun [ieee_float_is_negative] (Int) Bool)
-        (declare-fun [ieee_float_is_positive] (Int) Bool)
-        (declare-fun [ieee_float_add] (Int Int) Int)
-        (declare-fun [ieee_float_sub] (Int Int) Int)
-        (declare-fun [ieee_float_mul] (Int Int) Int)
-        (declare-fun [ieee_float_div] (Int Int) Int)
-        (declare-fun [ieee_float_eq] (Int Int) Bool)
-        (declare-fun [ieee_float_le] (Int Int) Bool)
-        (declare-fun [ieee_float_ge] (Int Int) Bool)
-        (declare-fun [ieee_float_lt] (Int Int) Bool)
-        (declare-fun [ieee_float_gt] (Int Int) Bool)
+        (declare-fun [ieee_float_neg] ([typ] Int) Int)
+        (declare-fun [ieee_float_floor] ([typ] Int) Int)
+        (declare-fun [ieee_float_ceil] ([typ] Int) Int)
+        (declare-fun [ieee_float_round] ([typ] Int) Int)
+        (declare-fun [ieee_float_round_ties_even] ([typ] Int) Int)
+        (declare-fun [ieee_float_trunc] ([typ] Int) Int)
+        (declare-fun [ieee_float_is_normal] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_subnormal] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_zero] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_infinite] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_nan] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_negative] ([typ] Int) Bool)
+        (declare-fun [ieee_float_is_positive] ([typ] Int) Bool)
+        (declare-fun [ieee_float_add] ([typ] Int Int) Int)
+        (declare-fun [ieee_float_sub] ([typ] Int Int) Int)
+        (declare-fun [ieee_float_mul] ([typ] Int Int) Int)
+        (declare-fun [ieee_float_div] ([typ] Int Int) Int)
+        (declare-fun [ieee_float_eq] ([typ] Int Int) Bool)
+        (declare-fun [ieee_float_le] ([typ] Int Int) Bool)
+        (declare-fun [ieee_float_ge] ([typ] Int Int) Bool)
+        (declare-fun [ieee_float_lt] ([typ] Int Int) Bool)
+        (declare-fun [ieee_float_gt] ([typ] Int Int) Bool)
     )
 }
 

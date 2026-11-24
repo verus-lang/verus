@@ -773,6 +773,16 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for DataMode {
         fn parse(input: ParseStream) -> Result<Self> {
+            // `ghost: T`, `tracked: T`, `exec: T`: a field named like the mode keyword, with no
+            // mode (a mode is always followed by the field name, as in `tracked x: T`)
+            if (input.peek(Token![ghost])
+                || input.peek(Token![tracked])
+                || input.peek(Token![exec]))
+                && input.peek2(Token![:])
+                && !input.peek2(Token![::])
+            {
+                return Ok(DataMode::Default);
+            }
             if input.peek(Token![ghost]) {
                 let ghost_token: Token![ghost] = input.parse()?;
                 Ok(DataMode::Ghost(ModeGhost { ghost_token }))

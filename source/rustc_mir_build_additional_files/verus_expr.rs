@@ -9,8 +9,8 @@ use rustc_hir::HirId;
 use rustc_hir::{Expr, ExprKind, UnOp};
 use rustc_middle::thir;
 use rustc_middle::thir::{ExprId, LocalVarId, Pat, PatKind};
-use rustc_middle::ty::TyKind;
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, DerefAdjustKind};
+use rustc_middle::ty::{Ty, TyKind};
 
 // To avoid edits and conflicts in thir/cx/expr.rs, postprocess some of the work for expr.rs here
 pub(crate) fn apply_adjustment_post<'tcx>(
@@ -26,7 +26,7 @@ pub(crate) fn apply_adjustment_post<'tcx>(
     // This has to go first because:
     //  try_move_head_into_shadow handles fields/dereferences for shadow values
     //  erase_node handles a variety of ops for ghost values AND shadow values
-    // If try_move_head_ito_shadow applies, it needs to take priority.
+    // If try_move_head_into_shadow applies, it needs to take priority.
     if let Some(kind) = try_move_head_into_shadow(cx, expr, adjustment.target, &kind) {
         return kind;
     }
@@ -52,11 +52,26 @@ pub(crate) fn apply_adjustment_post<'tcx>(
     crate::verus_time_travel_prevention::expr_post(cx, expr, adjustment.target, kind)
 }
 
+/// When an implicit deref is expanded, the entire adjustment is expanded to something like
+/// `*deref_mut(&mut e)`
+/// This function runs on the intermediate `&mut e` expression.
+pub(crate) fn apply_implicit_deref_borrow_post<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    expr: &'tcx Expr<'tcx>,
+    ty: Ty<'tcx>,
+    kind: rustc_middle::thir::ExprKind<'tcx>,
+) -> rustc_middle::thir::ExprKind<'tcx> {
+    crate::verus_time_travel_prevention::expr_post(cx, expr, ty, kind)
+}
+
 // To avoid edits and conflicts in thir/cx/expr.rs, preprocess some of the work for expr.rs here
 pub(crate) fn mirror_expr_pre<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx Expr<'tcx>,
 ) -> Option<rustc_middle::thir::ExprKind<'tcx>> {
+    if cx.verus_ctxt.full_erasure.is_some() {
+        return crate::verus::full_erasure_mirror_expr_pre(cx, expr);
+    }
     match expr.kind {
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
             let (call_erasure, _) = handle_call(&cx.verus_ctxt, expr);
@@ -92,6 +107,9 @@ pub(crate) fn mirror_expr_post<'tcx>(
                 if let thir::ExprKind::Call { fun, .. } = kind {
                     cx.verus_ctxt.extra_thir.force_treat_inhabited.insert(fun);
                 }
+            }
+            if let CallErasure::ShrRefStructWrap = call_erasure {
+                return crate::verus::shr_ref_struct_wrap(cx, &erasure_ctxt, expr, kind);
             }
             if call_erasure.should_erase() { erase_node_unadjusted(cx, expr, kind) } else { kind }
         }

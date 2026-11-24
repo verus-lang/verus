@@ -24,12 +24,14 @@ test_verify_one_file! {
             m.insert(6, -8);
             assert(m@[3] == 4);
 
+            assert(m@.contains_key(3));
             let b = m.contains_key(&3);
             assert(b);
 
             let n = m.len();
             assert(n == 2);
 
+            assert(m@.contains_key(6));
             let v = m.get(&6);
             match v {
                 Some(v) => assert(*v == -8),
@@ -49,6 +51,197 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_btree_map_contains_key_equality verus_code! {
+        use std::collections::BTreeMap;
+        use vstd::prelude::*;
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
+
+        fn test_structural<Key: Ord, Value>(m: &BTreeMap<Key, Value>, k: &Key) -> (result: bool)
+            requires
+                vstd::std_specs::btree::btree_map_wf(m),
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
+            ensures
+                result == m@.contains_key(*k),
+        {
+            m.contains_key(k)
+        }
+
+        fn test_deep<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
+                first != equivalent,
+                first.deep_view() == equivalent.deep_view(),
+                first.deep_view() != fresh.deep_view(),
+        {
+            let mut m = BTreeMap::<Key, u32>::new();
+            m.insert(first, 1);
+            assert(!m@.contains_key(equivalent));
+
+            let found = m.contains_key(&equivalent);
+            assert(found);
+            assert(found == m.deep_view().contains_key(equivalent.deep_view()));
+
+            let found = m.contains_key(&fresh);
+            assert(!found);
+            assert(found == m.deep_view().contains_key(fresh.deep_view()));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_map_get_equality verus_code! {
+        use std::collections::BTreeMap;
+        use vstd::prelude::*;
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
+
+        fn test_structural<'a, Key: Ord, Value>(
+            m: &'a BTreeMap<Key, Value>, k: &Key,
+        ) -> (result: Option<&'a Value>)
+            requires
+                vstd::std_specs::btree::btree_map_wf(m),
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
+            ensures
+                match result {
+                    Some(v) => m@.contains_key(*k) && *v == m@[*k],
+                    None => !m@.contains_key(*k),
+                },
+        {
+            m.get(k)
+        }
+
+        fn test_deep<Key: Ord + DeepView, Value: DeepView>(
+            first: Key, equivalent: Key, fresh: Key, value: Value,
+        )
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
+                first != equivalent,
+                first.deep_view() == equivalent.deep_view(),
+                first.deep_view() != fresh.deep_view(),
+        {
+            let mut m = BTreeMap::<Key, Value>::new();
+            let result = m.get(&equivalent);
+            assert(result is None);
+
+            let ghost expected = value.deep_view();
+            m.insert(first, value);
+            assert(!m@.contains_key(equivalent));
+
+            match m.get(&equivalent) {
+                Some(v) => {
+                    assert(v.deep_view() == expected);
+                    assert(v.deep_view() == m.deep_view()[equivalent.deep_view()]);
+                },
+                None => assert(false),
+            }
+            let result = m.get(&fresh);
+            assert(result is None);
+        }
+
+        fn test_borrowed() {
+            let key = 3u32;
+            let mut m = BTreeMap::<&u32, u32>::new();
+            m.insert(&key, 7);
+            assert(m@.contains_key(&key));
+            match m.get(&3u32) {
+                Some(v) => assert(*v == 7),
+                None => assert(false),
+            }
+            let result = m.get(&4u32);
+            assert(result is None);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_map_remove_equality verus_code! {
+        use std::collections::BTreeMap;
+        use vstd::prelude::*;
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
+
+        fn test_structural<Key: Ord, Value>(
+            m: &mut BTreeMap<Key, Value>, k: &Key,
+        ) -> (result: Option<Value>)
+            requires
+                vstd::std_specs::btree::btree_map_wf(old(m)),
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
+            ensures
+                final(m)@ == old(m)@.remove(*k),
+                match result {
+                    Some(v) => old(m)@.contains_key(*k) && v == old(m)@[*k],
+                    None => !old(m)@.contains_key(*k),
+                },
+        {
+            m.remove(k)
+        }
+
+        fn test_deep<Key: Ord + DeepView, Value: DeepView>(
+            first: Key, equivalent: Key, fresh: Key, value: Value, other_value: Value,
+        )
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
+                first != equivalent,
+                first.deep_view() == equivalent.deep_view(),
+                first.deep_view() != fresh.deep_view(),
+        {
+            let mut m = BTreeMap::<Key, Value>::new();
+            let result = m.remove(&equivalent);
+            assert(result is None);
+            assert(m@ == Map::<Key, Value>::empty());
+
+            let ghost expected = value.deep_view();
+            let ghost expected_other = other_value.deep_view();
+            m.insert(first, value);
+            m.insert(fresh, other_value);
+            assert(!m@.contains_key(equivalent));
+
+            let ghost before = m.deep_view();
+            match m.remove(&equivalent) {
+                Some(v) => assert(v.deep_view() == expected),
+                None => assert(false),
+            }
+            assert(m.deep_view() == before.remove(equivalent.deep_view()));
+            assert(m.deep_view().contains_key(fresh.deep_view()));
+            assert(m.deep_view()[fresh.deep_view()] == expected_other);
+            assert(!m@.contains_key(first));
+            assert(m@.contains_key(fresh));
+
+            let ghost before = m@;
+            let ghost deep_before = m.deep_view();
+            let result = m.remove(&equivalent);
+            assert(result is None);
+            assert(m@ == before);
+            assert(m.deep_view() == deep_before);
+        }
+
+        fn test_borrowed() {
+            let key = 3u32;
+            let other = 4u32;
+            let mut m = BTreeMap::<&u32, u32>::new();
+            m.insert(&key, 7);
+            m.insert(&other, 9);
+            assert(m@.contains_key(&key));
+            match m.remove(&3u32) {
+                Some(v) => assert(v == 7),
+                None => assert(false),
+            }
+            assert(!m@.contains_key(&key));
+            assert(m@.contains_key(&other));
+            assert(m@[&other] == 9);
+            let ghost before = m@;
+            let result = m.remove(&3u32);
+            assert(result is None);
+            assert(m@ == before);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_btree_map_get_mut verus_code! {
         extern crate alloc;
         use alloc::collections::BTreeMap;
@@ -59,6 +252,7 @@ test_verify_one_file! {
             m.insert(1, 10);
             m.insert(2, 20);
 
+            assert(m@.contains_key(1));
             match m.get_mut(&1) {
                 Some(value) => {
                     assert(*value == 10);
@@ -71,6 +265,109 @@ test_verify_one_file! {
 
             let ghost before = m@;
             match m.get_mut(&3) {
+                Some(_) => assert(false),
+                None => {},
+            }
+            assert(m@ == before);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_map_get_mut_equality verus_code! {
+        use std::collections::BTreeMap;
+        use vstd::prelude::*;
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
+
+        fn test_structural<Key: Ord, Value>(
+            m: &mut BTreeMap<Key, Value>, k: &Key, replacement: Value,
+        ) -> (found: bool)
+            requires
+                vstd::std_specs::btree::btree_map_wf(old(m)),
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
+            ensures
+                found == old(m)@.contains_key(*k),
+                final(m)@ == if found {
+                    old(m)@.insert(*k, replacement)
+                } else {
+                    old(m)@
+                },
+        {
+            let ghost before = m@;
+            match m.get_mut(k) {
+                Some(value) => {
+                    assert(*value == before[*k]);
+                    *value = replacement;
+                    true
+                },
+                None => false,
+            }
+        }
+
+        fn test_deep<Key: Ord + DeepView, Value: DeepView>(
+            first: Key, equivalent: Key, fresh: Key,
+            value: Value, other_value: Value, replacement: Value,
+        )
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
+                first != equivalent,
+                first.deep_view() == equivalent.deep_view(),
+                first.deep_view() != fresh.deep_view(),
+        {
+            let ghost expected = value.deep_view();
+            let ghost expected_other = other_value.deep_view();
+            let ghost updated = replacement.deep_view();
+            let mut m = BTreeMap::<Key, Value>::new();
+            m.insert(first, value);
+
+            let ghost before = m@;
+            let ghost deep_before = m.deep_view();
+            match m.get_mut(&fresh) {
+                Some(_) => assert(false),
+                None => {},
+            }
+            assert(m@ == before);
+            assert(m.deep_view() == deep_before);
+
+            m.insert(fresh, other_value);
+            assert(m@.contains_key(first));
+            assert(!m@.contains_key(equivalent));
+            let ghost before = m.deep_view();
+            match m.get_mut(&equivalent) {
+                Some(value) => {
+                    assert(value.deep_view() == expected);
+                    *value = replacement;
+                },
+                None => assert(false),
+            }
+            assert(m.deep_view() == before.insert(equivalent.deep_view(), updated));
+            assert(m@.contains_key(first));
+            assert(!m@.contains_key(equivalent));
+            assert(m@[first].deep_view() == updated);
+            assert(m.deep_view()[fresh.deep_view()] == expected_other);
+        }
+
+        fn test_borrowed() {
+            let key = 3u32;
+            let other = 4u32;
+            let mut m = BTreeMap::<&u32, u32>::new();
+            m.insert(&key, 7);
+            m.insert(&other, 9);
+            assert(m@.contains_key(&key));
+            match m.get_mut(&3u32) {
+                Some(value) => {
+                    assert(*value == 7);
+                    *value = 8;
+                },
+                None => assert(false),
+            }
+            assert(m@[&key] == 8);
+            assert(m@[&other] == 9);
+
+            let ghost before = m@;
+            match m.get_mut(&5u32) {
                 Some(_) => assert(false),
                 None => {},
             }
@@ -435,12 +732,14 @@ test_verify_one_file! {
             let res = m.insert(3);
             assert(!res);
 
+            assert(m@.contains(3));
             let b = m.contains(&3);
             assert(b);
 
             let n = m.len();
             assert(n == 2);
 
+            assert(m@.contains(6));
             let v = m.get(&6);
             match v {
                 Some(v) => assert(*v == 6),
@@ -464,19 +763,60 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_btree_map_struct verus_code! {
+        use core::cmp::Ordering;
         use std::collections::BTreeMap;
         use vstd::prelude::*;
+        use vstd::std_specs::cmp::{
+            OrdSpec, OrdSpecImpl, PartialOrdSpec, PartialOrdSpecImpl,
+        };
 
-        #[derive(PartialEq, Eq, PartialOrd, Ord)]
-        struct MyStruct
+        #[derive(PartialEq, Eq, StructuralEq)]
+        pub struct MyStruct
         {
             pub i: u16,
             pub j: i32,
         }
 
+        impl PartialOrdSpecImpl for MyStruct {
+            open spec fn obeys_partial_cmp_spec() -> bool { true }
+
+            open spec fn partial_cmp_spec(&self, other: &Self) -> Option<Ordering> {
+                PartialOrdSpec::partial_cmp_spec(&(self.i, self.j), &(other.i, other.j))
+            }
+        }
+
+        impl OrdSpecImpl for MyStruct {
+            open spec fn obeys_cmp_spec() -> bool { true }
+
+            open spec fn cmp_spec(&self, other: &Self) -> Ordering {
+                OrdSpec::cmp_spec(&(self.i, self.j), &(other.i, other.j))
+            }
+        }
+
+        impl PartialOrd for MyStruct {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                (self.i, self.j).partial_cmp(&(other.i, other.j))
+            }
+        }
+
+        impl Ord for MyStruct {
+            fn cmp(&self, other: &Self) -> Ordering {
+                (self.i, self.j).cmp(&(other.i, other.j))
+            }
+        }
+
         fn test()
         {
-            assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());
+            assert(vstd::laws_cmp::obeys_cmp::<MyStruct>()) by {
+                reveal(vstd::laws_eq::obeys_eq_spec_properties);
+                reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
+                reveal(vstd::laws_cmp::obeys_cmp_ord);
+                reveal(vstd::laws_cmp::obeys_partial_cmp_spec_properties);
+            }
+            assert(vstd::laws_cmp::obeys_cmp_concrete_eq::<MyStruct>()) by {
+                reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
+                reveal(vstd::laws_cmp::obeys_cmp_ord);
+            }
 
             let mut m = BTreeMap::<MyStruct, u32>::new();
             assert(m@ == Map::<MyStruct, u32>::empty());
@@ -505,20 +845,271 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_btree_set_struct verus_code! {
+    #[test] test_btree_set_insert_deep_equality verus_code! {
+        extern crate alloc;
+        use alloc::collections::BTreeSet;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::btree_set_inv;
+        use vstd::laws_cmp::obeys_cmp_deep_eq;
+
+        fn test<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
+                first != equivalent,
+                first.deep_view() == equivalent.deep_view(),
+                first.deep_view() != fresh.deep_view(),
+        {
+            let mut s = BTreeSet::<Key>::new();
+            let inserted = s.insert(first);
+            assert(inserted);
+            assert(s@ == set![first]);
+            assert(s.deep_view() == set![first.deep_view()]);
+
+            let inserted = s.insert(equivalent);
+            assert(!inserted);
+            assert(s@ == set![first]);
+            assert(!s@.contains(equivalent));
+            assert(s.deep_view() == set![first.deep_view()]);
+
+            let inserted = s.insert(fresh);
+            assert(inserted);
+            assert(s@ == set![first, fresh]);
+            assert(s.deep_view() == set![first.deep_view(), fresh.deep_view()]);
+            assert(btree_set_inv(&s));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_set_contains_equality verus_code! {
         use std::collections::BTreeSet;
         use vstd::prelude::*;
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
 
-        #[derive(PartialEq, Eq, PartialOrd, Ord)]
-        struct MyStruct
+        fn test_structural<Key: Ord>(s: &BTreeSet<Key>, k: &Key) -> (result: bool)
+            requires
+                vstd::std_specs::btree::btree_set_wf(s),
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
+            ensures
+                result == s@.contains(*k),
+        {
+            s.contains(k)
+        }
+
+        fn test_deep<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
+                first != equivalent,
+                first.deep_view() == equivalent.deep_view(),
+                first.deep_view() != fresh.deep_view(),
+        {
+            let mut s = BTreeSet::<Key>::new();
+            s.insert(first);
+            assert(!s@.contains(equivalent));
+
+            let found = s.contains(&equivalent);
+            assert(found);
+            assert(found == s.deep_view().contains(equivalent.deep_view()));
+
+            let found = s.contains(&fresh);
+            assert(!found);
+            assert(found == s.deep_view().contains(fresh.deep_view()));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_set_get_equality verus_code! {
+        use std::collections::BTreeSet;
+        use vstd::prelude::*;
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
+
+        fn test_structural<'a, Key: Ord>(
+            s: &'a BTreeSet<Key>, k: &Key,
+        ) -> (result: Option<&'a Key>)
+            requires
+                vstd::std_specs::btree::btree_set_wf(s),
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
+            ensures
+                match result {
+                    Some(key) => s@.contains(*key) && *key == *k,
+                    None => !s@.contains(*k),
+                },
+        {
+            s.get(k)
+        }
+
+        fn test_deep<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
+                first != equivalent,
+                first.deep_view() == equivalent.deep_view(),
+                first.deep_view() != fresh.deep_view(),
+        {
+            let mut s = BTreeSet::<Key>::new();
+            let result = s.get(&equivalent);
+            assert(result is None);
+
+            s.insert(first);
+            assert(s@ == set![first]);
+            match s.get(&equivalent) {
+                Some(key) => {
+                    assert(*key == first);
+                    assert(*key != equivalent);
+                    assert(key.deep_view() == equivalent.deep_view());
+                },
+                None => assert(false),
+            }
+            let result = s.get(&fresh);
+            assert(result is None);
+        }
+
+        fn test_borrowed() {
+            let key = 3u32;
+            let mut s = BTreeSet::<&u32>::new();
+            s.insert(&key);
+            assert(s@.contains(&key));
+            match s.get(&3u32) {
+                Some(stored) => assert(**stored == 3),
+                None => assert(false),
+            }
+            let result = s.get(&4u32);
+            assert(result is None);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_set_remove_equality verus_code! {
+        use std::collections::BTreeSet;
+        use vstd::prelude::*;
+        use vstd::laws_cmp::{obeys_cmp_deep_eq, obeys_cmp_concrete_eq};
+
+        fn test_structural<Key: Ord>(s: &mut BTreeSet<Key>, k: &Key) -> (result: bool)
+            requires
+                vstd::std_specs::btree::btree_set_wf(old(s)),
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_concrete_eq::<Key>(),
+            ensures
+                final(s)@ == old(s)@.remove(*k),
+                result == old(s)@.contains(*k),
+        {
+            s.remove(k)
+        }
+
+        fn test_deep<Key: Ord + DeepView>(first: Key, equivalent: Key, fresh: Key)
+            requires
+                vstd::laws_cmp::obeys_cmp::<Key>(),
+                obeys_cmp_deep_eq::<Key>(),
+                first != equivalent,
+                first.deep_view() == equivalent.deep_view(),
+                first.deep_view() != fresh.deep_view(),
+        {
+            let mut s = BTreeSet::<Key>::new();
+            let removed = s.remove(&equivalent);
+            assert(!removed);
+            assert(s@ == Set::<Key>::empty());
+
+            s.insert(first);
+            s.insert(fresh);
+            assert(s@ == set![first, fresh]);
+            assert(!s@.contains(equivalent));
+
+            let ghost before = s.deep_view();
+            let removed = s.remove(&equivalent);
+            assert(removed);
+            assert(s.deep_view() == before.remove(equivalent.deep_view()));
+            assert(s@ == set![fresh]);
+            assert(s.deep_view() == set![fresh.deep_view()]);
+
+            let ghost before = s@;
+            let ghost deep_before = s.deep_view();
+            let removed = s.remove(&equivalent);
+            assert(!removed);
+            assert(s@ == before);
+            assert(s.deep_view() == deep_before);
+        }
+
+        fn test_borrowed() {
+            let key = 3u32;
+            let other = 4u32;
+            let mut s = BTreeSet::<&u32>::new();
+            s.insert(&key);
+            s.insert(&other);
+            assert(s@.contains(&key));
+            let removed = s.remove(&3u32);
+            assert(removed);
+            assert(s@ == set![&other]);
+
+            let ghost before = s@;
+            let removed = s.remove(&3u32);
+            assert(!removed);
+            assert(s@ == before);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_set_struct verus_code! {
+        use core::cmp::Ordering;
+        use std::collections::BTreeSet;
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::{
+            OrdSpec, OrdSpecImpl, PartialOrdSpec, PartialOrdSpecImpl,
+        };
+
+        #[derive(PartialEq, Eq, StructuralEq)]
+        pub struct MyStruct
         {
             pub i: u16,
             pub j: i32,
         }
 
+        impl PartialOrdSpecImpl for MyStruct {
+            open spec fn obeys_partial_cmp_spec() -> bool { true }
+
+            open spec fn partial_cmp_spec(&self, other: &Self) -> Option<Ordering> {
+                PartialOrdSpec::partial_cmp_spec(&(self.i, self.j), &(other.i, other.j))
+            }
+        }
+
+        impl OrdSpecImpl for MyStruct {
+            open spec fn obeys_cmp_spec() -> bool { true }
+
+            open spec fn cmp_spec(&self, other: &Self) -> Ordering {
+                OrdSpec::cmp_spec(&(self.i, self.j), &(other.i, other.j))
+            }
+        }
+
+        impl PartialOrd for MyStruct {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                (self.i, self.j).partial_cmp(&(other.i, other.j))
+            }
+        }
+
+        impl Ord for MyStruct {
+            fn cmp(&self, other: &Self) -> Ordering {
+                (self.i, self.j).cmp(&(other.i, other.j))
+            }
+        }
+
         fn test()
         {
-            assume(vstd::laws_cmp::obeys_cmp::<MyStruct>());
+            assert(vstd::laws_cmp::obeys_cmp::<MyStruct>()) by {
+                reveal(vstd::laws_eq::obeys_eq_spec_properties);
+                reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
+                reveal(vstd::laws_cmp::obeys_cmp_ord);
+                reveal(vstd::laws_cmp::obeys_partial_cmp_spec_properties);
+            }
+            assert(vstd::laws_cmp::obeys_cmp_concrete_eq::<MyStruct>()) by {
+                reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
+                reveal(vstd::laws_cmp::obeys_cmp_ord);
+            }
 
             let mut m = BTreeSet::<MyStruct>::new();
             assert(m@ == Set::<MyStruct>::empty());
@@ -543,6 +1134,7 @@ test_verify_one_file! {
             let s3 = MyStruct { i: 9, j: 9 };
 
             m.insert(MyStruct { i: 9, j: 9 });
+            assert(m@.contains(s3));
             let res = m.remove(&s3);
             assert(res);
             let res = m.remove(&s3);
@@ -771,6 +1363,7 @@ test_verify_one_file_with_options! {
             for (k, v) in iter: m.iter()
                 invariant
                     m@.kv_pairs() == set![(3u32, 4i8), (6u32, -8i8)],
+                    btree_map_wf(&m),
             {
                 // OBSERVE: triggers the extensionality in the invariant
                 assert(m@.kv_pairs().contains((*k, *v)));
@@ -843,4 +1436,159 @@ test_verify_one_file_with_options! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_map_shared_ptr_keys verus_code! {
+        use std::collections::BTreeMap;
+        use std::rc::Rc;
+        use std::sync::Arc;
+        use vstd::prelude::*;
+
+        // The `m@.contains_key(k)` asserts give the borrowed lookups a witness key.
+        fn rc_keys() {
+            let k3 = Rc::new(3u64);
+            let mut m = BTreeMap::<Rc<u64>, u8>::new();
+            m.insert(k3.clone(), 30);
+            assert(m@.contains_key(k3));
+            match m.get(&3u64) {
+                Some(v) => assert(*v == 30),
+                None => assert(false),
+            }
+            // A separately allocated Rc with an equal pointee is the same key.
+            let old = m.insert(Rc::new(3u64), 31);
+            assert(old == Some(30u8));
+        }
+
+        fn arc_keys() {
+            let mut m = BTreeMap::<Arc<u64>, u8>::new();
+            let k = Arc::new(1u64);
+            m.insert(k, 10);
+            assert(m@.contains_key(k));
+            let r = m.remove(&1u64);
+            assert(r == Some(10u8));
+        }
+
+        fn box_keys() {
+            let mut m = BTreeMap::<Box<u64>, u8>::new();
+            let k = Box::new(1u64);
+            m.insert(k, 10);
+            assert(m@.contains_key(k));
+            let b = m.contains_key(&1u64);
+            assert(b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // #3086: a key whose `Clone` changes it makes the clone of a tree malformed (here, two
+    // equal keys), and nothing may be concluded about the clone
+    #[test] test_btree_clone_unfaithful_key verus_code! {
+        use std::collections::BTreeSet;
+        use std::cmp::Ordering;
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::{PartialEqSpecImpl, PartialOrdSpecImpl, OrdSpecImpl};
+        pub struct K { pub a: u8 }
+        impl PartialEqSpecImpl for K {
+            open spec fn obeys_eq_spec() -> bool { true }
+            open spec fn eq_spec(&self, other: &K) -> bool { self.a == other.a }
+        }
+        impl PartialEq for K { fn eq(&self, other: &K) -> bool { self.a == other.a } }
+        impl Eq for K {}
+        impl PartialOrdSpecImpl for K {
+            open spec fn obeys_partial_cmp_spec() -> bool { true }
+            open spec fn partial_cmp_spec(&self, other: &K) -> Option<Ordering> {
+                Some(if self.a < other.a { Ordering::Less } else if self.a > other.a { Ordering::Greater } else { Ordering::Equal })
+            }
+        }
+        impl PartialOrd for K { fn partial_cmp(&self, other: &K) -> Option<Ordering> { Some(self.cmp(other)) } }
+        impl OrdSpecImpl for K {
+            open spec fn obeys_cmp_spec() -> bool { true }
+            open spec fn cmp_spec(&self, other: &K) -> Ordering {
+                if self.a < other.a { Ordering::Less } else if self.a > other.a { Ordering::Greater } else { Ordering::Equal }
+            }
+        }
+        impl Ord for K {
+            fn cmp(&self, other: &K) -> Ordering {
+                if self.a < other.a { Ordering::Less } else if self.a > other.a { Ordering::Greater } else { Ordering::Equal }
+            }
+        }
+        impl Clone for K { fn clone(&self) -> (r: K) ensures r.a == 0 { K { a: 0 } } }
+        fn test() {
+            assume(vstd::laws_cmp::obeys_cmp::<K>());
+            assume(vstd::laws_cmp::obeys_cmp_concrete_eq::<K>());
+            let mut s = BTreeSet::<K>::new();
+            s.insert(K { a: 1 });
+            s.insert(K { a: 2 });
+            assert(s@.contains(K { a: 1 }));
+            let mut c = s.clone(); // holds K { a: 0 } twice
+            let _ = c.remove(&K { a: 0 });
+            let still = c.contains(&K { a: 0 }); // true when run
+            assert(!still); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // a map cloned through a generic `T: Clone` (whose clone has no specification) is not
+    // known to be well formed either
+    #[test] test_btree_generic_clone_not_wf verus_code! {
+        use std::collections::BTreeMap;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::btree_map_wf;
+        fn dup<T: Clone>(t: &T) -> T { t.clone() }
+        fn test<K: Ord + Clone>(m: &BTreeMap<K, u8>) {
+            let c = dup(m);
+            assert(btree_map_wf(&c)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // keys that clone to equal values: clone copies the view (and well-formedness)
+    #[test] test_btree_clone_faithful_keys verus_code! {
+        use std::collections::{BTreeMap, BTreeSet};
+        use vstd::prelude::*;
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+        pub struct P { pub x: u8 }
+        fn param(m: &BTreeMap<u64, u8>, k: u64) -> (r: bool)
+            requires vstd::std_specs::btree::btree_map_wf(m),
+            ensures r == m@.contains_key(k),
+        {
+            m.contains_key(&k)
+        }
+        fn test(m: &BTreeMap<u64, u8>, s: &BTreeSet<u32>) {
+            let c = m.clone();
+            assert(c@ == m@);
+            let d = s.clone();
+            assert(d@ == s@);
+            let mut e = BTreeSet::<P>::new();
+            e.insert(P { x: 1 });
+            let f = e.clone();
+            assert(vstd::pervasive::obeys_clone_eq::<P>());
+            assert(f@ == e@);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // A set from unverified code need not be well formed: e.g. `get_or_insert_with` with a
+    // `Borrow` whose order disagrees with the key's `Ord` puts elements out of order (review of
+    // #3494). So a set parameter's iteration order is known only if the set is well formed.
+    #[test] test_btree_set_param_iter_needs_wf verus_code! {
+        use std::collections::BTreeSet;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::*;
+        use vstd::std_specs::iter::IteratorSpec;
+        fn known(s: &BTreeSet<u64>)
+            requires btree_set_wf(s),
+        {
+            let it = s.iter();
+            assert(it.remaining().unref().to_set() =~= s@);
+        }
+        fn not_known(s: &BTreeSet<u64>) {
+            let it = s.iter();
+            assert(it.remaining().unref().to_set() =~= s@); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }

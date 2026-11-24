@@ -7,7 +7,7 @@ Suppose we want to compute the nth
 triangle(n) = 0 + 1 + 2 + ... + (n - 1) + n
 ```
 
-We can express this as a simple recursive funciton:
+We can express this as a simple recursive function:
 
 ```rust
 {{#include ../../../../examples/guide/recursion.rs:spec}}

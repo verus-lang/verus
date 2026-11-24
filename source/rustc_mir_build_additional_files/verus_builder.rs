@@ -31,8 +31,9 @@ body so that some constraint is always reachable.
 */
 
 use crate::builder::{BasicBlock, BorrowKind, Builder, PlaceBuilder, Rvalue, TerminatorKind, Ty};
+use rustc_hir::def_id::LocalDefId;
 use rustc_middle::thir::ExprId;
-use rustc_middle::ty::TyKind;
+use rustc_middle::ty::{TyCtxt, TyKind};
 use std::collections::{HashMap, HashSet};
 
 pub(crate) struct VerusMirBuilderCtxt {
@@ -66,10 +67,12 @@ pub(super) fn record_call_inhabitedness<'a, 'tcx>(
 /// The builder calls this when deciding if it should delete the edge.
 pub(crate) fn skip_edge_deletion_for_uninhabited_ty<'a, 'tcx>(
     verus_mir_builder_ctxt: &VerusMirBuilderCtxt,
+    tcx: TyCtxt<'tcx>,
+    def_id: LocalDefId,
     block: rustc_middle::mir::BasicBlock,
     ty: Ty<'tcx>,
 ) -> bool {
-    func_ty_skip_edge_deletion_for_uninhabited_ty(ty)
+    func_ty_skip_edge_deletion_for_uninhabited_ty(tcx, def_id, ty)
         || verus_mir_builder_ctxt.force_treat_inhabited.contains(&block)
 }
 
@@ -78,10 +81,15 @@ pub(crate) fn skip_edge_deletion_for_uninhabited_ty<'a, 'tcx>(
 /// `erased_ghost_value::<!>()`.
 /// To prevent such calls from influencing the CFG, we check if any call is to
 /// `erased_ghost_value`, and if so, skip the CFG trimming logic.
-pub fn func_ty_skip_edge_deletion_for_uninhabited_ty<'tcx>(ty: Ty<'tcx>) -> bool {
+pub fn func_ty_skip_edge_deletion_for_uninhabited_ty<'a, 'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: LocalDefId,
+    ty: Ty<'tcx>,
+) -> bool {
     match ty.kind() {
         TyKind::FnDef(fn_def_id, _) => {
-            let Some(erasure_ctxt) = crate::verus::get_verus_erasure_ctxt_option() else {
+            let def_id = crate::verus::enclosing_fn_local_def_id(tcx, def_id);
+            let Some(erasure_ctxt) = crate::verus::get_verus_erasure_ctxt_option(def_id) else {
                 return false;
             };
             *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id
@@ -185,4 +193,65 @@ pub(super) fn cfg_removal_fix_constraints_one_block<'a, 'tcx>(
     emit_extra_constraints(this, new_block, *expr_id);
 
     this.cfg.terminate(new_block, source_info, TerminatorKind::Goto { target: new_block });
+}
+
+/// Build the MIR for the given body in "full erasure" mode (see `FullErasureCtxt`).
+/// This does NOT use the query system (i.e., the results of `thir_body` and `mir_built`
+/// are unaffected), and it should only be called when the full erasure context is set.
+pub fn build_mir_full_erasure<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def: rustc_hir::def_id::LocalDefId,
+) -> rustc_middle::mir::Body<'tcx> {
+    let full_erasure =
+        crate::verus::get_full_erasure_ctxt().expect("full erasure ctxt should be set");
+    match crate::thir::cx::thir_body_full_erasure(tcx, def, full_erasure) {
+        Err(error_reported) => super::construct_error(tcx, def, error_reported),
+        Ok((thir, expr)) => match thir.body_type {
+            rustc_middle::thir::BodyTy::Fn(fn_sig) => {
+                super::construct_fn(tcx, def, &thir, expr, fn_sig, true)
+            }
+            rustc_middle::thir::BodyTy::Const(ty) | rustc_middle::thir::BodyTy::GlobalAsm(ty) => {
+                super::construct_const(tcx, def, &thir, expr, ty, true)
+            }
+        },
+    }
+}
+
+/// Ghost code never runs drop, so we skip emitting drops for ghost temporaries
+/// (and for drop-and-replace assignments in ghost code). See `GhostDrops`.
+pub(super) fn skip_temp_drop<'a, 'tcx>(this: &Builder<'a, 'tcx>, expr_id: ExprId) -> bool {
+    match &this.verus_extra_thir {
+        Some(extra_thir) => extra_thir.ghost_drops.skip_temp_drop(expr_id),
+        None => false,
+    }
+}
+
+/// Skip emitting drops for ghost variables.
+pub(super) fn skip_var_drop<'a, 'tcx>(
+    this: &Builder<'a, 'tcx>,
+    var: rustc_middle::thir::LocalVarId,
+) -> bool {
+    match &this.verus_extra_thir {
+        Some(extra_thir) => extra_thir.ghost_drops.skip_var_drop(var),
+        None => false,
+    }
+}
+
+/// Skip emitting the drop for a ghost parameter.
+pub(super) fn skip_param_drop<'a, 'tcx>(
+    this: &Builder<'a, 'tcx>,
+    param: &rustc_middle::thir::Param<'tcx>,
+) -> bool {
+    let Some(extra_thir) = &this.verus_extra_thir else {
+        return false;
+    };
+    if extra_thir.ghost_drops.ghost_body {
+        return true;
+    }
+    match param.pat.as_deref().map(|p| &p.kind) {
+        Some(rustc_middle::thir::PatKind::Binding { var, .. }) => {
+            extra_thir.ghost_drops.skip_var_drop(*var)
+        }
+        _ => false,
+    }
 }

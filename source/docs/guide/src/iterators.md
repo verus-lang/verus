@@ -14,9 +14,9 @@ Verus allows you to name the iterator that Rust uses inside a `for` loop:
 ```rust
 for x in my_iter: some_expression
     invariant
-        // can refer to iter.index() and iter.seq()
+        // can refer to my_iter.index() and my_iter.seq()
 {
-    // x is the current element; iter tracks ghost state
+    // x is the current element; my_iter tracks ghost state
 }
 ```
 You can use this name (`my_iter` above) to refer to the number of iterations

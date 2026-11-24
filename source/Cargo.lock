@@ -44,10 +44,11 @@ dependencies = [
 name = "air"
 version = "0.1.0"
 dependencies = [
- "getopts",
+ "clap",
  "indexmap 2.14.0",
  "petgraph 0.6.5",
  "serde",
+ "serde_json",
  "sise",
  "smt-scope",
  "win32job",
@@ -302,6 +303,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "walkdir",
 ]
 
 [[package]]
@@ -420,6 +422,7 @@ dependencies = [
  "anstyle",
  "clap_lex",
  "strsim",
+ "terminal_size",
 ]
 
 [[package]]
@@ -2326,8 +2329,8 @@ dependencies = [
  "air",
  "bincode-next",
  "cargo-verus-toolchains",
+ "clap",
  "console",
- "getopts",
  "hex",
  "indexmap 2.14.0",
  "indicatif",
@@ -2336,6 +2339,7 @@ dependencies = [
  "num-format",
  "regex",
  "rust_verify_test_macros",
+ "rustc_const_eval",
  "rustc_hir_analysis",
  "rustc_mir_build",
  "serde",
@@ -2368,6 +2372,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "rustc_const_eval"
+version = "0.0.0"
+dependencies = [
+ "rustc_mir_build",
+ "tracing",
 ]
 
 [[package]]
@@ -2875,6 +2887,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_size"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
+dependencies = [
+ "rustix",
+ "windows-sys",
+]
+
+[[package]]
 name = "testing_table"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3247,11 +3269,11 @@ dependencies = [
 
 [[package]]
 name = "verus_builtin"
-version = "0.0.0-2026-09-16-0054"
+version = "0.0.0-2026-11-22-0344"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-09-20-0158"
+version = "0.0.0-2026-11-22-0344"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -3264,7 +3286,7 @@ dependencies = [
 
 [[package]]
 name = "verus_prettyplease"
-version = "0.0.0-2026-09-06-0133"
+version = "0.0.0-2026-11-01-0251"
 dependencies = [
  "proc-macro2",
  "verus_syn",
@@ -3272,7 +3294,7 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-09-06-0133"
+version = "0.0.0-2026-11-22-0344"
 dependencies = [
  "indexmap 2.14.0",
  "proc-macro2",
@@ -3282,7 +3304,7 @@ dependencies = [
 
 [[package]]
 name = "verus_syn"
-version = "0.0.0-2026-09-06-0133"
+version = "0.0.0-2026-11-01-0251"
 dependencies = [
  "proc-macro2",
  "quote",

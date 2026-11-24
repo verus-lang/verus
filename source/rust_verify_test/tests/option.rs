@@ -106,6 +106,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_copied verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let val: u32 = 42;
+            let some = Some(&val).copied();
+            assert(some == Some(42u32));
+            let none: Option<&u32> = None;
+            let none = none.copied();
+            assert(none.is_none());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_unwrap_or_else verus_code! {
         use vstd::prelude::*;
 

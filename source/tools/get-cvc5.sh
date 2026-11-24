@@ -1,15 +1,19 @@
 #! /bin/bash -eu
 
-cvc5_version="1.1.2"
+cvc5_version="1.3.4"
 
 if [ `uname` == "Darwin" ]; then
     if [[ $(uname -m) == 'arm64' ]]; then
         filename="cvc5-macOS-arm64-static"
     else
-        filename="cvc5-macOS-static"
+        filename="cvc5-macOS-x86_64-static"
     fi
 elif [ `uname` == "Linux" ]; then
-    filename="cvc5-Linux-static"
+    if [[ $(uname -m) == 'aarch64' ]]; then
+        filename="cvc5-Linux-arm64-static"
+    else
+        filename="cvc5-Linux-x86_64-static"
+    fi
 fi
 
 URL="https://github.com/cvc5/cvc5/releases/download/cvc5-$cvc5_version/$filename.zip"

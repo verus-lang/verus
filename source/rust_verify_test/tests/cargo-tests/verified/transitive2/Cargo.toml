@@ -9,5 +9,6 @@ transitive1 = { path = "../transitive1" }
 
 [package.metadata.verus]
 verify = true
+trusted_crates = ["vstd"]
 
 [workspace]

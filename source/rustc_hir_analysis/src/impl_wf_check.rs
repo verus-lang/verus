@@ -86,7 +86,7 @@ pub(crate) fn enforce_impl_lifetime_params_are_constrained(
     impl_self_ty.error_reported()?;
 
     let impl_generics = tcx.generics_of(impl_def_id);
-    let impl_predicates = tcx.predicates_of(impl_def_id);
+    let impl_clauses = tcx.clauses_of(impl_def_id);
     let impl_trait_ref =
         of_trait.then(|| tcx.impl_trait_ref(impl_def_id).instantiate_identity().skip_norm_wip());
 
@@ -95,7 +95,7 @@ pub(crate) fn enforce_impl_lifetime_params_are_constrained(
     let mut input_parameters = cgp::parameters_for_impl(tcx, impl_self_ty, impl_trait_ref);
     cgp::identify_constrained_generic_params(
         tcx,
-        impl_predicates,
+        impl_clauses,
         impl_trait_ref,
         &mut input_parameters,
     );
@@ -179,7 +179,7 @@ pub(crate) fn enforce_impl_lifetime_params_are_constrained(
                         }
                     }
                     suggest_to_remove_or_use_generic(tcx, &mut diag, impl_def_id, param, true);
-                    res = Err(diag.emit());
+                    res = Err(diag.emit_err());
                 }
             }
             ty::GenericParamDefKind::Type { .. } | ty::GenericParamDefKind::Const { .. } => {
@@ -201,7 +201,7 @@ pub(crate) fn enforce_impl_non_lifetime_params_are_constrained(
     impl_self_ty.error_reported()?;
 
     let impl_generics = tcx.generics_of(impl_def_id);
-    let impl_predicates = tcx.predicates_of(impl_def_id);
+    let impl_clauses = tcx.clauses_of(impl_def_id);
     let impl_trait_ref = tcx
         .impl_opt_trait_ref(impl_def_id)
         .map(ty::EarlyBinder::instantiate_identity)
@@ -212,7 +212,7 @@ pub(crate) fn enforce_impl_non_lifetime_params_are_constrained(
     let mut input_parameters = cgp::parameters_for_impl(tcx, impl_self_ty, impl_trait_ref);
     cgp::identify_constrained_generic_params(
         tcx,
-        impl_predicates,
+        impl_clauses,
         impl_trait_ref,
         &mut input_parameters,
     );
@@ -245,7 +245,7 @@ pub(crate) fn enforce_impl_non_lifetime_params_are_constrained(
             });
             diag.code(E0207);
             suggest_to_remove_or_use_generic(tcx, &mut diag, impl_def_id, &param, false);
-            res = Err(diag.emit());
+            res = Err(diag.emit_err());
         }
     }
     res

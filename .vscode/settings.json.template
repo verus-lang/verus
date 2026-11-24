@@ -13,7 +13,6 @@
         "RUSTC_BOOTSTRAP": "1"
     },
     // Use .exe extension for Windows, otherwise remove
-    "rust-analyzer.runnables.command": "../tools/vargo/target/release/vargo[.exe]",
     "rust-analyzer.procMacro.enable": true,
     "rust-analyzer.rustc.source": "discover",
     "rust-analyzer.workspace.symbol.search.scope": "workspace_and_dependencies",

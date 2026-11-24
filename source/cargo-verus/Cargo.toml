@@ -13,11 +13,11 @@ clap-cargo = { workspace = true }
 clap = { workspace = true }
 colored = { workspace = true }
 hex = { workspace = true }
-rustc_tools_util = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
 sha2 = { workspace = true }
 tempfile = { workspace = true }
+walkdir = { workspace = true }
 
 [build-dependencies]
 cargo-verus-toolchains = { workspace = true }

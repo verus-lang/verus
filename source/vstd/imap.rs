@@ -198,10 +198,10 @@ impl<K, V> IMap<K, V> {
             out_map == old(self).restrict(keys),
     ;
 
-    /// Merge a map into a tracked map.
+    /// Consume a tracked map and merge its entries into this tracked map.
     ///
-    /// The new (key, value) pairs take precendece.
-    pub axiom fn tracked_union_prefer_right(tracked &mut self, right: Self)
+    /// The new (key, value) pairs take precedence.
+    pub axiom fn tracked_union_prefer_right(tracked &mut self, tracked right: Self)
         ensures
             *final(self) == old(self).union_prefer_right(right),
     ;

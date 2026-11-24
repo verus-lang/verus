@@ -20,7 +20,7 @@ Verus will identify the last mutation to `a` and insert an assumption of the pre
 [`has_resolved(a)`](./mutable-references.md#the-has_resolved-operator-when-mutable-references-are-done). This is called the _resolution assumption_ and this assumption is necessary for the
 updated value to "flow back" to the borrowed-from location.
 
-Okay, so what happens we have a vector? In this case, the local variable is `v: Vec<&mut u64>`,
+Okay, so what happens when we have a vector? In this case, the local variable is `v: Vec<&mut u64>`,
 so Verus will determine the resolution point for `v`. Immediately after `*v[i] = 1` we have
 the resolution point for `v` and learn `has_resolved(v)`. When applied to a container like this,
 `has_resolved` is recursive: it means that all mutable references contained _within_ `v` are

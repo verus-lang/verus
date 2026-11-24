@@ -18,6 +18,7 @@ use super::super::prelude::*;
 verus! {
 
 #[verifier::inline]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::arithmetic::div_mod::rust_div")]
 pub open spec fn rust_div(a: int, b: int) -> int
     recommends
         b != 0,
@@ -32,6 +33,7 @@ pub open spec fn rust_div(a: int, b: int) -> int
 }
 
 #[verifier::inline]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::arithmetic::div_mod::rust_rem")]
 pub open spec fn rust_rem(a: int, b: int) -> int
     recommends
         b != 0,

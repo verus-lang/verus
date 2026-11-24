@@ -77,7 +77,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             | UnaryOpr::ProofNote(_)
             | UnaryOpr::AutoDecreases
             | UnaryOpr::AutoLoopEnsures
-            | UnaryOpr::ToDyn(_) => {
+            | UnaryOpr::ToDyn(..) => {
                 exp.new_x(ExpX::UnaryOpr(op.clone(), insert_auto_ext_equal(ctx, e)))
             }
             UnaryOpr::HasResolved(..) => exp.clone(),

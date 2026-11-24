@@ -10,8 +10,11 @@ use super::prelude::*;
 verus! {
 
 pub trait AtomicInvariantPredicate<K, V, G> {
+    #[verifier::prophetic]
     spec fn atomic_inv(k: K, v: V, g: G) -> bool;
 }
+
+pub open spec const ATOMIC_NS: int = 0;
 
 } // verus!
 macro_rules! declare_atomic_type {
@@ -23,6 +26,7 @@ macro_rules! declare_atomic_type {
         impl<K, G, Pred> InvariantPredicate<(K, int), ($perm_ty, G)> for $atomic_pred_ty<Pred>
             where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
+            #[verifier::prophetic]
             open spec fn inv(k_loc: (K, int), perm_g: ($perm_ty, G)) -> bool {
                 let (k, loc) = k_loc;
                 let (perm, g) = perm_g;
@@ -57,6 +61,7 @@ macro_rules! declare_atomic_type {
 
             pub open spec fn well_formed(&self) -> bool {
                 self.atomic_inv@.constant().1 == self.patomic.id()
+                    && self.atomic_inv@.namespace() == ATOMIC_NS
             }
         }
 
@@ -68,7 +73,6 @@ macro_rules! declare_atomic_type {
                 requires Pred::atomic_inv(k, u, g),
                 ensures t.well_formed() && t.constant() == k,
             {
-
                 let (patomic, Tracked(perm)) = $patomic_ty::new(u);
 
                 let tracked pair = (perm, g);
@@ -114,6 +118,7 @@ macro_rules! declare_atomic_type_generic {
         impl<T, K, G, Pred> InvariantPredicate<(K, int), ($perm_ty, G)> for $atomic_pred_ty<T, Pred>
             where Pred: AtomicInvariantPredicate<K, $value_ty, G>
         {
+            #[verifier::prophetic]
             open spec fn inv(k_loc: (K, int), perm_g: ($perm_ty, G)) -> bool {
                 let (k, loc) = k_loc;
                 let (perm, g) = perm_g;
@@ -268,7 +273,7 @@ declare_atomic_type_generic!(AtomicPtr, PAtomicPtr, PermissionPtr<T>, *mut T, At
 /// | `fetch_xor(x)`                | `next == prev ^ x && ret == prev`                                                                                          |
 /// | `fetch_nand(x)`               | `next == !(prev & x) && ret == prev`                                                                                       |
 /// | `fetch_max(x)`                | `next == max(prev, x) && ret == prev`                                                                                      |
-/// | `fetch_min(x)`                | `next == max(prev, x) && ret == prev`                                                                                      |
+/// | `fetch_min(x)`                | `next == min(prev, x) && ret == prev`                                                                                      |
 /// | `no_op()` (**)                | `next == prev && ret == ()`                                                                                                |
 ///
 /// (*) Note that `fetch_add` and `fetch_sub` do not specify

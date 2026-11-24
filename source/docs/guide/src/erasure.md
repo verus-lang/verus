@@ -25,6 +25,8 @@ pub mod test_mod {
         1
     }
 }
+
+} // verus!
 ```
 
 To remedy this, Verus provides the `verus_only` flag, which is turned on during
@@ -42,16 +44,16 @@ pub mod test_mod {
 Another use-case for the `verus_only` flag is setting attributes that only make sense during verification.
 For instance, the code below sets the `verifier::loop_isolation` option to false for the file, only if `verus_only` is set:
 ```rust
-#![cfg_attr(verus_only, verus::loop_isolation(false))]
+#![cfg_attr(verus_only, verifier::loop_isolation(false))]
 ```
 
 
 > [!CAUTION]
 > This should only be used to guard `use` statements and setting config attributes.
-> Using this feature flag for conditional compilation of code can introduce **unsoundness**,
+> Using this `cfg` flag for conditional compilation of code can introduce **unsoundness**,
 > breaking the verification guarantees.
 >
-> As an example, the code below will verify successfully, even though it `f()` returns
+> As an example, the code below will verify successfully, even though `f()` returns
 > 42 when running the executable.
 >
 > ```rust
@@ -66,14 +68,14 @@ For instance, the code below sets the `verifier::loop_isolation` option to false
 > ```
 
 > [!NOTE]
-> Verus is under _active development_ meaning this option may change or be removed
-> (in particular if a better solution to this problem is devised). See the [Github discussion](https://github.com/verus-lang/verus/discussions/2101)
+> Verus is under _active development_, meaning this option may change or be removed
+> (in particular if a better solution to this problem is devised). See the [GitHub discussion](https://github.com/verus-lang/verus/discussions/2101)
 > for more information.
 
 ## `Cargo.toml` configuration
 
 [Since version 1.80](https://blog.rust-lang.org/2024/05/06/check-cfg/), Rust automatically checks if all `cfgs` match expected config names.
-The `verus_only` feature is passed in directly by Verus and never declared in a
+The `verus_only` `cfg` flag is passed in directly by Verus and never declared in a
 `Cargo.toml`. This means that Rust will emit a warning when compiling. To prevent this, add the
 following to your `Cargo.toml`:
 

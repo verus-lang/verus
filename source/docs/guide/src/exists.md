@@ -18,7 +18,7 @@ In the following example, the trigger is `is_even(i)`:
 
 There are three expressions that match the trigger:
 `is_even(4)`, `is_even(5)`, and `is_even(6)`.
-Two of them, `is_even(4)` and `is_even(6)` are possible witnesses
+Two of them, `is_even(4)` and `is_even(6)`, are possible witnesses
 for `exists|i: int| #[trigger] is_even(i)`.
 Based on these, the assertion succeeds, using either `i = 4` or `i = 6` as a witness.
 

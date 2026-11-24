@@ -34,7 +34,7 @@ forall|i: int, j: int| 0 <= i <= j < len ==> f(i, j)
 
 means that for every pair `i` and `j` such that `0 <= i <= j < len`, `f(i, j)` is true.
 
-Note that `==>` has lower precedence that most other boolean operations.
+Note that `==>` has lower precedence than most other boolean operations.
 For example, `a ==> b && c` means `a ==> (b && c)`.
 Verus also supports two-way implication for booleans (`<==>`) with even lower precedence,
 so that `a <==> b && c` is equivalent to `a == (b && c)`.
@@ -62,3 +62,14 @@ This has the same meaning as `(a ==> b) && c && (d <==> (e && f))`.
 Verus has `->`, `is`, and `matches` syntax for accessing fields
 of [`struct`](datatypes_struct.md)s
 and matching variants of [`enum`](datatypes_enum.md)s.
+
+### `matches`
+
+The `matches` keyword can be used to destructure datatypes using
+pattern-matching, much like Rust's `match` construct:
+
+```rust
+{{#include ../../../../examples/guide/matches.rs:min}}
+```
+
+See [The `matches` operator](./reference-matches.md) for more detail.

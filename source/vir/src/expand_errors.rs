@@ -940,10 +940,10 @@ fn can_inline_function(
     match &fun_to_inline.x.kind {
         FunctionKind::Static | FunctionKind::TraitMethodImpl { .. } => {}
         FunctionKind::TraitMethodDecl { .. } => {
-            return Err(Some("trait function (note: expand-errors is currently limited in its support for resolving generic trait functions)".to_string()));
+            return Err(Some("trait method (note: expand-errors is currently limited in its support for resolving generic trait methods)".to_string()));
         }
         FunctionKind::ForeignTraitMethodImpl { .. } => {
-            return Err(Some("Internal error: ForeignTraitMethodImpl".to_string()));
+            return Err(Some("Verus internal error: ForeignTraitMethodImpl".to_string()));
         }
     }
 
@@ -969,7 +969,8 @@ fn can_inline_function(
         Some(f) => get_function_sst(ctx, span, &f.current_fun).unwrap(),
         None => {
             return Err(Some(
-                "Internal error: cannot find the owning function of this function call".to_string(),
+                "Verus internal error: cannot find the owning function of this function call"
+                    .to_string(),
             ));
         }
     };
@@ -982,7 +983,7 @@ fn can_inline_function(
         fun_to_inline.x.opaqueness.get_fuel_for_module(&fun_to_inline.x.name, &ctx.module);
     let mut hidden = false;
 
-    let fs_to_hide = &fun_owner.x.attrs.hidden;
+    let fs_to_hide = &fun_owner.x.hidden;
     for f_to_hide in &**fs_to_hide {
         if **f_to_hide == *fun_to_inline.x.name {
             fuel = 0;
@@ -1019,7 +1020,7 @@ fn can_inline_function(
         let fun = &fun_to_inline.x.name;
 
         if !ctx.func_sst_map.contains_key(fun) {
-            return Err(Some(format!("Internal error: not in SstMap")));
+            return Err(Some(format!("Verus internal error: not in SstMap")));
         }
 
         if fun_to_inline.x.has.has_decrease {

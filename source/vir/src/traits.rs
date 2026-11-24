@@ -1,14 +1,14 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
-    GenericBoundX, GenericBounds, Ident, Idents, ImplPath, ImplPaths, Krate, Mode, Path, Place,
-    Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr,
-    Visibility, WellKnownItem,
+    CallTarget, CallTargetKind, CrateId, Expr, ExprX, Fun, Function, FunctionKind, FunctionX,
+    GenericBound, GenericBoundX, GenericBounds, Ident, Idents, ImplPath, ImplPaths, Krate, Mode,
+    Path, Place, Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitImplX, TraitX, Typ, TypX,
+    Typs, VirErr, Visibility,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::messages::{Span, ToAny, error};
+use crate::messages::{Span, error};
 use crate::sst_to_air::typ_to_ids;
 use air::ast::{Command, CommandX, Commands, DeclX};
 use air::ast_util::{ident_apply, ident_var, mk_bind_expr, mk_implies, mk_unnamed_axiom, str_typ};
@@ -16,18 +16,47 @@ use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+pub struct DemoteTraitLookup {
+    traits: HashSet<Path>,
+    internal_traits: HashSet<Path>,
+    extension_traits: HashSet<Path>,
+    impl_to_spec_traits: HashMap<Path, Path>,
+    funs: HashSet<Fun>,
+}
+
+impl DemoteTraitLookup {
+    pub fn new(
+        krate: &Krate,
+        other_krates: &[Krate],
+        all_functions: &HashMap<Fun, crate::ast::FunctionStub>,
+    ) -> Self {
+        let traits_iter =
+            || krate.traits.iter().chain(other_krates.iter().flat_map(|k| k.traits.iter()));
+        let funs_iter = || all_functions.keys().map(|name| name.clone());
+
+        let traits: HashSet<Path> = traits_iter().map(|t| t.x.name.clone()).collect();
+        let internal_traits: HashSet<Path> =
+            traits_iter().filter(|t| t.x.proxy.is_none()).map(|t| t.x.name.clone()).collect();
+        let funs: HashSet<Fun> = funs_iter().collect();
+        let mut extension_traits: HashSet<Path> = HashSet::new();
+        let mut impl_to_spec_traits: HashMap<Path, Path> = HashMap::new();
+        for t in traits_iter() {
+            if let Some((extension, imp)) = &t.x.external_trait_extension {
+                extension_traits.insert(extension.clone());
+                impl_to_spec_traits.insert(imp.clone(), extension.clone());
+            }
+        }
+        DemoteTraitLookup { traits, internal_traits, extension_traits, impl_to_spec_traits, funs }
+    }
+}
+
 fn get_trait(fun: &Fun) -> Path {
     fun.path.pop_segment()
 }
 
-fn demote_one_expr(
-    traits: &HashSet<Path>,
-    internal_traits: &HashSet<Path>,
-    extension_traits: &HashSet<Path>,
-    impl_to_spec_traits: &HashMap<Path, Path>,
-    funs: &HashSet<Fun>,
-    expr: &Expr,
-) -> Result<Expr, VirErr> {
+fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirErr> {
+    let DemoteTraitLookup { traits, internal_traits, extension_traits, impl_to_spec_traits, funs } =
+        lookup;
     match &expr.x {
         ExprX::Call {
             target:
@@ -189,27 +218,28 @@ fn demote_one_expr(
     }
 }
 
-// We consider methods for external traits to be static.
-pub fn demote_external_traits(
-    diagnostics: &impl air::messages::Diagnostics,
-    warning_ctx: &crate::context::WarningCtx,
-    path_to_well_known_item: &HashMap<Path, WellKnownItem>,
-    krate: &Krate,
-) -> Result<Krate, VirErr> {
-    check_no_dupe_impls(krate)?;
-
-    let traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
-    let internal_traits: HashSet<Path> =
-        krate.traits.iter().filter(|t| t.x.proxy.is_none()).map(|t| t.x.name.clone()).collect();
-    let funs: HashSet<Fun> = krate.functions.iter().map(|f| f.x.name.clone()).collect();
-    let mut extension_traits: HashSet<Path> = HashSet::new();
-    let mut impl_to_spec_traits: HashMap<Path, Path> = HashMap::new();
-    for t in krate.traits.iter() {
-        if let Some((extension, imp)) = &t.x.external_trait_extension {
-            extension_traits.insert(extension.clone());
-            impl_to_spec_traits.insert(imp.clone(), extension.clone());
+/// Get the method name if this is a trait method that doesn't get demoted.
+pub fn method_if_not_demoted(lookup: &DemoteTraitLookup, function: &Function) -> Option<Fun> {
+    let DemoteTraitLookup { traits, funs, .. } = &lookup;
+    match &function.x.kind {
+        FunctionKind::TraitMethodImpl { method, trait_path, .. }
+        | FunctionKind::ForeignTraitMethodImpl { method, trait_path, .. } => {
+            let our_trait_method = traits.contains(trait_path) && funs.contains(method);
+            if our_trait_method { Some(method.clone()) } else { None }
         }
+        _ => None,
     }
+}
+
+fn is_copy_trait(trait_path: &Path) -> bool {
+    *trait_path == crate::path!(CrateId::Core => "marker", "Copy")
+}
+
+// We consider methods for external traits to be static.
+pub fn demote_external_traits(krate: &Krate, lookup: &DemoteTraitLookup) -> Result<Krate, VirErr> {
+    check_unsafe_trait_impls(krate, lookup)?;
+
+    let DemoteTraitLookup { traits, funs, .. } = &lookup;
 
     let mut kratex = (**krate).clone();
     for function in &mut kratex.functions {
@@ -223,54 +253,42 @@ pub fn demote_external_traits(
                 GenericBoundX::ConstTyp(..) => continue,
             };
             let our_trait = traits.contains(trait_path);
-            if !our_trait {
-                let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
-                    panic!("missing warn_config for function {:?}", function.x.name);
-                };
-                crate::messages::warning_maybe_if_in_local_crate(
-                    warn_config,
+
+            // `Copy` is declared in vstd, but checking it here allows it to work in --no-vstd
+            if !our_trait && !is_copy_trait(trait_path) {
+                return Err(error(
                     &function.span,
-                    &crate::messages::WarningAllow::UndeclaredExternalTrait,
-                    || {
-                        format!(
-                            "cannot use external trait {} as a bound without declaring the trait \
-                            (use #[verifier::external_trait_specification] to declare the trait); \
-                            this is a warning for now but will eventually be an error",
-                            path_as_friendly_rust_name(trait_path)
-                        )
-                    },
-                    |msg| diagnostics.report(&msg.to_any()),
-                );
+                    format!(
+                        "cannot use external trait `{}` as a bound without declaring the trait",
+                        path_as_friendly_rust_name(trait_path)
+                    ),
+                )
+                .help("use `#[verifier::external_trait_specification]` to declare the trait"));
             }
         }
 
         if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
-            let our_trait_method = traits.contains(trait_path) && funs.contains(method);
+            let our_trait = traits.contains(trait_path);
+            let our_trait_method = funs.contains(method);
             let mut functionx = function.x.clone();
-            if !our_trait_method {
-                if path_to_well_known_item.get(trait_path) == Some(&WellKnownItem::DropTrait) {
-                    if !function.x.require.is_empty() {
-                        return Err(error(
-                            &function.span,
-                            "requires are not allowed on the implementation for Drop",
-                        ));
-                    }
-                    if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(_span, es)) if es.len() == 0)
-                    {
-                        return Err(error(
-                            &function.span,
-                            "the implementation for Drop must be marked opens_invariants none",
-                        ));
-                    }
-                    if !matches!(&function.x.unwind_spec, Some(crate::ast::UnwindSpec::NoUnwind)) {
-                        return Err(error(
-                            &function.span,
-                            "the implementation for Drop must be marked no_unwind",
-                        ));
-                    }
-                }
+            if !our_trait
+                || (!our_trait_method && function.x.attrs.assume_compatibility_with_trait_spec)
+            {
                 check_modes(function, &function.span)?;
                 functionx.kind = FunctionKind::Static;
+            } else if !our_trait_method {
+                return Err(
+                    error(
+                        &function.span,
+                        format!(
+                            "no specification for trait method `{:}` on trait `{:}` supplied to Verus",
+                            method.path.last_segment(),
+                            path_as_friendly_rust_name(trait_path)
+                        ),
+                    )
+                    .help("if this trait is declared via `#[verifier::external_trait_specification]` consider adding a specification for the method there")
+                    .help("alternatively, use `#[verifier::assume_compatibility_with_trait_spec]` on this method to declare an (unchecked) assumption that the implementation is compatible with the trait's specification")
+                );
             }
             *function = Spanned::new(function.span.clone(), functionx);
         }
@@ -298,29 +316,40 @@ pub fn demote_external_traits(
             }
             *function = Spanned::new(function.span.clone(), functionx);
         }
-
-        let mut map: VisitorScopeMap = ScopeMap::new();
-        *function = crate::ast_visitor::map_function_visitor_env(
-            &function,
-            &mut map,
-            &mut (),
-            &|_state, _, expr| {
-                demote_one_expr(
-                    &traits,
-                    &internal_traits,
-                    &extension_traits,
-                    &impl_to_spec_traits,
-                    &funs,
-                    expr,
-                )
-            },
-            &|_state, _, stmt| Ok(vec![stmt.clone()]),
-            &|_state, typ| Ok(typ.clone()),
-            &|_state, _, place| Ok(place.clone()),
-        )?;
     }
-
     Ok(Arc::new(kratex))
+}
+
+fn check_unsafe_trait_impls(krate: &Krate, lookup: &DemoteTraitLookup) -> Result<(), VirErr> {
+    for trait_impl in krate.trait_impls.iter() {
+        if trait_impl.x.is_unsafe && !lookup.traits.contains(&trait_impl.x.trait_path) {
+            return Err(error(
+                &trait_impl.span,
+                format!("`unsafe impl` of trait `{:}` which is unknown to Verus (i.e., the trait is either declared outside the verus! macro or it is marked as `external`)", path_as_friendly_rust_name(&trait_impl.x.trait_path)),
+            )
+            .help("since the trait is unsafe, there may be obligations cannot check without a specification for the trait")
+            .help("you may be able to give Verus a spec for this trait using `external_trait_specification`"));
+        }
+    }
+    Ok(())
+}
+
+/// Walk all expressions in the function and demote all Calls to foreign trait functions
+pub fn demote_external_traits_function_calls(
+    lookup: &DemoteTraitLookup,
+    function: &Function,
+) -> Result<Function, VirErr> {
+    let mut map: VisitorScopeMap = ScopeMap::new();
+    crate::ast_visitor::map_function_visitor_env(
+        &function,
+        &mut map,
+        &mut (),
+        &|_state, _, expr| demote_one_expr(&lookup, expr),
+        &|_state, _, stmt| Ok(vec![stmt.clone()]),
+        &|_state, typ| Ok(typ.clone()),
+        &|_state, _, place| Ok(place.clone()),
+        &|_state, _, pattern| Ok(pattern.clone()),
+    )
 }
 
 fn rewrite_path(from_path: &Path, to_path: &Path, path: &Path) -> Path {
@@ -458,6 +487,7 @@ pub fn rewrite_external_function(
         &|_, _, stmt| Ok(vec![stmt.clone()]),
         &|_, t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t)),
         &|_, _, p: &Place| Ok(p.clone()),
+        &|_, _, place| Ok(place.clone()),
     )
     .expect("rewrite_external_function")
 }
@@ -556,6 +586,7 @@ copy by fn_call_to_vir in the rust_verify crate.  For example:
 */
 pub fn inherit_default_bodies(
     krate: &Krate,
+    unpruned_krate: &Krate,
     warning_ctx: &mut crate::context::WarningCtx,
 ) -> Result<Krate, VirErr> {
     let mut kratex = (**krate).clone();
@@ -593,13 +624,36 @@ pub fn inherit_default_bodies(
         }
     }
 
-    for trait_impl in &krate.trait_impls {
+    // map TSpec to T for each external_trait_extension(TSpec via TSpecImpl) on T
+    let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
+    for tr in unpruned_krate.traits.iter() {
+        if let Some((extension, _)) = &tr.x.external_trait_extension {
+            extension_to_trait.insert(extension.clone(), tr.x.name.clone());
+        }
+    }
+    let synthesized_impls = synthesize_extension_impls(
+        krate,
+        unpruned_krate,
+        &trait_map,
+        &default_methods,
+        &extension_to_trait,
+    );
+    kratex.trait_impls.extend(synthesized_impls.iter().cloned());
+
+    for trait_impl in krate.trait_impls.iter().chain(synthesized_impls.iter()) {
         if !trait_map.contains_key(&trait_impl.x.trait_path) {
             // skip external traits and marker traits
             continue;
         }
-        if trait_impl.x.auto_imported {
+        if trait_impl.x.external_trait_blanket {
+            // the blanket impl for an extension trait implements every method
+            continue;
+        }
+        if trait_impl.x.auto_imported && !extension_to_trait.contains_key(&trait_impl.x.trait_path)
+        {
             // skip external impls
+            // (but extension trait spec functions can only be overridden by Verus code,
+            // so the default bodies are valid even for external types)
             continue;
         }
         for default_function in &default_methods[&trait_impl.x.trait_path] {
@@ -650,9 +704,18 @@ pub fn inherit_default_bodies(
                     &ft,
                 )
                 .unwrap();
-                let ret =
-                    crate::ast_visitor::map_param_visitor(&default_function.x.ret, &mut (), &ft)
-                        .unwrap();
+                let outer_ret = crate::ast_visitor::map_param_visitor(
+                    &default_function.x.outer_ret,
+                    &mut (),
+                    &ft,
+                )
+                .unwrap();
+                let inner_ret = crate::ast_visitor::map_param_visitor(
+                    &default_function.x.inner_ret,
+                    &mut (),
+                    &ft,
+                )
+                .unwrap();
                 let name =
                     crate::def::trait_inherit_default_name(&default_function.x.name, &impl_path);
                 let visibility = Visibility {
@@ -672,6 +735,12 @@ pub fn inherit_default_bodies(
                     &trait_impl.x.trait_path,
                     &tr.x.typ_params,
                 );
+                if let Some(origin_trait) = extension_to_trait.get(&trait_impl.x.trait_path) {
+                    // For TSpec: T, also remove the Self: T bound,
+                    // since the impl of TSpec is merged with the impl of T
+                    // (just as for spec functions explicitly implemented in impls of TSpecImpl)
+                    remove_self_is_itself_bound(&mut f_typ_bounds, origin_trait, &tr.x.typ_params);
+                }
                 let f_typ_bounds =
                     crate::ast_visitor::map_generic_bounds_visitor(&f_typ_bounds, &mut (), &ft)
                         .expect("map_generic_bounds_visitor");
@@ -690,8 +759,8 @@ pub fn inherit_default_bodies(
                     typ_params: Arc::new(typ_params),
                     typ_bounds: Arc::new(typ_bounds),
                     params,
-                    ret,
-                    ens_has_return: default_function.x.ens_has_return,
+                    outer_ret,
+                    inner_ret,
                     require: Arc::new(vec![]),
                     ensure: (Arc::new(vec![]), Arc::new(vec![])),
                     returns: None,
@@ -705,8 +774,9 @@ pub fn inherit_default_bodies(
                     item_kind: default_function.x.item_kind,
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
                     body: None,
+                    return_opaque_type_eqs: Arc::new(vec![]),
                     extra_dependencies: vec![],
-                    async_ret: None,
+                    hidden: Arc::new(vec![]),
                 };
                 let warn_config = warning_ctx.fun_warn_configs[&default_function.x.name].clone();
                 warning_ctx.fun_warn_configs.insert(inherit_functionx.name.clone(), warn_config);
@@ -716,6 +786,97 @@ pub fn inherit_default_bodies(
     }
 
     Ok(Arc::new(kratex))
+}
+
+/// For `#[verifier::external_trait_extension(TSpec via TSpecImpl)]` on a trait `T`,
+/// an `impl T for ...` may be paired with an `impl TSpecImpl for ...`
+/// (which Verus represents as an impl of `TSpec`).
+/// If `TSpec` has spec functions with default bodies, then any impl of `T` that
+/// is *not* paired with an impl of `TSpecImpl` still gets the default bodies from `TSpec`.
+/// To support this, we synthesize an impl of `TSpec` for each such unpaired impl of `T`,
+/// as if the user had written an empty impl of `TSpecImpl`.
+/// inherit_default_bodies then fills in the synthesized impl with the default bodies.
+///
+/// Note: to decide whether an impl of `T` is paired, we look at the unpruned crate,
+/// so that we never synthesize a default when a user-written `TSpecImpl` impl exists
+/// (e.g. in another crate) but has been pruned away.
+/// I'm not sure this is necessary - ideally prune.rs wouldn't prune anyway
+/// _just_ the spec impl anyway - but I'm not sure what the current behavior is there,
+/// so using the unpruned crate is more conservative.
+fn synthesize_extension_impls(
+    krate: &Krate,
+    unpruned_krate: &Krate,
+    trait_map: &HashMap<Path, &Trait>,
+    default_methods: &HashMap<Path, Vec<&Function>>,
+    extension_to_trait: &HashMap<Path, Path>,
+) -> Vec<TraitImpl> {
+    // map T to TSpec, for each extension trait TSpec that has at least one default method
+    let mut trait_to_extension: HashMap<Path, Path> = HashMap::new();
+    for (extension, t) in extension_to_trait.iter() {
+        if trait_map.contains_key(extension)
+            && default_methods.get(extension).is_some_and(|ms| !ms.is_empty())
+        {
+            trait_to_extension.insert(t.clone(), extension.clone());
+        }
+    }
+    if trait_to_extension.is_empty() {
+        return vec![];
+    }
+
+    // Find all impls of T that are paired with an impl of TSpec
+    let unpruned_impl_map: HashMap<Path, TraitImpl> =
+        unpruned_krate.trait_impls.iter().map(|ti| (ti.x.impl_path.clone(), ti.clone())).collect();
+    let mut paired: HashSet<Path> = HashSet::new();
+    for ti in unpruned_krate.trait_impls.iter() {
+        if ti.x.external_trait_blanket {
+            continue;
+        }
+        let Some(t) = extension_to_trait.get(&ti.x.trait_path) else { continue };
+        if !trait_to_extension.contains_key(t) {
+            continue;
+        }
+        match find_trait_impl_from_extension(ti, &unpruned_impl_map, t) {
+            Ok(origin) => {
+                paired.insert(origin.x.impl_path.clone());
+            }
+            Err(_) => {
+                // The error is reported elsewhere (see Ctx::new);
+                // to be conservative, treat all possible candidates as paired.
+                // (TODO: report that error here instead?)
+                for imp in ti.x.trait_typ_arg_impls.x.iter() {
+                    if let ImplPath::TraitImplPath(imp) = imp {
+                        paired.insert(imp.clone());
+                    }
+                }
+                continue;
+            }
+        }
+    }
+
+    let mut synthesized: Vec<TraitImpl> = Vec::new();
+    for ti in krate.trait_impls.iter() {
+        if ti.x.external_trait_blanket || paired.contains(&ti.x.impl_path) {
+            continue;
+        }
+        let Some(extension) = trait_to_extension.get(&ti.x.trait_path) else { continue };
+        // The bounds on TSpecImpl are the bounds on T plus T itself
+        let mut trait_typ_arg_impls = vec![ImplPath::TraitImplPath(ti.x.impl_path.clone())];
+        trait_typ_arg_impls.extend(ti.x.trait_typ_arg_impls.x.iter().cloned());
+        let trait_implx = TraitImplX {
+            impl_path: crate::def::synthesized_extension_impl_path(&ti.x.impl_path),
+            typ_params: ti.x.typ_params.clone(),
+            typ_bounds: ti.x.typ_bounds.clone(),
+            trait_path: extension.clone(),
+            trait_typ_args: ti.x.trait_typ_args.clone(),
+            trait_typ_arg_impls: ti.x.trait_typ_arg_impls.new_x(Arc::new(trait_typ_arg_impls)),
+            owning_module: ti.x.owning_module.clone(),
+            auto_imported: ti.x.auto_imported,
+            external_trait_blanket: false,
+            is_unsafe: false,
+        };
+        synthesized.push(ti.new_x(trait_implx));
+    }
+    synthesized
 }
 
 pub(crate) fn redirect_calls_in_default_methods(
@@ -803,7 +964,7 @@ pub(crate) fn redirect_calls_in_default_methods(
                     // we could consider this to be a panic rather than an Err.)
                     return Err(error(
                         span,
-                        "call from trait default method to same trait with different type arguments is not allowed",
+                        "call from provided method to same trait with different type arguments is not allowed",
                     ));
                 }
             }
@@ -853,20 +1014,20 @@ pub(crate) fn redirect_calls_in_default_methods(
 
 fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {
     if function.x.mode != Mode::Exec {
-        return Err(error(span, "function for external trait must have mode 'exec'"));
+        return Err(error(span, "function for external trait must have mode `exec`"));
     }
     for param in function.x.params.iter() {
         if param.x.mode != Mode::Exec {
             return Err(error(
                 span,
-                "function for external trait must have all parameters have mode 'exec'",
+                "function for external trait must have all parameters have mode `exec`",
             ));
         }
     }
-    if function.x.ret.x.mode != Mode::Exec {
+    if function.x.outer_ret.x.mode != Mode::Exec {
         return Err(error(
             span,
-            "function for external trait must have all parameters have mode 'exec'",
+            "function for external trait must have all parameters have mode `exec`",
         ));
     }
     Ok(())
@@ -1033,6 +1194,48 @@ pub fn trait_decls_to_air(ctx: &Ctx, krate: &crate::sst::KrateSst) -> Commands {
             ));
             commands.push(Arc::new(CommandX::Global(decl_trait_id)));
             commands.push(Arc::new(CommandX::Global(decl_to_dyn)));
+
+            // Typing axiom for to_dyn:
+            //   forall Self, A1..Am, x. has_type(x, Self) ==>
+            //     has_type(to_dyn%T(Self, A1..Am, x), DYN%T(A1..Am))
+            use crate::ast_util::LowerUniqueVar;
+            use air::ast::{BindX, Quant};
+            use air::ast_util::{ident_binder, str_var};
+            let typ_params = tr.x.typ_param_names_with_self();
+            let typ_args: Vec<Typ> =
+                typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
+            let dyn_typ = Arc::new(TypX::Dyn(
+                tr.x.name.clone(),
+                Arc::new(typ_args[1..].to_vec()),
+                Arc::new(vec![]),
+            ));
+            let x_name = "x!";
+            let x = str_var(x_name);
+            let mut to_dyn_args: Vec<air::ast::Expr> =
+                typ_args.iter().flat_map(|t| typ_to_ids(ctx, t)).collect();
+            to_dyn_args.push(x.clone());
+            let to_dyn = ident_apply(&ctx.name_ctxt.to_dyn(&tr.x.name), &Arc::new(to_dyn_args));
+            let hypothesis = crate::sst_to_air::expr_has_typ(ctx, &x, &typ_args[0]);
+            let conclusion = crate::sst_to_air::expr_has_typ(ctx, &to_dyn, &dyn_typ);
+            let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
+            for typ_param in typ_params.iter() {
+                for (x, t) in crate::def::suffix_typ_param_ids_types(typ_param) {
+                    binders.push(ident_binder(&x.lower(), &str_typ(t)));
+                }
+            }
+            binders.push(ident_binder(&Arc::new(x_name.to_string()), &str_typ(crate::def::POLY)));
+            let qid = crate::def::new_internal_qid(
+                ctx,
+                format!("{}_has_type_to_dyn", path_as_friendly_rust_name(&tr.x.name)),
+            );
+            let bind = Arc::new(BindX::Quant(
+                Quant::Forall,
+                Arc::new(binders),
+                Arc::new(vec![Arc::new(vec![to_dyn.clone()])]),
+                qid,
+            ));
+            let forall = mk_bind_expr(&bind, &mk_implies(&hypothesis, &conclusion));
+            commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));
         }
     }
     Arc::new(commands)
@@ -1085,17 +1288,17 @@ pub(crate) fn dyn_spec_fn_axiom(
     function: &crate::sst::FunctionSst,
 ) {
     // For spec functions, connect dyn T blanket impl to a specific impl of T:
-    //   trait T<A1..Am> { spec fn f(self, x1..xk) }
+    //   trait T<A1..Am> { spec fn f<C1..Cj>(self, x1..xk) }
     //   impl<B1..Bn> T<t1..tm> for t0
     // ==>
-    //   (axiom (forall (B1..Bn (self! Poly) x1..xk) (!
+    //   (axiom (forall (B1..Bn C1..Cj (self! Poly) x1..xk) (!
     //      (=
-    //       (T.f.? $dyn (DYN%T. t1..tm) t1..tm (to_dyn%T t0 t1..tm self!) x1..xk)
-    //       (T.f.? $          t0        t1..tm                     self!  x1..xk)
+    //       (T.f.? $dyn (DYN%T. t1..tm) t1..tm C1..Cj (to_dyn%T t0 t1..tm self!) x1..xk)
+    //       (T.f.? $          t0        t1..tm C1..Cj                     self!  x1..xk)
     //      )
     //   )))
     // function.x.pars = self, x1...xk
-    // function.x.typ_params = B1..Bn
+    // function.x.typ_params = B1..Bn C1..Cj
     // trait_typ_args = t0 t1..tm
     // Note: we don't need anything for exec/proof functions,
     // because dyn T just uses T's requires/ensures.
@@ -1103,12 +1306,14 @@ pub(crate) fn dyn_spec_fn_axiom(
     let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &function.x.kind else {
         panic!("dyn_spec_fn_axiom expects TraitMethodImpl");
     };
-    let mut typ_ids: Vec<air::ast::Expr> = Vec::new();
+    let typ_args =
+        trait_method_impl_typ_args(&ctx.func_map[method], trait_typ_args, &function.x.typ_params);
+    let typ_ids: Vec<air::ast::Expr> =
+        trait_typ_args.iter().flat_map(|targ| typ_to_ids(ctx, targ)).collect();
     let mut lhs_args: Vec<air::ast::Expr> = Vec::new();
     let mut rhs_args: Vec<air::ast::Expr> = Vec::new();
-    for (n, targ) in trait_typ_args.iter().enumerate() {
+    for (n, targ) in typ_args.iter().enumerate() {
         rhs_args.extend(typ_to_ids(ctx, targ));
-        typ_ids.extend(typ_to_ids(ctx, targ));
         if n == 0 {
             let typ_args_no_self = Arc::new(trait_typ_args.iter().skip(1).cloned().collect());
             let dyn_typ =
@@ -1147,6 +1352,29 @@ pub(crate) fn dyn_spec_fn_axiom(
     );
     let def_axiom = mk_unnamed_axiom(e_forall);
     decl_commands.push(Arc::new(CommandX::Global(def_axiom)));
+}
+
+// For a trait method impl, return the type arguments that instantiate the trait method:
+// trait_typ_args (Self and the trait generics) followed by the impl method's own generics.
+// The trait method declares [Self, trait generics..., method generics...],
+// while the impl method declares [impl generics..., method generics...].
+// We use the impl's names for the method generics, since inherited defaults rename them.
+pub(crate) fn trait_method_impl_typ_args(
+    trait_method: &Function,
+    trait_typ_args: &Typs,
+    impl_typ_params: &Idents,
+) -> Typs {
+    // Count the method's own generics.
+    let trait_method_own_generic_param_count =
+        trait_method.x.typ_params.len() - trait_typ_args.len();
+    // The index where the method's own generics begin, after the impl generics.
+    let impl_method_generic_params_start =
+        impl_typ_params.len() - trait_method_own_generic_param_count;
+    let mut typ_args = (**trait_typ_args).clone();
+    for x in &impl_typ_params[impl_method_generic_params_start..] {
+        typ_args.push(Arc::new(TypX::TypParam(x.clone())));
+    }
+    Arc::new(typ_args)
 }
 
 // Consider a trait impl like:
@@ -1321,6 +1549,20 @@ pub(crate) fn fix_missing_trigger_params_fn(
     (substs, extra_trigger_terms)
 }
 
+pub fn external_trait_blanket_impls_to_air(ctx: &Ctx, imps: &Vec<TraitImpl>) -> Commands {
+    // If TSpec extends T, the generated blanket impl "impl<A: T> TSpec for A" yields
+    //   forall A. tr_bound%T(A) ==> tr_bound%TSpec(A)
+    // This is the converse of TSpec's supertrait axiom (see trait_bound_axioms),
+    // and like that axiom, it depends only on the traits, not on any other impls or functions,
+    // and it has no proof obligations (the blanket impl's methods are all external_body),
+    // so we emit it up front.
+    let mut commands: Vec<Command> = Vec::new();
+    for imp in imps.iter().filter(|imp| imp.x.external_trait_blanket) {
+        commands.extend(trait_impl_to_air(ctx, imp).iter().cloned());
+    }
+    Arc::new(commands)
+}
+
 pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     // Axiom for bounds predicates (based on trait impls)
     // forall typ_params. typ_bounds ==> tr_bound%T(...typ_args...)
@@ -1365,36 +1607,26 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     Arc::new(vec![Arc::new(CommandX::Global(axiom))])
 }
 
-pub fn check_no_dupe_impls(krate: &Krate) -> Result<(), VirErr> {
-    let mut paths = HashMap::<Path, TraitImpl>::new();
-    for trait_impl in krate.trait_impls.iter() {
-        match paths.get(&trait_impl.x.impl_path) {
-            Some(prev_trait_impl) => {
-                let e = error(
-                    &prev_trait_impl.span,
-                    "duplicate specification for this trait implementation",
-                )
-                .primary_span(&trait_impl.span);
-                return Err(e);
-            }
-            None => {
-                paths.insert(trait_impl.x.impl_path.clone(), trait_impl.clone());
-            }
-        }
-    }
-    Ok(())
+pub type MergedTraits = Arc<MergedTraitsX>;
+pub struct MergedTraitsX {
+    pub traits: Vec<Trait>,
+    pub trait_impls: Vec<TraitImpl>,
+
+    pub trait_map: HashMap<Path, Trait>,
 }
 
 // Allow multiple external_trait_specification to specify different members of the same trait,
 // so that we don't have to specify all of the default members of a trait at once (e.g. Iterator).
 // We merge partial specifications together here.
-pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
+pub fn merge_external_traits(
+    krate: &Krate,
+    other_crates: &[Krate],
+) -> Result<MergedTraits, VirErr> {
     use crate::ast_util::generic_bounds_equal;
     use crate::well_formed::trait_conflict_error;
-    let mut kratex = (*krate).clone();
     let mut traits: Vec<Trait> = Vec::new();
     let mut prev_trait_index: HashMap<Path, usize> = HashMap::new();
-    for t in &kratex.traits {
+    for t in other_crates.iter().flat_map(|k| k.traits.iter()).chain(krate.traits.iter()) {
         if t.x.proxy.is_some() {
             if let Some(index) = prev_trait_index.get(&t.x.name) {
                 let prev = &traits[*index];
@@ -1479,7 +1711,8 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
     // Also remove any duplicate auto-imported trait impls:
     let mut trait_impls: Vec<TraitImpl> = Vec::new();
     let mut trait_impl_set: HashSet<Path> = HashSet::new();
-    for ti in &kratex.trait_impls {
+    for ti in other_crates.iter().flat_map(|k| k.trait_impls.iter()).chain(krate.trait_impls.iter())
+    {
         if ti.x.auto_imported && trait_impl_set.contains(&ti.x.impl_path) {
             continue;
         }
@@ -1487,16 +1720,31 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
         trait_impl_set.insert(ti.x.impl_path.clone());
     }
 
-    kratex.traits = traits;
-    kratex.trait_impls = trait_impls;
-    Ok(Arc::new(kratex))
+    let mt = Arc::new(MergedTraitsX {
+        trait_map: traits.iter().map(|t| (t.x.name.clone(), t.clone())).collect(),
+        traits: traits,
+        trait_impls: trait_impls,
+    });
+    Ok(mt)
 }
 
 pub(crate) fn find_trait_impl_from_extension(
     extension: &TraitImpl,
-    candidates: Vec<TraitImpl>,
+    trait_impl_map: &HashMap<Path, TraitImpl>,
     origin_trait_path: &Path,
 ) -> Result<TraitImpl, VirErr> {
+    let mut candidates: Vec<TraitImpl> = Vec::new();
+    for imp in extension.x.trait_typ_arg_impls.x.iter() {
+        if let ImplPath::TraitImplPath(imp) = imp {
+            if let Some(candidate) = trait_impl_map.get(imp) {
+                if &candidate.x.trait_path == origin_trait_path
+                    && !candidate.x.external_trait_blanket
+                {
+                    candidates.push(candidate.clone());
+                }
+            }
+        }
+    }
     for candidate in candidates.iter() {
         if candidate.x.typ_params == extension.x.typ_params
             && crate::ast_util::n_types_equal(
@@ -1519,46 +1767,6 @@ pub(crate) fn find_trait_impl_from_extension(
         err = err.secondary_span(&candidate.span)
     }
     return Err(err);
-}
-
-/// For trait method impls, the 'ens_has_return' should be inherited from the method decl
-pub fn fixup_ens_has_return_for_trait_method_impls(krate: Krate) -> Result<Krate, VirErr> {
-    let mut krate = krate;
-    let kratex = &mut Arc::make_mut(&mut krate);
-    let mut fun_map = HashMap::<Fun, Function>::new();
-    for function in kratex.functions.iter() {
-        if matches!(function.x.kind, FunctionKind::TraitMethodDecl { .. }) {
-            fun_map.insert(function.x.name.clone(), function.clone());
-        }
-    }
-    for function in kratex.functions.iter_mut() {
-        if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
-            let method = method.clone();
-            if !function.x.ens_has_return {
-                match fun_map.get(&method) {
-                    None => {}
-                    Some(f) if f.x.ens_has_return => {
-                        let functionx = &mut Arc::make_mut(&mut *function).x;
-                        functionx.ens_has_return = true;
-                    }
-                    Some(_) => {}
-                }
-            }
-            if function.x.returns.is_some() {
-                match fun_map.get(&method) {
-                    None => {}
-                    Some(f) if f.x.returns.is_some() => {
-                        return Err(error(
-                            &function.span,
-                            "a `returns` clause cannot be declared on both a trait method impl and its declaration",
-                        ).secondary_span(&f.span));
-                    }
-                    Some(_) => {}
-                }
-            }
-        }
-    }
-    Ok(krate)
 }
 
 // Is an impl of the form impl<A: ?Sized + ...> T<...> for A
@@ -1598,6 +1806,144 @@ pub fn get_dyn_traits(krate: &Krate) -> HashSet<Path> {
     let mut visitor = WalkTypVisitorEnv { env: &mut dyn_traits, ft };
     visitor.visit_krate(krate).unwrap();
     dyn_traits
+}
+
+// A contract proved for each concrete Self need not hold after substituting dyn T:
+// for example, a quantifier over &Self then ranges over all implementations.
+// Permit receiver reads and the dispatch Self argument of receiver calls;
+// conservatively reject other uses in logical and operational contracts.
+fn check_dyn_spec(f: &Function) -> Result<(), ()> {
+    use crate::ast::{PlaceX, UnaryOp, VarIdent};
+    use crate::ast_visitor::{AstVisitor, NoScoper, Walk};
+
+    struct Visitor<'a> {
+        receiver: Option<&'a VarIdent>,
+    }
+
+    impl Visitor<'_> {
+        fn is_receiver_place(&self, place: &Place) -> bool {
+            match &place.x {
+                PlaceX::Local(v) => self.receiver == Some(v),
+                PlaceX::DerefMut(p) => self.is_receiver_place(p),
+                PlaceX::Temporary(e) => self.is_receiver_expr(e),
+                _ => false,
+            }
+        }
+
+        fn is_receiver_expr(&self, expr: &Expr) -> bool {
+            match &expr.x {
+                ExprX::Var(v) | ExprX::VarAt(v, _) => self.receiver == Some(v),
+                ExprX::ReadPlace(p, _) | ExprX::ImplicitReborrowOrSpecRead(p, _, _) => {
+                    self.is_receiver_place(p)
+                }
+                ExprX::Old(e)
+                | ExprX::Unary(UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_), e) => {
+                    self.is_receiver_expr(e)
+                }
+                _ => false,
+            }
+        }
+    }
+
+    impl AstVisitor<Walk, (), NoScoper> for Visitor<'_> {
+        fn visit_typ(&mut self, typ: &Typ) -> Result<(), ()> {
+            match &**typ {
+                TypX::TypParam(p) if *p == crate::def::trait_self_type_param() => Err(()),
+                _ => self.visit_typ_rec(typ),
+            }
+        }
+
+        fn visit_expr(&mut self, expr: &Expr) -> Result<(), ()> {
+            if self.is_receiver_expr(expr) {
+                return Ok(());
+            }
+            if let ExprX::Call {
+                target: CallTarget::Fun(CallTargetKind::Dynamic, _, typs, _, _),
+                args,
+                post_args,
+                body,
+            } = &expr.x
+            {
+                if args.first().is_some_and(|a| self.is_receiver_expr(a))
+                    && typs.first().is_some_and(
+                        |t| matches!(&**t, TypX::TypParam(p) if *p == crate::def::trait_self_type_param()),
+                    )
+                {
+                    self.visit_typ(&expr.typ)?;
+                    // The first type argument selects the receiver's implementation.
+                    // Other type arguments can introduce independent uses of Self.
+                    for typ in typs.iter().skip(1) {
+                        self.visit_typ(typ)?;
+                    }
+                    self.visit_exprs(args)?;
+                    self.visit_opt_expr(post_args)?;
+                    return self.visit_opt_expr(body);
+                }
+            }
+            self.visit_expr_rec(expr)
+        }
+
+        fn visit_stmt(&mut self, stmt: &crate::ast::Stmt) -> Result<(), ()> {
+            self.visit_stmt_rec(stmt)
+        }
+
+        fn visit_pattern(&mut self, pattern: &crate::ast::Pattern) -> Result<(), ()> {
+            self.visit_pattern_rec(pattern)
+        }
+
+        fn visit_place(&mut self, place: &Place) -> Result<(), ()> {
+            if self.is_receiver_place(place) { Ok(()) } else { self.visit_place_rec(place) }
+        }
+    }
+
+    let FunctionX {
+        name: _,
+        proxy: _,
+        kind: _,
+        visibility: _,
+        body_visibility: _,
+        opaqueness: _,
+        owning_module: _,
+        mode: _,
+        typ_params: _,
+        typ_bounds: _,
+        params,
+        outer_ret: _,
+        inner_ret: _,
+        require,
+        ensure: (ensure0, ensure1),
+        returns,
+        decrease,
+        decrease_when,
+        decrease_by: _,
+        fndef_axioms,
+        mask_spec,
+        atomic_update,
+        unwind_spec,
+        item_kind: _,
+        attrs: _,
+        body: _,
+        return_opaque_type_eqs: _,
+        extra_dependencies: _,
+        hidden: _,
+    } = &f.x;
+    let receiver = params.first().filter(|p| p.x.name.0.as_str() == "self");
+    let mut visitor = Visitor { receiver: receiver.map(|p| &p.x.name) };
+    visitor.visit_exprs(require)?;
+    visitor.visit_exprs(ensure0)?;
+    visitor.visit_exprs(ensure1)?;
+    visitor.visit_opt_expr(returns)?;
+    visitor.visit_exprs(decrease)?;
+    visitor.visit_opt_expr(decrease_when)?;
+    visitor.visit_opt_exprs(fndef_axioms)?;
+    if let Some(mask_spec) = mask_spec {
+        visitor.visit_mask_spec(mask_spec)?;
+    }
+    visitor.visit_opt_expr(atomic_update)?;
+    if let Some(unwind_spec) = unwind_spec {
+        visitor.visit_unwind_spec(unwind_spec)?;
+    }
+    Ok(())
 }
 
 // This extends the trait dyn compatibility rules from
@@ -1673,13 +2019,13 @@ fn compute_dyn_compatibility(
         if f.x.mode == Mode::Spec {
             // No ensures clauses allowed for spec functions
             if f.x.ensure.0.len() + f.x.ensure.1.len() > 0 {
-                let reason = format!("spec fn {f_name} cannot have ensures");
+                let reason = format!("spec fn {f_name} cannot have `ensures`");
                 return Arc::new(DynCompatible::Reject { reason });
             }
         } else {
             if f.x.params.len() == 0 {
                 // Rust should already check that there is a self parameter
-                let reason = format!("internal Verus error: {f_name} has no self parameter");
+                let reason = format!("Verus internal error: {f_name} has no self parameter");
                 return Arc::new(DynCompatible::Reject { reason });
             }
             let self_param = &f.x.params[0];
@@ -1689,6 +2035,11 @@ fn compute_dyn_compatibility(
                 let reason = format!("self parameter of function {f_name} must be {m}");
                 return Arc::new(DynCompatible::Reject { reason });
             }
+        }
+        if check_dyn_spec(f).is_err() {
+            let reason =
+                format!("specification of function {f_name} uses Self outside of the receiver");
+            return Arc::new(DynCompatible::Reject { reason });
         }
     }
     if let Some(d) = unsized_blanket_super {
@@ -1718,32 +2069,114 @@ fn get_dyn_compatibility(
     }
 }
 
-pub fn set_krate_dyn_compatibility(imported: &Vec<Krate>, krate: &mut crate::ast::KrateX) {
-    let mut tr_map: HashMap<Path, Trait> = HashMap::new();
-    for tr in &krate.traits {
-        tr_map.insert(tr.x.name.clone(), tr.clone());
-    }
+/// Compute dyn_compatible for each trait declared in krate.
+///
+/// A trait may be specified piecewise across several crates
+/// (via multiple external_trait_specification declarations).
+/// For such traits, dyn compatibility is computed on the merged trait,
+/// since a downstream specification can add methods/specs that make the trait
+/// no longer verus-dyn-compatible.
+/// If an upstream crate has already treated such a trait as verus-dyn-compatible
+/// (and so may have exported facts relying on dyn T: T),
+/// but the merged trait is not verus-dyn-compatible, the merge is rejected.
+pub fn set_krate_dyn_compatibility(
+    imported: &Vec<Krate>,
+    merged_traits: &MergedTraits,
+    krate: &mut crate::ast::KrateX,
+) -> Result<(), VirErr> {
+    use crate::ast::DynCompatible;
+    let tr_map: &HashMap<Path, Trait> = &merged_traits.trait_map;
     let mut fun_map: HashMap<Fun, Function> = HashMap::new();
-    for f in &krate.functions {
+    for f in imported.iter().flat_map(|k| k.functions.iter()).chain(krate.functions.iter()) {
         fun_map.insert(f.x.name.clone(), f.clone());
     }
     let mut unsized_blanketed_traits: HashSet<Path> = HashSet::new();
-    for ti in &krate.trait_impls {
+    for ti in merged_traits.trait_impls.iter() {
         if is_unsized_blanket_impl(ti) {
             unsized_blanketed_traits.insert(ti.x.trait_path.clone());
         }
     }
-    let mut dyn_map: HashMap<Path, Arc<crate::ast::DynCompatible>> = HashMap::new();
+    let local_traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
+    // For each trait, the verdicts computed by the imported crates that declare it
+    let mut imported_verdicts: HashMap<Path, Vec<(Trait, Arc<DynCompatible>)>> = HashMap::new();
     for k in imported {
         for tr in &k.traits {
             let d = tr.x.dyn_compatible.as_ref().expect("imported dyn_compatible").clone();
-            dyn_map.insert(tr.x.name.clone(), d);
+            imported_verdicts.entry(tr.x.name.clone()).or_default().push((tr.clone(), d));
+        }
+    }
+    // Reuse an imported verdict only if the trait is declared by exactly one crate;
+    // otherwise, recompute the verdict on the merged trait.
+    let mut dyn_map: HashMap<Path, Arc<DynCompatible>> = HashMap::new();
+    for (path, verdicts) in imported_verdicts.iter() {
+        if verdicts.len() == 1 && !local_traits.contains(path) {
+            dyn_map.insert(path.clone(), verdicts[0].1.clone());
+        }
+    }
+    for tr in merged_traits.traits.iter() {
+        let path = &tr.x.name;
+        let Some(verdicts) = imported_verdicts.get(path) else { continue };
+        if verdicts.len() == 1 && !local_traits.contains(path) {
+            continue;
+        }
+        let d =
+            get_dyn_compatibility(tr_map, &unsized_blanketed_traits, &fun_map, &mut dyn_map, path);
+        if matches!(&*d, DynCompatible::Accept) {
+            continue;
+        }
+        if let Some((upstream, _)) =
+            verdicts.iter().find(|(_, v)| matches!(&**v, DynCompatible::Accept))
+        {
+            let reason = match &*d {
+                DynCompatible::Accept => unreachable!(),
+                DynCompatible::Reject { reason } => reason.clone(),
+                DynCompatible::RejectUnsizedBlanketImpl { .. } => {
+                    "it has an unsized blanket impl".to_string()
+                }
+            };
+            // The crate that declared a particular copy of the trait
+            // (via external_trait_specification, or the trait itself)
+            let spec_crate = |t: &Trait| match &t.x.proxy {
+                Some(proxy) => proxy.x.krate.to_string(),
+                None => t.x.name.krate.to_string(),
+            };
+            let name = path_as_friendly_rust_name(path);
+            let local = krate.traits.iter().find(|t| &t.x.name == path);
+            // Blame the first imported copy that is itself not dyn-compatible;
+            // otherwise blame the local copy;
+            // otherwise, the combination of the imported copies is to blame.
+            let culprit = verdicts.iter().find(|(_, v)| !matches!(&**v, DynCompatible::Accept));
+            let (span, culprit_desc) = match (culprit, local) {
+                (Some((t, _)), _) => (&t.span, format!("crate `{}`", spec_crate(t))),
+                (None, Some(t)) => (&t.span, format!("crate `{}`", spec_crate(t))),
+                (None, None) => {
+                    let mut crates: Vec<String> =
+                        verdicts.iter().map(|(t, _)| format!("`{}`", spec_crate(t))).collect();
+                    crates.dedup();
+                    (
+                        &tr.span,
+                        format!("the combined specifications from crates {}", crates.join(", ")),
+                    )
+                }
+            };
+            let upstream_crate = spec_crate(upstream);
+            return Err(crate::messages::error(
+                span,
+                format!(
+                    "{culprit_desc} makes trait `{name}` not Verus dyn-compatible ({reason}), \
+                    but crate `{upstream_crate}` already treats `{name}` as Verus dyn-compatible"
+                ),
+            )
+            .secondary_label(
+                &upstream.span,
+                format!("crate `{upstream_crate}` specifies `{name}` here"),
+            ));
         }
     }
     for tr in &mut krate.traits {
         assert!(tr.x.dyn_compatible.is_none());
         let d = get_dyn_compatibility(
-            &tr_map,
+            tr_map,
             &unsized_blanketed_traits,
             &fun_map,
             &mut dyn_map,
@@ -1751,4 +2184,5 @@ pub fn set_krate_dyn_compatibility(imported: &Vec<Krate>, krate: &mut crate::ast
         );
         Arc::make_mut(tr).x.dyn_compatible = Some(d);
     }
+    Ok(())
 }

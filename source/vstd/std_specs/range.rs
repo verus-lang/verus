@@ -1,3 +1,4 @@
+use super::super::laws_cmp::obeys_cmp;
 use super::super::prelude::*;
 use super::super::view::View;
 use super::cmp::{PartialOrdIs, PartialOrdSpec};
@@ -20,8 +21,40 @@ pub struct ExRangeInclusive<Idx>(RangeInclusive<Idx>);
 pub struct RangeInclusiveView<Idx> {
     pub start: Idx,
     pub end: Idx,
+    /// Whether iteration has marked the range as finished.
     pub exhausted: bool,
 }
+
+pub open spec fn spec_range_inclusive_is_empty<Idx>(r: &RangeInclusive<Idx>) -> bool {
+    r@.exhausted || spec_range_inclusive_out_of_order(r)
+}
+
+/// Uninterpreted because `RangeBounds` methods have no
+/// `PartialOrd` bound. Defined by [`axiom_range_inclusive_out_of_order`].
+pub uninterp spec fn spec_range_inclusive_out_of_order<Idx>(r: &RangeInclusive<Idx>) -> bool;
+
+pub broadcast axiom fn axiom_range_inclusive_out_of_order<Idx: PartialOrd<Idx>>(
+    r: &RangeInclusive<Idx>,
+)
+    ensures
+        Idx::obeys_partial_cmp_spec() ==> (#[trigger] spec_range_inclusive_out_of_order(r)
+            <==> !r@.start.is_le(&r@.end)),
+;
+
+// Results std leaves unspecified for empty ranges.
+pub uninterp spec fn spec_range_inclusive_unspecified_contains<Idx, U: ?Sized>(
+    r: &RangeInclusive<Idx>,
+    item: &U,
+) -> bool;
+
+pub uninterp spec fn spec_range_inclusive_unspecified_bounds<T>(r: &RangeInclusive<T>) -> (
+    Bound<&T>,
+    Bound<&T>,
+);
+
+pub uninterp spec fn spec_range_inclusive_unspecified_ref_bounds<'a, T>(
+    r: &RangeInclusive<&'a T>,
+) -> (Bound<&'a T>, Bound<&'a T>);
 
 pub trait ContainsSpec<Idx, U> where Idx: PartialOrd<U>, U: ?Sized + PartialOrd<Idx> {
     spec fn obeys_contains() -> bool;
@@ -38,13 +71,25 @@ impl<Idx, U> ContainsSpec<Idx, U> for RangeInclusive<Idx> where
     }
 
     open spec fn contains_spec(&self, i: &U) -> bool {
-        self@.start.is_le(&i) && if self@.exhausted {
-            i.is_lt(&self@.end)
+        if spec_range_inclusive_is_empty(self) {
+            spec_range_inclusive_unspecified_contains(self, i)
         } else {
-            i.is_le(&self@.end)
+            self@.start.is_le(&i) && i.is_le(&self@.end)
         }
     }
 }
+
+/// An empty range contains nothing when `Idx` is totally ordered.
+pub broadcast axiom fn axiom_range_inclusive_empty_contains<Idx: Ord>(
+    r: &RangeInclusive<Idx>,
+    item: &Idx,
+)
+    requires
+        obeys_cmp::<Idx>(),
+        spec_range_inclusive_is_empty(r),
+    ensures
+        !#[trigger] r.contains_spec(item),
+;
 
 impl<Idx, U> ContainsSpec<Idx, U> for Range<Idx> where
     Idx: PartialOrd<U>,
@@ -67,6 +112,11 @@ impl<Idx> View for RangeInclusive<Idx> {
 
 pub uninterp spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
 
+/// Whether `A`'s executable stepping, comparison, and cloning obey the model
+/// used by range iterators. The axioms below establish this for primitive
+/// integers only; implementing `StepSpecImpl` alone does not establish it.
+pub uninterp spec fn obeys_range_step_spec<A>() -> bool;
+
 /// Range::contains method is valid and safe to use only when cmp operations are implemented to satisfy
 /// obeys_partial_cmp_spec. Specifically, the comparison must be deterministic, and `lt` (less than)
 /// and `le` (less than or equal to) must define total orders.
@@ -88,14 +138,6 @@ pub assume_specification<Idx: PartialOrd<Idx>, U>[ RangeInclusive::<Idx>::contai
             == r.contains_spec(i),
 ;
 
-// A range is empty once its iterator is exhausted, or if it was never valid
-// to begin with (start > end).
-pub open spec fn spec_range_inclusive_is_empty<Idx: PartialOrd<Idx>>(
-    r: &RangeInclusive<Idx>,
-) -> bool {
-    !r@.start.is_le(&r@.end) || r@.exhausted
-}
-
 pub assume_specification<Idx: PartialOrd<Idx>>[ RangeInclusive::<Idx>::is_empty ](
     r: &RangeInclusive<Idx>,
 ) -> (res: bool) where Idx: PartialOrd<Idx>
@@ -112,7 +154,7 @@ pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx
 
 impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        true
+        obeys_range_step_spec::<A>()
     }
 
     open spec fn remaining(&self) -> Seq<Self::Item> {
@@ -125,7 +167,10 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
         Seq::new(len as nat, |i: int| self.start.spec_forward_checked_int(i).unwrap())
     }
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     open spec fn decrease(&self) -> Option<nat> {
         Some(self.start.spec_steps_between_int(self.end) as nat)
@@ -141,26 +186,39 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
     }
 }
 
+/// Number of elements left in an inclusive range: zero once it is exhausted or if `start > end`.
+pub open spec fn spec_range_inclusive_len<A: core::iter::Step>(r: &RangeInclusive<A>) -> nat {
+    let steps = r@.start.spec_steps_between_int(r@.end);
+    if steps >= 0 && !r@.exhausted {
+        (steps + 1) as nat
+    } else {
+        0
+    }
+}
+
 impl<A: core::iter::Step> super::iter::IteratorSpecImpl for RangeInclusive<A> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        true
+        obeys_range_step_spec::<A>()
     }
 
     open spec fn remaining(&self) -> Seq<Self::Item> {
         Seq::new(
-            (self@.start.spec_steps_between_int(self@.end) + 1) as nat,
+            spec_range_inclusive_len(self),
             |i: int| self@.start.spec_forward_checked_int(i).unwrap(),
         )
     }
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     open spec fn decrease(&self) -> Option<nat> {
-        Some((self@.start.spec_steps_between_int(self@.end) + 1) as nat)
+        Some(spec_range_inclusive_len(self))
     }
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        if 0 <= index <= self@.start.spec_steps_between_int(self@.end) + 1 {
+        if 0 <= index <= spec_range_inclusive_len(self) {
             Some(self@.start.spec_forward_checked_int(index).unwrap())
         } else {
             None
@@ -172,7 +230,7 @@ pub assume_specification<A: core::iter::Step>[ <Range<A> as Iterator>::next ](
     range: &mut Range<A>,
 ) -> (r: Option<A>)
     ensures
-        (*final(range), r) == spec_range_next(*old(range)),
+        obeys_range_step_spec::<A>() ==> (*final(range), r) == spec_range_next(*old(range)),
 ;
 
 #[verifier::external_type_specification]
@@ -201,9 +259,9 @@ pub open spec fn bound_as_ref<T>(b: &Bound<T>) -> Bound<&T> {
     }
 }
 
-// Per-type specifications for `RangeBounds::start_bound`/`end_bound`, so these
-// methods can also be called directly in exec code (not just via the spec-mode
-// models above). Each spec agrees with the corresponding `RangeBoundsSpecImpl`.
+// Per-type specifications for `RangeBounds::start_bound`/`end_bound`. Each spec
+// agrees with the corresponding `RangeBoundsSpecImpl`, and so with the
+// `ExRangeBounds` ensures below.
 pub assume_specification<'s, T>[ <Range<T> as RangeBounds<T>>::start_bound ](
     range: &'s Range<T>,
 ) -> (result: Bound<&'s T>)
@@ -260,23 +318,29 @@ pub assume_specification<'s, T>[ <RangeTo<T> as RangeBounds<T>>::end_bound ](
         result == Bound::Excluded(&range.end),
 ;
 
-pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::start_bound ](
-    range: &'s RangeInclusive<T>,
-) -> (result: Bound<&'s T>)
-    ensures
-        result == Bound::Included(&range@.start),
-;
+// Shared by `start_bound()`/`end_bound()` and their `RangeBoundsSpec` models.
+pub open spec fn spec_range_inclusive_start_bound<T>(r: &RangeInclusive<T>) -> Bound<&T> {
+    if spec_range_inclusive_is_empty(r) {
+        spec_range_inclusive_unspecified_bounds(r).0
+    } else {
+        Bound::Included(&r@.start)
+    }
+}
 
-// Shared with `RangeBoundsSpecImpl::spec_end_bound` below, so the two can't
-// drift apart: `end_bound()` returns `Included` while the range is not
-// exhausted and `Excluded` after it is exhausted.
 pub open spec fn spec_range_inclusive_end_bound<T>(r: &RangeInclusive<T>) -> Bound<&T> {
-    if r@.exhausted {
-        Bound::Excluded(&r@.end)
+    if spec_range_inclusive_is_empty(r) {
+        spec_range_inclusive_unspecified_bounds(r).1
     } else {
         Bound::Included(&r@.end)
     }
 }
+
+pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::start_bound ](
+    range: &'s RangeInclusive<T>,
+) -> (result: Bound<&'s T>)
+    ensures
+        result == spec_range_inclusive_start_bound(range),
+;
 
 pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::end_bound ](
     range: &'s RangeInclusive<T>,
@@ -318,7 +382,9 @@ pub assume_specification<'s, T>[ <(Bound<T>, Bound<T>) as RangeBounds<T>>::end_b
 /// [`spec_end_bound`](RangeBoundsSpec::spec_end_bound) of the trait's
 /// `start_bound`/`end_bound` methods. This mirrors std's normalization of an
 /// arbitrary range into a pair of bounds and is the model used by
-/// `<[T]>::copy_within` (see `vstd::std_specs::slice`).
+/// `<[T]>::copy_within` (see `vstd::std_specs::slice`). Implementations must
+/// return these spec bounds from `start_bound`/`end_bound`, since std's
+/// `copy_within` calls those methods.
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(RangeBoundsSpec via RangeBoundsSpecImpl)]
 pub trait ExRangeBounds<T: ?Sized> {
@@ -328,9 +394,15 @@ pub trait ExRangeBounds<T: ?Sized> {
 
     spec fn spec_end_bound(&self) -> Bound<&T>;
 
-    fn start_bound(&self) -> Bound<&T>;
+    fn start_bound(&self) -> (r: Bound<&T>)
+        ensures
+            r == self.spec_start_bound(),
+    ;
 
-    fn end_bound(&self) -> Bound<&T>;
+    fn end_bound(&self) -> (r: Bound<&T>)
+        ensures
+            r == self.spec_end_bound(),
+    ;
 }
 
 impl<T> RangeBoundsSpecImpl<T> for Range<T> {
@@ -375,7 +447,7 @@ impl<T> RangeBoundsSpecImpl<T> for RangeTo<T> {
 
 impl<T> RangeBoundsSpecImpl<T> for RangeInclusive<T> {
     open spec fn spec_start_bound(&self) -> Bound<&T> {
-        Bound::Included(&self@.start)
+        spec_range_inclusive_start_bound(self)
     }
 
     open spec fn spec_end_bound(&self) -> Bound<&T> {
@@ -445,14 +517,19 @@ impl<T> RangeBoundsSpecImpl<T> for Range<&T> {
 
 impl<T> RangeBoundsSpecImpl<T> for RangeInclusive<&T> {
     open spec fn spec_start_bound(&self) -> Bound<&T> {
-        Bound::Included(self@.start)
+        if spec_range_inclusive_is_empty(self) {
+            spec_range_inclusive_unspecified_ref_bounds(self).0
+        } else {
+            Bound::Included(self@.start)
+        }
     }
 
     open spec fn spec_end_bound(&self) -> Bound<&T> {
-        // In contrast to RangeBounds<T> for RangeInclusive<T>,
-        // Rust's RangeBounds<T> for RangeInclusive<&T> always returns Included,
-        // regardless of exhausted.
-        Bound::Included(self@.end)
+        if spec_range_inclusive_is_empty(self) {
+            spec_range_inclusive_unspecified_ref_bounds(self).1
+        } else {
+            Bound::Included(self@.end)
+        }
     }
 }
 
@@ -496,7 +573,7 @@ pub open spec fn slice_range_valid<R: RangeBoundsSpec<usize>>(range: &R, len: na
 
 } // verus!
 macro_rules! step_specs {
-    ($t: ty, $axiom: ident) => {
+    ($t: ty, $axiom: ident, $step_axiom: ident) => {
         verus! {
         impl StepSpecImpl for $t {
             open spec fn spec_is_lt(self, other: Self) -> bool {
@@ -534,6 +611,13 @@ macro_rules! step_specs {
                 }
             }
         }
+        pub broadcast proof fn $step_axiom()
+            ensures
+                #[trigger] obeys_range_step_spec::<$t>(),
+        {
+            admit();
+        }
+
         // TODO: we might be able to make this generic over A: StepSpec
         // once we settle on a way to connect std traits like Step with spec traits like StepSpec.
         pub broadcast proof fn $axiom(range: Range<$t>)
@@ -554,22 +638,36 @@ macro_rules! step_specs {
     };
 }
 
-step_specs!(u8, axiom_spec_range_next_u8);
-step_specs!(u16, axiom_spec_range_next_u16);
-step_specs!(u32, axiom_spec_range_next_u32);
-step_specs!(u64, axiom_spec_range_next_u64);
-step_specs!(u128, axiom_spec_range_next_u128);
-step_specs!(usize, axiom_spec_range_next_usize);
-step_specs!(i8, axiom_spec_range_next_i8);
-step_specs!(i16, axiom_spec_range_next_i16);
-step_specs!(i32, axiom_spec_range_next_i32);
-step_specs!(i64, axiom_spec_range_next_i64);
-step_specs!(i128, axiom_spec_range_next_i128);
-step_specs!(isize, axiom_spec_range_next_isize);
+step_specs!(u8, axiom_spec_range_next_u8, axiom_u8_obeys_range_step_spec);
+step_specs!(u16, axiom_spec_range_next_u16, axiom_u16_obeys_range_step_spec);
+step_specs!(u32, axiom_spec_range_next_u32, axiom_u32_obeys_range_step_spec);
+step_specs!(u64, axiom_spec_range_next_u64, axiom_u64_obeys_range_step_spec);
+step_specs!(u128, axiom_spec_range_next_u128, axiom_u128_obeys_range_step_spec);
+step_specs!(usize, axiom_spec_range_next_usize, axiom_usize_obeys_range_step_spec);
+step_specs!(i8, axiom_spec_range_next_i8, axiom_i8_obeys_range_step_spec);
+step_specs!(i16, axiom_spec_range_next_i16, axiom_i16_obeys_range_step_spec);
+step_specs!(i32, axiom_spec_range_next_i32, axiom_i32_obeys_range_step_spec);
+step_specs!(i64, axiom_spec_range_next_i64, axiom_i64_obeys_range_step_spec);
+step_specs!(i128, axiom_spec_range_next_i128, axiom_i128_obeys_range_step_spec);
+step_specs!(isize, axiom_spec_range_next_isize, axiom_isize_obeys_range_step_spec);
 
 verus! {
 
 pub broadcast group group_range_axioms {
+    axiom_range_inclusive_out_of_order,
+    axiom_range_inclusive_empty_contains,
+    axiom_u8_obeys_range_step_spec,
+    axiom_u16_obeys_range_step_spec,
+    axiom_u32_obeys_range_step_spec,
+    axiom_u64_obeys_range_step_spec,
+    axiom_u128_obeys_range_step_spec,
+    axiom_usize_obeys_range_step_spec,
+    axiom_i8_obeys_range_step_spec,
+    axiom_i16_obeys_range_step_spec,
+    axiom_i32_obeys_range_step_spec,
+    axiom_i64_obeys_range_step_spec,
+    axiom_i128_obeys_range_step_spec,
+    axiom_isize_obeys_range_step_spec,
     axiom_spec_range_next_u8,
     axiom_spec_range_next_u16,
     axiom_spec_range_next_u32,

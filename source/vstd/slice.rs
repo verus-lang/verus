@@ -83,6 +83,8 @@ pub broadcast axiom fn axiom_spec_len<T>(slice: &[T])
 pub assume_specification<T>[ <[T]>::len ](slice: &[T]) -> (len: usize)
     returns
         spec_slice_len(slice),
+    opens_invariants none
+    no_unwind
 ;
 
 pub open spec fn spec_slice_is_empty<T>(slice: &[T]) -> bool {
@@ -93,6 +95,8 @@ pub open spec fn spec_slice_is_empty<T>(slice: &[T]) -> bool {
 pub assume_specification<T>[ <[T]>::is_empty ](slice: &[T]) -> (b: bool)
     ensures
         b <==> slice@.len() == 0,
+    opens_invariants none
+    no_unwind
 ;
 
 #[cfg(feature = "alloc")]
@@ -101,7 +105,9 @@ pub exec fn slice_to_vec<T: Copy>(slice: &[T]) -> (out: alloc::vec::Vec<T>)
     ensures
         out@ == slice@,
 {
-    slice.to_vec()
+    // Not `slice.to_vec()`: since Rust 1.93, `to_vec` copies bitwise only for `TrivialClone`
+    // types and calls `Clone::clone` for a `Copy` type with a hand-written `Clone`.
+    slice.iter().copied().collect()
 }
 
 #[verifier::external_body]

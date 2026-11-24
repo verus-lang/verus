@@ -8,6 +8,8 @@
 
 The `assume_specification` directive tells Verus to use the given specification for the given function.
 Verus assumes that this specification holds **without proof**.
+Because this introduces an unverified assumption, it is rejected under
+[no-cheating mode](./tcb.md#no-cheating-mode) unless the function is (directly or indirectly) [annotated as trusted](./tcb.md).
 
 It can be used with any `exec`-mode function that Verus would otherwise be unaware of; for example,
 any function marked [`external`](./reference-attributes.md#verifierexternal) or which is imported from an external crate.
@@ -64,7 +66,7 @@ pub assume_specification<T>[Vec::<T>::new]() -> (v: Vec<T>)
         v@ == Seq::<T>::empty();
 ```
 
-To apply to an method of `Vec`:
+To apply to a method of `Vec`:
 
 ```rust
 pub assume_specification<T, A: Allocator>[Vec::<T, A>::clear](vec: &mut Vec<T, A>)
@@ -99,5 +101,4 @@ Tips:
 | `T: Sized`        | `T: Sized`     |
 | `T: ?Sized`       | `T: MetaSized` |
 | `T: PointeeSized` | No bound       |
-
 

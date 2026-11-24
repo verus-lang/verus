@@ -15,6 +15,8 @@ use verus_state_machines_macros::tokenized_state_machine_vstd;
 
 tokenized_state_machine_vstd!(
 RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
+    #![verifier::prophetic]
+
     fields {
         #[sharding(constant)]
         pub k: K,
@@ -199,6 +201,7 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
     }
 
     #[invariant]
+    #[verifier::prophetic]
     pub fn sto_user_inv(&self) -> bool {
         self.storage.is_some() ==> Pred::inv(self.k, self.storage.unwrap())
     }

@@ -9,8 +9,8 @@ pub type TypeError = String;
 
 pub type Ident = Arc<String>;
 
-pub(crate) type Snapshot = IndexMap<Ident, u32>;
-pub(crate) type Snapshots = HashMap<Ident, Snapshot>;
+pub type Snapshot = IndexMap<Ident, u32>;
+pub type Snapshots = HashMap<Ident, Snapshot>;
 
 pub type Typ = Arc<TypX>;
 pub type Typs = Arc<Vec<Typ>>;
@@ -73,6 +73,9 @@ pub enum UnaryOp {
     FloatIsNegative,
     FloatIsPositive,
     FloatFromIeeeBits { exp_bits: u32, sig_bits: u32 },
+    // Z3 extension: (_ FloatingPoint eb sb) -> (_ BitVec (+ eb sb))
+    // Printed as `fp.to_ieee_bv`. Canonicalizes SMT's single NaN.
+    FloatToIeeeBits,
     FloatFrom { exp_bits: u32, sig_bits: u32, signed: bool, round: RoundingMode },
     FloatToBitVec { bits: u32, signed: bool, round: RoundingMode },
     FloatToReal,
@@ -179,12 +182,22 @@ pub type Triggers = Arc<Vec<Trigger>>;
 
 pub type Qid = Option<Ident>;
 
+// Wrap the underlying lambda value in (wrap id lambda),
+// where the apply axioms are about the wrapped lambda, not the underlying lambda
+#[derive(Clone, Debug)]
+pub struct WrapLambda {
+    pub wrap: Ident,
+    pub id: Expr,
+}
+
 pub type Bind = Arc<BindX>;
 #[derive(Clone, Debug)]
 pub enum BindX {
     Let(Binders<Expr>),
     Quant(Quant, Binders<Typ>, Triggers, Qid),
-    Lambda(Binders<Typ>, Triggers, Qid),
+    // define an anonymous function (over the domain where Expr is true, if Some(Expr))
+    // TODO: remove support for Triggers in Lambda
+    Lambda(Binders<Typ>, Triggers, Qid, Option<WrapLambda>, Option<Expr>),
     // choose Binders s.t. Expr is true
     Choose(Binders<Typ>, Triggers, Qid, Expr),
 }

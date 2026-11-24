@@ -29,7 +29,7 @@ The V@[ensures_clause] and the V@[returns_clause] together form the postconditio
 
 **The invariants.**
 The V@[invariants_clause] specifies what invariants can be opened by the function.
-For exec functions, the default is `open_invariants any`.
+For exec functions, the default is `opens_invariants any`.
 See [this page](./reference-opens-invariants.md) for more details.
 
 **Unwinding.**

@@ -1,7 +1,7 @@
 # Implementing Iterator Specifications for Infinite Iterators
 
 Somewhat surprisingly, we can also follow the same 
-[steps verify an iterator implementation](iterator-specs.md)
+[steps needed to verify an iterator implementation](iterator-specs.md)
 for a custom type that implements an infinite iterator!
 
 Let's start with an infinite iterator built on a counter that increments
@@ -9,7 +9,7 @@ each time we call `next()`, wrapping when we would otherwise overflow.
 
 ### 1. The iterator struct
 
-`IterCtr` holds the 64-bit counter value (`ctr`), and a 
+`IterCtr` holds the 64-bit counter value (`count`), and a 
 [prophetic](https://verus-lang.github.io/verus/verusdoc/vstd/proph)
 length field that defines how long the sequence of return values will be.
 At this point, we don't know what the length is; we just know it has 
@@ -52,7 +52,8 @@ Here's how we define them for our custom iterator.
 - **`remaining`** — Our prophetic sequence has some (unknown) length predicted
   by `self.len`.  The contents are simply the current value of the counter,
   incremented by 1 at each step and wrapping after `u64::MAX`.
-- **`will_return_none`** — This is an infinite iterator, so we can return `false` here.
+- **`produces`** — We will always return a value when next is call, so we set all 
+  of the indices to true.
 - **`decrease`** — This is an infinite iterator, so we don't have a valid decreases metric
   available, so we return `None`.
 - **`peek`** — It's simple to predict what this value will be, and it helps improve 
@@ -78,7 +79,7 @@ Naturally we need to use the [`exec_allows_no_decreases_clause` attribute](refer
 
 ### Soundness
 
-It may initially seems troubling that we can specify the outputs of an infinite iterator
+It may initially seem troubling that we can specify the outputs of an infinite iterator
 with a finite sequence.  One way to understand what's happening in this example
 is that at each program point, we're quantifying over "all sequences that don't 
 contradict the prefix that has been observed so far".  That set remains non-empty 
@@ -101,7 +102,7 @@ We then use the two prophecies to give the natural definition of `remaining`:
 
 ```
 As a result, the implementations of `next()` and `next_back()` are straightforward, 
-following the earlier above and using the same "trick" of swapping in a new
+following the earlier example above and using the same "trick" of swapping in a new
 prophecy variable whose value is one less than the old prophecy variable.
 
 

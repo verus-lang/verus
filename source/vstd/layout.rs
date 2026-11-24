@@ -311,12 +311,8 @@ pub proof fn unsigned_int_max_values()
 {
     broadcast use layout_of_primitives;
 
+    lemma_unsigned_int_max_is_pow2_minus_1();
     reveal(pow);
-    assert(0x100 == pow2(8)) by (compute);
-    assert(0x1_0000 == pow2(16)) by (compute);
-    assert(0x1_0000_0000 == pow2(32)) by (compute);
-    assert(0x1_0000_0000_0000_0000 == pow2(64)) by (compute);
-    assert(0x1_0000_0000_0000_0000_0000_0000_0000_0000 == pow2(128)) by (compute);
     assert(pow(256, 1) == pow2(8)) by (compute);
     assert(pow(256, 2) == pow2(16)) by (compute);
     assert(pow(256, 4) == pow2(32)) by (compute);

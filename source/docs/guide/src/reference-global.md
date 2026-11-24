@@ -22,14 +22,14 @@ V@[global_item] ::= global layout R@[T:type] is size == R@[n:int_literal], align
 
 The global directive both:
 
- * Exports one or both of the axioms `size_of::<T>() == n` and `align_of::<T> == m` for use in Verus proofs
+ * Exports one or both of the axioms `size_of::<T>() == n` and `align_of::<T>() == m` for use in Verus proofs
  * Creates a "static" check ensuring the given values are actually correct when compiled.
 
 Note that the second check _only_ happens when codegen is run; an "ordinary" verification pass will
 not perform this check. This ensures that the check is always performed on the correct
 platform, but it may cause surprises if you spend time on verification without running codegen.
 
-In order to keep the layout stable, it is recommended using Rust attributes
+In order to keep the layout stable, it is recommended to use Rust attributes
 like [`#[repr(C)]`](https://doc.rust-lang.org/reference/type-layout.html#reprc-structs).
 Keep in mind that the Verus verifier gets no information from these attributes.
 Layout information can only be provided to Verus via the `global` directive.

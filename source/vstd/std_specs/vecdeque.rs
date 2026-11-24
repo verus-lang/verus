@@ -11,8 +11,7 @@ use core::ops::{Index, IndexMut};
 use core::option::Option;
 use core::option::Option::None;
 
-use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
-verus_skip_verusfmt! {
+verus! {
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -289,7 +288,10 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -317,6 +319,9 @@ pub assume_specification<'a, T, A: Allocator>[ VecDeque::<T, A>::iter ](
 ) -> (iter: Iter<'a, T>)
     ensures
         IteratorSpec::remaining(&iter) == v@.as_ref(),
+        // Stated via `len()` so callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() == v.len(),
         into_iter_elts(iter) == IteratorSpec::remaining(&iter),
         IteratorSpec::decrease(&iter) is Some,
 ;

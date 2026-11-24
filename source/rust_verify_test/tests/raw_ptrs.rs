@@ -355,7 +355,7 @@ test_verify_one_file! {
         fn test(x: usize) {
             let y = x as *mut u8;
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support this cast")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support this cast")
 }
 
 test_verify_one_file! {
@@ -386,7 +386,7 @@ test_verify_one_file! {
         pub fn run(x: *mut u8) {
             unsafe { let y = *x; }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dereferencing a raw pointer")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support dereferencing a raw pointer")
 }
 
 test_verify_one_file! {
@@ -413,4 +413,28 @@ test_verify_one_file! {
             ptr_mut_write(b2_ptr, Tracked(&mut token2), 14);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ptr_ref2_lifetime verus_code! {
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        fn derive_false(p: *mut u32, Tracked(pt): Tracked<PointsTo<u32>>)
+            requires
+                pt.ptr() == p,
+                pt.is_init(),
+        {
+            let tracked mut pt = pt;
+            let sr: SharedReference<'static, u32> = ptr_ref2(p, Tracked(&pt));
+            let tracked alias: &'static PointsTo<u32> = sr.points_to();
+            proof {
+                pt.is_disjoint(alias);
+            }
+            assert(false);
+        }
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "`pt` does not live long enough",
+        "cannot borrow `pt` as mutable because it is also borrowed as immutable",
+    ])
 }

@@ -74,7 +74,7 @@ test_verify_one_file! {
                 let U { x } = u;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: using a union here")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support using a union here")
 }
 
 test_verify_one_file! {
@@ -87,7 +87,7 @@ test_verify_one_file! {
         fn test_fail(x: X) {
             assert(get_union_field::<_, u8>(x, "Foo") == 5);
         }
-    } => Err(err) => assert_vir_error_msg(err, "get_union_field expects a union type")
+    } => Err(err) => assert_vir_error_msg(err, "`get_union_field` expects a union type")
 }
 
 test_verify_one_file! {
@@ -172,49 +172,49 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] tracked_union_not_supported verus_code! {
         tracked union U<A: Copy, B: Copy> { x: A, y: B }
-    } => Err(err) => assert_vir_error_msg(err, "a 'union' can only be exec-mode")
+    } => Err(err) => assert_vir_error_msg(err, "a `union` can only be exec-mode")
 }
 
 test_verify_one_file! {
     #[test] ghost_union_not_supported verus_code! {
         tracked union U<A: Copy, B: Copy> { x: A, y: B }
-    } => Err(err) => assert_vir_error_msg(err, "a 'union' can only be exec-mode")
+    } => Err(err) => assert_vir_error_msg(err, "a `union` can only be exec-mode")
 }
 
 test_verify_one_file! {
     #[test] tracked_union_field_not_supported verus_code! {
         union U<A: Copy, B: Copy> { tracked x: A, y: B }
-    } => Err(err) => assert_vir_error_msg(err, "a union field can only be exec-mode")
+    } => Err(err) => assert_vir_error_msg(err, "a `union` field can only be exec-mode")
 }
 
 test_verify_one_file! {
     #[test] ghost_union_field_not_supported verus_code! {
         union U<A: Copy, B: Copy> { ghost x: A, y: B }
-    } => Err(err) => assert_vir_error_msg(err, "a union field can only be exec-mode")
+    } => Err(err) => assert_vir_error_msg(err, "a `union` field can only be exec-mode")
 }
 
 test_verify_one_file! {
     #[test] tracked_union_not_supported_attr verus_code! {
         #[verifier::spec] union U<A: Copy, B: Copy> { x: A, y: B }
-    } => Err(err) => assert_vir_error_msg(err, "a 'union' can only be exec-mode")
+    } => Err(err) => assert_vir_error_msg(err, "a `union` can only be exec-mode")
 }
 
 test_verify_one_file! {
     #[test] ghost_union_not_supported_attr verus_code! {
         #[verifier::proof] union U<A: Copy, B: Copy> { x: A, y: B }
-    } => Err(err) => assert_vir_error_msg(err, "a 'union' can only be exec-mode")
+    } => Err(err) => assert_vir_error_msg(err, "a `union` can only be exec-mode")
 }
 
 test_verify_one_file! {
     #[test] tracked_union_field_not_supported_attr verus_code! {
         union U<A: Copy, B: Copy> { #[verifier::proof] x: A, y: B }
-    } => Err(err) => assert_vir_error_msg(err, "a union field can only be exec-mode")
+    } => Err(err) => assert_vir_error_msg(err, "a `union` field can only be exec-mode")
 }
 
 test_verify_one_file! {
     #[test] ghost_union_field_not_supported_attr verus_code! {
         union U<A: Copy, B: Copy> { #[verifier::spec] x: A, y: B }
-    } => Err(err) => assert_vir_error_msg(err, "a union field can only be exec-mode")
+    } => Err(err) => assert_vir_error_msg(err, "a `union` field can only be exec-mode")
 }
 
 test_verify_one_file_with_options! {

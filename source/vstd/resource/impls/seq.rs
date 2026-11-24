@@ -3,8 +3,7 @@ use super::super::super::prelude::*;
 use super::super::Loc;
 use super::super::imap::*;
 
-use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
-verus_skip_verusfmt! {
+verus! {
 
 broadcast use super::super::super::group_vstd_default;
 
@@ -135,9 +134,7 @@ impl<V> GhostSeqAuth<V> {
             self.id() == frac.id(),
         ensures
             frac@.len() > 0 ==> {
-                &&& frac@ =~= self@[
-                    frac.off() - self.off()..frac.off() - self.off() + frac@.len()
-                ]
+                &&& frac@ =~= self@[frac.off() - self.off()..frac.off() - self.off() + frac@.len()]
                 &&& frac.off() >= self.off()
                 &&& frac.off() + frac@.len() <= self.off() + self@.len()
             },
@@ -213,9 +210,7 @@ impl<V> GhostSubseq<V> {
             self.id() == auth.id(),
         ensures
             self@.len() > 0 ==> {
-                &&& self@ =~= auth@[
-                    self.off() - auth.off()..self.off() - auth.off() + self@.len()
-                ]
+                &&& self@ =~= auth@[self.off() - auth.off()..self.off() - auth.off() + self@.len()]
                 &&& self.off() >= auth.off()
                 &&& self.off() + self@.len() <= auth.off() + auth@.len()
             },

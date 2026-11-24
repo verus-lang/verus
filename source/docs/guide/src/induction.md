@@ -61,7 +61,7 @@ which means that `triangle(n - 1) < 0x1_0000_0000`,
 since `0 <= n`, since `n` has type `u32`, which is nonnegative.
 
 Intuitively, you can imagine that as `rec_triangle` executes,
-proofs about `triangle(n) < 0x1_0000_0000` gets passed down the stack to the recursive calls,
+proofs about `triangle(n) < 0x1_0000_0000` get passed down the stack to the recursive calls,
 proving `triangle(10) < 0x1_0000_0000` in the first call,
 then `triangle(9) < 0x1_0000_0000` in the second call,
 `triangle(8) < 0x1_0000_0000` in the third call,

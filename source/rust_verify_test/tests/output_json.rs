@@ -7,6 +7,32 @@ use common::*;
 
 test_verify_one_file_with_options! {
     #[test]
+    test_json_verify_only_module ["--output-json", "--verify-only-module good"] => verus_code! {
+        mod good { pub proof fn ok() {} }
+        mod bad { pub proof fn contradiction() ensures false {} }
+    } => Ok(res) => {
+        let json = res.json_output.unwrap();
+        let results = &json["verification-results"];
+        assert_eq!(results["is-verifying-entire-crate"], false);
+        assert!(results.get("success").is_none());
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test]
+    test_json_verify_entire_crate ["--output-json"] => verus_code! {
+        mod good { pub proof fn ok() {} }
+        mod bad { pub proof fn contradiction() ensures false {} }
+    } => Err(res) => {
+        let json = res.json_output.unwrap();
+        let results = &json["verification-results"];
+        assert_eq!(results["is-verifying-entire-crate"], true);
+        assert_eq!(results["success"], false);
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test]
     test_json_proof_note_on_requires ["--output-json"] => verus_code! {
         fn example(x: u64, y: u64) -> (z: u64)
             requires
@@ -269,4 +295,58 @@ fn with_json_func_details(err: &TestErr, func: &str, body: impl FnOnce(&FuncDeta
 pub struct FuncDetails {
     pub obligation_proof_notes: HashSet<String>,
     pub failed_proof_notes: HashSet<String>,
+}
+
+test_verify_one_file_with_options! {
+    // Two impls of one trait for one type have the same `function` name; `def-path` tells
+    // their entries (and verdicts) apart
+    #[test] test_json_function_breakdown_def_path ["--output-json", "--time"] => verus_code! {
+        use vstd::std_specs::convert::FromSpecImpl;
+        pub enum E { A, B }
+        impl FromSpecImpl<u8> for E {
+            open spec fn obeys_from_spec() -> bool { true }
+            open spec fn from_spec(x: u8) -> E { E::A }
+        }
+        impl From<u8> for E {
+            fn from(x: u8) -> (r: E) { E::A }
+        }
+        impl FromSpecImpl<bool> for E {
+            open spec fn obeys_from_spec() -> bool { true }
+            open spec fn from_spec(x: bool) -> E { E::A }
+        }
+        impl From<bool> for E {
+            fn from(x: bool) -> (r: E) { E::B } // FAILS
+        }
+    } => Err(res) => {
+        let json = res.json_output.unwrap();
+        let modules = json["times-ms"]["smt"]["smt-run-module-times"].as_array().unwrap();
+        let entries: Vec<(String, String, bool)> = modules
+            .iter()
+            .flat_map(|m| m["function-breakdown"].as_array().unwrap().iter())
+            .filter(|e| e["function"] == "test_crate::E::from")
+            .map(|e| {
+                (
+                    e["function"].as_str().unwrap().to_string(),
+                    e["def-path"].as_str().unwrap().to_string(),
+                    e["success"].as_bool().unwrap(),
+                )
+            })
+            .collect();
+        let entries: HashSet<_> = HashSet::from_iter(entries);
+        assert_eq!(
+            entries,
+            HashSet::from_iter([
+                (
+                    "test_crate::E::from".to_string(),
+                    "<E as std::convert::From<u8>>::from".to_string(),
+                    true
+                ),
+                (
+                    "test_crate::E::from".to_string(),
+                    "<E as std::convert::From<bool>>::from".to_string(),
+                    false
+                ),
+            ])
+        );
+    }
 }
