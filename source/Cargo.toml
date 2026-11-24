@@ -21,6 +21,7 @@ members = [
 ]
 exclude = [
   "vstd",
+  "vstd_spec_check",
 ]
 
 # do not modify the following two lines

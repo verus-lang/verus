@@ -1,0 +1,23 @@
+# Bridge between vstd and verus-spec-check, used only by vstd's own
+# `cargo test --features spec-check` (it is a dev-dependency of vstd).
+# Not part of the Verus workspace and never published. See README.md.
+
+[package]
+name = "vstd_spec_check"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "Runs the verus-spec-check engine over the labeled items in vstd"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.106"
+quote = "1.0"
+# Keep `tag` in sync with the `verus_spec_check` dev-dependency in ../vstd/Cargo.toml
+verus_spec_check_engine = { git = "https://github.com/verus-lang/verus-spec-check", tag = "verus-2026-11-02" }
+# Must be the verus_syn the engine is built against (its `[workspace.dependencies]` pin at the
+# tag above), since the engine's preprocessing pass takes `verus_syn` items
+verus_syn = { version = "=0.0.0-2026-11-01-0251", features = ["full", "visit", "visit-mut", "extra-traits"] }
