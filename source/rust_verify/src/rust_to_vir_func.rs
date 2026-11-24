@@ -3163,10 +3163,17 @@ fn all_predicates<'tcx>(
     }
     let typing_env = TypingEnv::post_analysis(tcx, id);
     let preds = preds.instantiate(tcx, substs);
+    // `normalize_erasing_regions` ICEs when a clause mentions a projection it cannot
+    // normalize in this environment, which happens for `assume_specification`s whose
+    // bounds carry a projection of the proxy's own type parameter (e.g. `P::Target: Unpin`
+    // on `Pin::new`); keep such clauses as written instead of aborting.
     let mut clauses: Vec<Clause<'tcx>> = preds
         .clauses
         .into_iter()
-        .map(|clause| tcx.normalize_erasing_regions(typing_env, clause))
+        .map(|clause| {
+            tcx.try_normalize_erasing_regions(typing_env, clause.clone())
+                .unwrap_or_else(|_| clause.skip_normalization())
+        })
         .collect();
     if preliminarily_try_to_process_and_eliminate_trait_aliases {
         clauses.retain(|clause| match clause.kind().skip_binder() {
