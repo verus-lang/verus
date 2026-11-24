@@ -39,10 +39,9 @@
 //!   `no_unwind`. They are listed with `VERUS_CHECK_DROPS_VERBOSE=1`.
 //!
 //! The MIR this pass reads is the one Verus builds for lifetime checking. It has no drops of
-//! tracked or ghost variables or ghost temporaries (#3512), which the compiled program does not
-//! have either. It still drops the shadow copies time-travel prevention makes of exec variables
-//! (`(Verus spec x)`, spec values that the compiled program does not have); the pass skips
-//! those drops. The remaining drops are the compiled program's.
+//! tracked or ghost variables, of ghost temporaries, or of the shadow copies time-travel
+//! prevention makes of exec variables (#3512), none of which the compiled program has. Its
+//! drops are the compiled program's.
 //!
 //! Invariant blocks are found in the MIR itself: a block starts at a call to
 //! `open_atomic_invariant_begin` or `open_local_invariant_begin` and ends at the matching call
@@ -270,20 +269,6 @@ pub(crate) fn check_drops<'tcx>(
         let body = body.borrow();
         let typing_env = body.typing_env(tcx);
         let open = open_invariants(tcx, &body, verus_items);
-        // The shadow copies that time-travel prevention makes of exec variables, named
-        // `(Verus spec x)` (see rustc_mir_build's verus_time_travel_prevention.rs), are spec
-        // values: they do not exist in the compiled program, but the MIR still drops them.
-        let shadows: HashSet<rustc_middle::mir::Local> = body
-            .var_debug_info
-            .iter()
-            .filter(|v| v.name.as_str().starts_with("(Verus spec "))
-            .filter_map(|v| match &v.value {
-                rustc_middle::mir::VarDebugInfoContents::Place(p) if p.projection.is_empty() => {
-                    Some(p.local)
-                }
-                _ => None,
-            })
-            .collect();
         for (bb, data) in body.basic_blocks.iter_enumerated() {
             if data.is_cleanup {
                 continue; // already unwinding
@@ -316,7 +301,6 @@ pub(crate) fn check_drops<'tcx>(
             // each with the callee it is passed to, if it is a type argument of a callee
             let mut dropped: Vec<(Ty<'tcx>, Option<DefId>)> = vec![];
             match &term.kind {
-                TerminatorKind::Drop { place, .. } if shadows.contains(&place.local) => {}
                 TerminatorKind::Drop { place, .. } => {
                     dropped.push((place.ty(&*body, tcx).ty, None))
                 }

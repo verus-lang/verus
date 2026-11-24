@@ -3092,6 +3092,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // a `no_unwind` function that moves the value out does not drop it, and the spec copy that
+    // time-travel prevention makes of an exec variable used in spec code is not dropped either
+    #[test] check_drops_no_unwind_moved_out DROP_TYPES.to_string() + verus_code_str! {
+        fn f(d: PanickingDrop) -> (r: PanickingDrop)
+            ensures r == d,
+            no_unwind
+        {
+            let x = d;
+            assert(x == d);
+            x
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     // (b) an unwinding drop in a local invariant block would exit it early
     #[test] check_drops_local_invariant_block DROP_TYPES.to_string() + verus_code_str! {
         fn f(Tracked(i): Tracked<&LocalInvariant<int, u8, P>>, d: PanickingDrop) {
