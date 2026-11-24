@@ -524,3 +524,256 @@ fn untrusted_enum_in_trusted_module_keeps_helpers_untrusted() {
     .expect_err("expected an error");
     assert_any_vir_error_msg(err, "trusted code may not reference an untrusted item");
 }
+
+/// Verify `items` (inside `verus!`, with vstd) under `--no-cheating`.
+/// `expected_err` is `None` for success, or a fragment of the expected error message.
+fn check_vstd(name: &str, items: &str, expected_err: Option<&str>) {
+    let files = vec![entry("", &format!("use vstd::prelude::*;\nverus! {{\n{items}\n}}"))];
+    let result = verify_files_vstd(name, files, "test.rs".to_string(), true, NO_CHEATING);
+    match (result, expected_err) {
+        (Ok(()), None) => {}
+        (Err(err), None) => panic!("expected success, got errors: {:#?}", err.errors),
+        (Ok(()), Some(msg)) => panic!("expected an error containing {msg:?}"),
+        (Err(err), Some(msg)) => assert_any_vir_error_msg(err, msg),
+    }
+}
+
+const NOT_CLOSED: &str = "trusted code must be transitively closed";
+
+#[test]
+fn trusted_spec_children_cannot_be_trusted() {
+    // Otherwise a nested trusted axiom could discharge the trusted(spec) function's ensures.
+    check_vstd(
+        "trusted_spec_children_cannot_be_trusted",
+        "#[verus::trusted(spec)]\n\
+         pub fn f() -> (r: u64) ensures r == 1 {\n\
+             #[verus::trusted]\n\
+             #[verifier::external_body]\n\
+             proof fn hidden_axiom() ensures false {}\n\
+             proof { hidden_axiom(); }\n\
+             0\n\
+         }",
+        Some("cannot be marked trusted"),
+    );
+}
+
+#[test]
+fn trusted_spec_children_are_untrusted() {
+    check_vstd(
+        "trusted_spec_children_are_untrusted",
+        "#[verus::trusted(spec)]\n\
+         pub fn f() -> (r: u64) ensures r == 1 {\n\
+             proof fn nested() ensures false { assume(false); }\n\
+             proof { nested(); }\n\
+             0\n\
+         }",
+        Some("`assume`/`admit` not allowed with `--no-cheating`"),
+    );
+}
+
+#[test]
+fn trusted_type_relative_path_to_untrusted_item() {
+    check_vstd(
+        "trusted_type_relative_path_to_untrusted_item",
+        "#[verus::trusted]\n\
+         pub struct S { pub x: u64 }\n\
+         #[verus::trusted]\n\
+         pub fn get(s: &S) -> (r: u64) ensures S::meaning(r) { s.x }\n\
+         impl S { pub open spec fn meaning(r: u64) -> bool { true } }",
+        Some(NOT_CLOSED),
+    );
+}
+
+#[test]
+fn trusted_pattern_path_to_untrusted_const() {
+    check_vstd(
+        "trusted_pattern_path_to_untrusted_const",
+        "#[verus::trusted]\n\
+         pub struct S;\n\
+         impl S { pub const C: u64 = 3; }\n\
+         #[verus::trusted]\n\
+         pub fn f(x: u64) -> bool { match x { S::C => true, _ => false } }",
+        Some(NOT_CLOSED),
+    );
+}
+
+const UNTRUSTED_VIEW: &str =
+    "impl View for S { type V = u64; open spec fn view(&self) -> u64 { self.x } }";
+
+#[test]
+fn trusted_spec_uses_untrusted_trait_impl() {
+    check_vstd(
+        "trusted_spec_uses_untrusted_trait_impl",
+        &format!(
+            "#[verus::trusted]\n\
+             pub struct S {{ pub x: u64 }}\n\
+             #[verus::trusted]\n\
+             pub fn get(s: &S) -> (r: u64) ensures r == s@ {{ s.x }}\n\
+             {UNTRUSTED_VIEW}"
+        ),
+        Some("untrusted impl `<S as vstd::string::View>`"),
+    );
+}
+
+#[test]
+fn trusted_spec_signature_uses_untrusted_trait_impl() {
+    check_vstd(
+        "trusted_spec_signature_uses_untrusted_trait_impl",
+        &format!(
+            "#[verus::trusted]\n\
+             pub struct S {{ pub x: u64 }}\n\
+             #[verus::trusted(spec)]\n\
+             pub fn get(s: &S) -> (r: u64) ensures r == s@ {{ s.x }}\n\
+             {UNTRUSTED_VIEW}"
+        ),
+        Some("untrusted impl"),
+    );
+}
+
+#[test]
+fn trusted_impl_with_untrusted_item() {
+    check_vstd(
+        "trusted_impl_with_untrusted_item",
+        "#[verus::trusted]\n\
+         pub struct S { pub x: u64 }\n\
+         #[verus::trusted]\n\
+         pub fn get(s: &S) -> (r: u64) ensures r == s@ { s.x }\n\
+         #[verus::trusted]\n\
+         impl View for S {\n\
+             type V = u64;\n\
+             #[verus::untrusted] open spec fn view(&self) -> u64 { self.x }\n\
+         }",
+        Some("untrusted impl item"),
+    );
+}
+
+#[test]
+fn trusted_generic_instantiation_uses_untrusted_impl() {
+    check_vstd(
+        "trusted_generic_instantiation_uses_untrusted_impl",
+        "#[verus::trusted]\n\
+         pub trait Tr { spec fn m(&self) -> bool; }\n\
+         #[verus::trusted]\n\
+         pub struct S;\n\
+         #[verus::trusted]\n\
+         pub open spec fn holds<T: Tr>(t: T) -> bool { t.m() }\n\
+         #[verus::trusted]\n\
+         #[verifier::external_body]\n\
+         pub proof fn ax() ensures holds(S) {}\n\
+         impl Tr for S { open spec fn m(&self) -> bool { true } }",
+        Some("untrusted impl `<S as Tr>`"),
+    );
+}
+
+#[test]
+fn trusted_operator_uses_untrusted_impl() {
+    check_vstd(
+        "trusted_operator_uses_untrusted_impl",
+        "#[verus::trusted]\n\
+         #[derive(Clone, Copy)]\n\
+         pub struct S { pub x: u64 }\n\
+         #[verus::trusted]\n\
+         pub fn add(a: S, b: S) -> S { a + b }\n\
+         impl core::ops::Add for S {\n\
+             type Output = S;\n\
+             fn add(self, o: S) -> S { S { x: 0 } }\n\
+         }",
+        Some("untrusted impl `<S as std::ops::Add>`"),
+    );
+}
+
+#[test]
+fn trusted_projection_uses_untrusted_impl() {
+    check_vstd(
+        "trusted_projection_uses_untrusted_impl",
+        "#[verus::trusted]\n\
+         pub trait Tr { type Out; }\n\
+         #[verus::trusted]\n\
+         pub struct S;\n\
+         #[verus::trusted]\n\
+         pub open spec fn f(x: <S as Tr>::Out) -> bool { true }\n\
+         impl Tr for S { type Out = u8; }",
+        Some("untrusted impl `<S as Tr>`"),
+    );
+}
+
+#[test]
+fn trusted_drop_uses_untrusted_destructor() {
+    check_vstd(
+        "trusted_drop_uses_untrusted_destructor",
+        "#[verus::trusted]\n\
+         pub struct S { pub x: u64 }\n\
+         #[verus::trusted]\n\
+         pub fn make() { let s = S { x: 0 }; }\n\
+         impl Drop for S { fn drop(&mut self) opens_invariants none no_unwind {} }",
+        Some("untrusted destructor"),
+    );
+}
+
+#[test]
+fn trusted_uses_trusted_impl() {
+    check_vstd(
+        "trusted_uses_trusted_impl",
+        "#[verus::trusted]\n\
+         pub struct S { pub x: u64 }\n\
+         #[verus::trusted]\n\
+         pub fn get(s: &S) -> (r: u64) ensures r == s@ { s.x }\n\
+         #[verus::trusted]\n\
+         impl View for S { type V = u64; open spec fn view(&self) -> u64 { self.x } }",
+        None,
+    );
+}
+
+#[test]
+fn trusted_uses_derived_impls_of_trusted_type() {
+    check_vstd(
+        "trusted_uses_derived_impls_of_trusted_type",
+        "#[verus::trusted]\n\
+         #[derive(Clone, Copy, PartialEq, Eq)]\n\
+         pub struct S { pub x: u64 }\n\
+         #[verus::trusted]\n\
+         pub fn dup(s: &S) -> (r: (S, S)) { (*s, s.clone()) }",
+        None,
+    );
+}
+
+#[test]
+fn trusted_generic_bound_is_not_resolved() {
+    check_vstd(
+        "trusted_generic_bound_is_not_resolved",
+        "#[verus::trusted]\n\
+         pub fn get<T: View>(t: &T) -> (r: bool) ensures r == (t@ == t@) { true }",
+        None,
+    );
+}
+
+#[test]
+fn untrusted_code_may_instantiate_trusted_code_with_untrusted_impls() {
+    check_vstd(
+        "untrusted_code_may_instantiate_trusted_code_with_untrusted_impls",
+        "#[verus::trusted]\n\
+         pub trait Tr { spec fn m(&self) -> bool; }\n\
+         #[verus::trusted]\n\
+         pub open spec fn holds<T: Tr>(t: T) -> bool { t.m() }\n\
+         pub struct U;\n\
+         impl Tr for U { open spec fn m(&self) -> bool { true } }\n\
+         pub proof fn uses() { assert(holds(U)); }",
+        None,
+    );
+}
+
+#[test]
+fn trusted_spec_body_may_use_untrusted_impls() {
+    check_vstd(
+        "trusted_spec_body_may_use_untrusted_impls",
+        "pub struct U { pub x: u64 }\n\
+         impl View for U { type V = u64; open spec fn view(&self) -> u64 { self.x } }\n\
+         #[verus::trusted(spec)]\n\
+         pub fn get(x: u64) -> (r: u64) ensures r == x {\n\
+             let u = U { x };\n\
+             assert(u@ == x);\n\
+             u.x\n\
+         }",
+        None,
+    );
+}

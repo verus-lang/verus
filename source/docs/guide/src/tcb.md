@@ -82,7 +82,8 @@ mod environment;
 
 The trusted label is inherited by child items. A child can opt back into normal
 no-cheating checking with `#[verus::untrusted]`.  Once an item is explicitly
-marked `untrusted`, none of its descendants may use `trusted` or `trusted(spec)`.
+marked `untrusted` (or `trusted(spec)`; see below), none of its descendants may use `trusted` or
+`trusted(spec)`.
 
 ```rust
 #[verus::trusted]
@@ -106,6 +107,16 @@ Trusted code must be transitively closed within its crate: every local item refe
 code must also be trusted.  This way, changes to untrusted code within the crate cannot affect
 the assumptions, definitions, etc. made by trusted code.
 
+This includes dependencies that are not named explicitly.  Whenever trusted code uses an item at
+a concrete type, every local trait impl that the use relies on must also be trusted.  For example,
+if trusted code writes `s@` for a local type `S`, then `impl View for S` must be trusted, since it
+determines what `s@` means.  The same applies to impls selected by method calls, overloaded
+operators, auto-deref, trait bounds of generic items instantiated by trusted code, associated
+types (e.g., `<S as Tr>::Out`), and `Drop` impls of values dropped by trusted code.  Impls
+produced by `#[derive]` are trusted if the type they are derived for is trusted.  Trait bounds
+on generic parameters of trusted code (e.g., `T: View`) are not resolved, since the impl is
+chosen by the caller.
+
 References to [`vstd`](./vstd.md) and other external crates are allowed.
 Crate-root `use` declarations are ignored as closure roots, but a reference
 through such an import is checked against the actual item it resolves to.
@@ -124,6 +135,8 @@ A function may use `#[verus::trusted(spec)]`. This marks only the function's int
 The implementation body remains untrusted: it may not contain `assume`, `external_body`, or any
 other construct prohibited by `--no-cheating`. References made only by the implementation body
 are not part of the trusted reference-closure check, so the body may call ordinary untrusted code.
+Like `untrusted`, `trusted(spec)` prevents the items nested in the function's body from being
+marked `trusted` or `trusted(spec)`.
 `trusted(spec)` may only be applied directly to a function.
 
 ### Example
