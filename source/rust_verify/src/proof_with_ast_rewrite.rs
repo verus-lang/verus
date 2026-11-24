@@ -3,7 +3,7 @@
 //! `proof_with!` emits `proof_with_callee(f(args, extras), f(args))`. After name
 //! resolution and before HIR lowering ([`rewrite_crate`]), only the first call is
 //! redirected to the `_VERUS_VERIFIED_` counterpart of `f`. All checks run after type
-//! checking (`crate::rust_to_vir_expr::check_proof_with_callee`).
+//! checking (`crate::rust_to_vir_expr::check_proof_with_callee`, `crate::proof_with_check`).
 //!
 //! The counterpart is found from the resolved `DefId`
 //! ([`ProofWithCtx::find_verified_counterpart`]):

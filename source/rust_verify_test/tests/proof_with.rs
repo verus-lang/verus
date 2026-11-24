@@ -30,6 +30,72 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // The verified and unverified copies of a call with different arguments are rejected.
+    #[test] test_wrong_proof_with_callee code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(with Ghost(g): Ghost<u8>)]
+        fn f(x: u8) -> u8 { x }
+
+        // Only the verification run redirects the hand-written call.
+        #[cfg(verus_keep_ghost_body)]
+        #[verus_verify]
+        fn caller(x: u8, y: u8) {
+            let _ = vstd::prelude::proof_with_callee(f(y, vstd::prelude::ghost_exec(x)), f(x));
+        }
+    } => Err(e) => assert_vir_error_msg(e, "the two copies of the call must be the same code")
+}
+
+test_verify_one_file! {
+    #[test] test_hir_conformance_hygienic_copies_rejected code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(with Ghost(g): Ghost<u8>)]
+        fn f(x: u8) -> u8 { x }
+
+        // Both copies print as `f({ let x = 2; x })`, but `$x` is the caller's `x`.
+        macro_rules! forge {
+            ($x:ident) => {
+                vstd::prelude::proof_with_callee(
+                    f({ let x = 2; x }, vstd::prelude::ghost_exec(1u8)),
+                    f({ let x = 2; $x }),
+                )
+            };
+        }
+
+        // Only the verification run redirects the hand-written call.
+        #[cfg(verus_keep_ghost_body)]
+        #[verus_verify]
+        fn caller(x: u8) {
+            let _ = forge!(x);
+        }
+    } => Err(e) => assert_vir_error_msg(e, "the two copies of the call must be the same code")
+}
+
+test_verify_one_file! {
+    #[test] test_hir_conformance_nested_use_rejected code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(with Ghost(g): Ghost<u8>)]
+        fn f(x: u8) -> u8 { x }
+
+        mod a { pub trait Tr { fn foo(&self) -> u8 { 1 } } impl Tr for u8 {} }
+        mod b { pub trait Tr { fn foo(&self) -> u8 { 2 } } impl Tr for u8 {} }
+
+        // Both copies print as `f({ x.foo() })`, but `foo` resolves to different traits.
+        // Only the verification run redirects the hand-written call.
+        #[cfg(verus_keep_ghost_body)]
+        #[verus_verify]
+        fn caller(x: u8) {
+            let _ = vstd::prelude::proof_with_callee(
+                f({ use b::Tr as _; x.foo() }, vstd::prelude::ghost_exec(1u8)),
+                f({ use a::Tr as _; x.foo() }),
+            );
+        }
+    } => Err(e) => assert_vir_error_msg(e, "the two copies of the call must be the same code")
+}
+
+test_verify_one_file! {
     #[test] test_hir_conformance_compiled_copy_not_a_call_rejected code! {
         use vstd::prelude::*;
 
@@ -43,6 +109,15 @@ test_verify_one_file! {
             let _ = vstd::prelude::proof_with_callee(f(x, vstd::prelude::ghost_exec(x)), { f(x) });
         }
     } => Err(e) => assert_vir_error_msg(e, "ill-formed `proof_with!` call")
+}
+
+test_verify_one_file! {
+    #[test] test_with_ghost_only_generic_rejected code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(with Ghost(g): Ghost<B>)]
+        fn f<A, B>(x: A) {}
+    } => Err(e) => assert_vir_error_msg(e, "generic parameter `B` is used only by ghost/tracked")
 }
 
 test_verify_one_file_with_options! {
@@ -529,6 +604,32 @@ test_verify_one_file! {
             verus_builtin::proof_with_callee(1u64, opaque(2))
         }
     } => Ok(())
+}
+
+// --- The verified counterpart is not callable by hand ---
+//
+// It is only reachable through the function it belongs to, with `proof_with!`.
+// Calling it directly would hand the caller the extra ghost/tracked outputs
+// without any obligation to supply the inputs, and the counterpart is not part
+// of the compiled program.
+
+test_verify_one_file! {
+    #[test] test_counterpart_direct_call_rejected code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(r =>
+            with Tracked(t): Tracked<u64>
+            ensures r == 1,
+        )]
+        fn f() -> u64 {
+            1
+        }
+
+        #[verus_spec]
+        fn bad() {
+            let _x = _VERUS_VERIFIED_f(Tracked::assume_new());
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot be called directly")
 }
 
 test_verify_one_file! {

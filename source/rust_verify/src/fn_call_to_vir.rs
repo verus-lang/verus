@@ -66,6 +66,8 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         ));
     }
 
+    crate::proof_with_check::check_direct_call(bctx, expr, f)?;
+
     match rust_item {
         Some(RustItem::BoxNew) if bctx.in_ghost => {
             record_misc(bctx, expr, MiscCall::BoxNew);
