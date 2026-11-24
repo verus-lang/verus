@@ -810,3 +810,146 @@ fn emits_trust_manifest() {
             && node["trust"] == "trusted")
     );
 }
+
+/// Verify `files` (with vstd) under `--no-cheating`, emitting a trust manifest.
+fn emit_manifest_vstd(name: &str, files: Vec<(String, String)>, expected_err: Option<&str>) {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest_arg = temp.path().join("tcb.json").to_string_lossy().into_owned();
+    let result = verify_files_vstd(
+        name,
+        files,
+        "test.rs".to_string(),
+        true,
+        &["--no-cheating", &format!("--emit-trust-manifest={manifest_arg}")],
+    );
+    match (result, expected_err) {
+        (Ok(()), None) => {}
+        (Err(err), None) => panic!("expected success, got errors: {:#?}", err.errors),
+        (Ok(()), Some(msg)) => panic!("expected an error containing {msg:?}"),
+        (Err(err), Some(msg)) => assert_any_vir_error_msg(err, msg),
+    }
+}
+
+#[test]
+fn trust_manifest_rejects_untrusted_local_macro() {
+    let files = vec![entry(
+        "",
+        "use vstd::prelude::*;\n\
+         macro_rules! helper { () => { ::verus_builtin::assume_(false) } }\n\
+         verus! {\n\
+         #[verus::trusted]\n\
+         pub proof fn f() ensures false { helper!(); }\n\
+         }",
+    )];
+    emit_manifest_vstd(
+        "trust_manifest_rejects_untrusted_local_macro",
+        files,
+        Some("may not use the untrusted macro `helper!`"),
+    );
+}
+
+#[test]
+fn trust_manifest_rejects_untrusted_local_macro_in_trusted_spec() {
+    let files = vec![entry(
+        "",
+        "use vstd::prelude::*;\n\
+         macro_rules! post { ($r:expr) => { $r == 1 } }\n\
+         verus! {\n\
+         #[verus::trusted(spec)]\n\
+         pub fn f() -> (r: u64) ensures post!(r) { 1 }\n\
+         }",
+    )];
+    emit_manifest_vstd(
+        "trust_manifest_rejects_untrusted_local_macro_in_trusted_spec",
+        files,
+        Some("may not use the untrusted macro `post!`"),
+    );
+}
+
+#[test]
+fn trust_manifest_allows_trusted_local_macro() {
+    let files = vec![entry(
+        "",
+        "use vstd::prelude::*;\n\
+         #[verus::trusted]\n\
+         macro_rules! helper { () => { ::verus_builtin::assume_(false) } }\n\
+         verus! {\n\
+         #[verus::trusted]\n\
+         pub proof fn f() ensures false { helper!(); }\n\
+         }",
+    )];
+    emit_manifest_vstd("trust_manifest_allows_trusted_local_macro", files, None);
+}
+
+#[test]
+fn trust_manifest_allows_untrusted_macro_in_trusted_spec_body() {
+    let files = vec![entry(
+        "",
+        "use vstd::prelude::*;\n\
+         macro_rules! helper { ($x:expr) => { $x } }\n\
+         verus! {\n\
+         #[verus::trusted(spec)]\n\
+         pub fn f(x: u64) -> (r: u64) ensures r == x { helper!(x) }\n\
+         }",
+    )];
+    emit_manifest_vstd("trust_manifest_allows_untrusted_macro_in_trusted_spec_body", files, None);
+}
+
+#[test]
+fn trust_manifest_rejects_include() {
+    let files = vec![
+        entry(
+            "",
+            "use vstd::prelude::*;\n\
+             verus! {\n\
+             #[verus::trusted]\n\
+             pub proof fn f() ensures false { include!(\"included.rs\"); }\n\
+             }",
+        ),
+        ("included.rs".to_string(), "::verus_builtin::assume_(false)\n".to_string()),
+    ];
+    emit_manifest_vstd(
+        "trust_manifest_rejects_include",
+        files,
+        Some("trusted code must appear within the source text of its item"),
+    );
+}
+
+#[test]
+fn trust_manifest_rejects_include_str() {
+    let files = vec![
+        entry(
+            "",
+            "#[verus::trusted]\n\
+             pub fn f() -> &'static str { include_str!(\"data.txt\") }",
+        ),
+        ("data.txt".to_string(), "hello\n".to_string()),
+    ];
+    emit_manifest_vstd(
+        "trust_manifest_rejects_include_str",
+        files,
+        Some("may not use `include_str!`"),
+    );
+}
+
+#[test]
+fn trust_manifest_allows_external_macros() {
+    let files = vec![entry(
+        "",
+        "use vstd::prelude::*;\n\
+         verus! {\n\
+         #[verus::trusted]\n\
+         pub fn f(v: &Vec<u64>) -> (r: u64)\n\
+             requires v.len() > 0\n\
+             ensures r == 2\n\
+         {\n\
+             let w = vec![1u64, 2];\n\
+             proof { assert(w@.len() == 2); }\n\
+             let mut i = 0;\n\
+             while i < 1 invariant i <= 1 decreases 1 - i { i += 1; }\n\
+             2\n\
+         }\n\
+         }",
+    )];
+    emit_manifest_vstd("trust_manifest_allows_external_macros", files, None);
+}

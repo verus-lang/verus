@@ -181,6 +181,9 @@ struct ManifestCollector<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
     policies: &'a HashMap<LocalDefId, EffectiveTrust>,
     nodes: Vec<Node>,
+    /// Source range recorded for each trusted owner
+    trusted_ranges: HashMap<LocalDefId, SourceRange>,
+    errors: Vec<VirErr>,
     parents: Vec<u64>,
     files: HashSet<String>,
     next_id: u64,
@@ -198,7 +201,16 @@ impl<'a, 'tcx> ManifestCollector<'a, 'tcx> {
         vis_span: Option<Span>,
     ) -> Option<u64> {
         let trust = self.policies.get(&owner_id.def_id).copied()?;
-        let mut range = source_range(self.tcx, span)?;
+        let Some(mut range) = source_range(self.tcx, span) else {
+            if trust.in_trusted_closure() {
+                // Fail closed: a trusted item we cannot locate would be missing from the snapshot
+                self.errors.push(vir_err_span_str(
+                    span,
+                    "cannot determine the source text of this trusted item, so it cannot be included in the trust manifest",
+                ));
+            }
+            return None;
+        };
         for attr in self.tcx.hir_attrs(hir_id) {
             if let Some(attr_range) = source_attr_span(attr).and_then(|s| source_range(self.tcx, s))
                 && attr_range.file == range.file
@@ -217,6 +229,9 @@ impl<'a, 'tcx> ManifestCollector<'a, 'tcx> {
             .then(|| span.ctxt().outer_expn_data().call_site)
             .and_then(|s| source_range(self.tcx, s));
         self.files.insert(range.file.clone());
+        if trust.in_trusted_closure() {
+            self.trusted_ranges.insert(owner_id.def_id, range.clone());
+        }
         if let Some(body) = &body {
             self.files.insert(body.file.clone());
         }
@@ -338,16 +353,259 @@ impl<'a, 'tcx> Visitor<'tcx> for ManifestCollector<'a, 'tcx> {
     }
 }
 
+/// Is `local` (or its nearest enclosing item with a policy) in the trusted closure?
+fn local_in_trusted_closure<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    policies: &HashMap<LocalDefId, EffectiveTrust>,
+    mut local: LocalDefId,
+) -> bool {
+    loop {
+        if let Some(policy) = policies.get(&local) {
+            return policy.in_trusted_closure();
+        }
+        if local == rustc_hir::CRATE_OWNER_ID.def_id {
+            return false;
+        }
+        let Some(parent) = tcx.parent(local.to_def_id()).as_local() else {
+            return false;
+        };
+        local = parent;
+    }
+}
+
+/// The trust snapshot renders trusted code from its source text.  That is only faithful if the
+/// source text determines the code, so this checks that trusted code (for `trusted(spec)`
+/// functions, just the signature and specification) contains no expansions of:
+///  - untrusted macros defined in this crate, whose definitions are not in the snapshot
+///    (macros from other crates are allowed, just as references to other crates are), or
+///  - `include!`, `include_str!`, or `include_bytes!`, whose contents are not in the snapshot.
+/// It also rejects any code whose (unexpanded) source lies outside the item's recorded source range.
+struct ExpansionChecker<'a, 'tcx> {
+    ctxt: &'a ContextX<'tcx>,
+    policies: &'a HashMap<LocalDefId, EffectiveTrust>,
+    root_owner: OwnerId,
+    signature_only: bool,
+    range: &'a SourceRange,
+    reported: HashSet<Span>,
+    errors: Vec<VirErr>,
+}
+
+impl<'a, 'tcx> ExpansionChecker<'a, 'tcx> {
+    fn is_include_macro(&self, def_id: DefId) -> bool {
+        let tcx = self.ctxt.tcx;
+        matches!(tcx.crate_name(def_id.krate).as_str(), "core" | "std")
+            && matches!(tcx.item_name(def_id).as_str(), "include" | "include_str" | "include_bytes")
+    }
+
+    fn report(&mut self, span: Span, message: String) {
+        if self.reported.insert(span) {
+            self.errors.push(vir_err_span_str(span, &message));
+        }
+    }
+
+    fn check_span(&mut self, span: Span) {
+        if span.is_dummy() {
+            return;
+        }
+        let tcx = self.ctxt.tcx;
+        if !span.from_expansion() {
+            if let Some(range) = source_range(tcx, span)
+                && (range.file != self.range.file
+                    || range.start < self.range.start
+                    || range.end > self.range.end)
+            {
+                self.report(
+                    span,
+                    "trusted code must appear within the source text of its item to be included in the trust manifest (e.g., it may not come from `include!`)".to_string(),
+                );
+            }
+            return;
+        }
+        let mut current = span;
+        while current.from_expansion() {
+            let data = current.ctxt().outer_expn_data();
+            if let rustc_span::hygiene::ExpnKind::Macro(_, name) = data.kind
+                && let Some(def_id) = data.macro_def_id
+            {
+                if let Some(local) = def_id.as_local() {
+                    if !local_in_trusted_closure(tcx, self.policies, local) {
+                        self.report(
+                            data.call_site,
+                            format!(
+                                "trusted code may not use the untrusted macro `{name}!` defined in the same crate, since its definition would not be included in the trust manifest; mark the macro definition `#[verus::trusted]`"
+                            ),
+                        );
+                    }
+                } else if self.is_include_macro(def_id) {
+                    self.report(
+                        data.call_site,
+                        format!(
+                            "trusted code may not use `{name}!`, since the included file would not be included in the trust manifest"
+                        ),
+                    );
+                }
+            }
+            current = data.call_site;
+        }
+    }
+
+    fn scan_signature_headers(&mut self, body_id: BodyId) {
+        let body = self.ctxt.tcx.hir_body(body_id);
+        let mut finder =
+            HeaderFinder { ctxt: self.ctxt, root_owner: self.root_owner, header_exprs: Vec::new() };
+        finder.visit_expr(body.value);
+        for expr in finder.header_exprs {
+            self.visit_expr(expr);
+        }
+    }
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for ExpansionChecker<'a, 'tcx> {
+    type NestedFilter = nested_filter::All;
+
+    fn maybe_tcx(&mut self) -> TyCtxt<'tcx> {
+        self.ctxt.tcx
+    }
+
+    // Nested items are checked as their own owners.
+    fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
+        if item.owner_id == self.root_owner {
+            rustc_hir::intravisit::walk_item(self, item);
+        }
+    }
+
+    fn visit_impl_item(&mut self, item: &'tcx ImplItem<'tcx>) {
+        if item.owner_id == self.root_owner {
+            rustc_hir::intravisit::walk_impl_item(self, item);
+        }
+    }
+
+    fn visit_trait_item(&mut self, item: &'tcx TraitItem<'tcx>) {
+        if item.owner_id == self.root_owner {
+            rustc_hir::intravisit::walk_trait_item(self, item);
+        }
+    }
+
+    fn visit_foreign_item(&mut self, item: &'tcx ForeignItem<'tcx>) {
+        if item.owner_id == self.root_owner {
+            rustc_hir::intravisit::walk_foreign_item(self, item);
+        }
+    }
+
+    fn visit_fn(
+        &mut self,
+        kind: FnKind<'tcx>,
+        decl: &'tcx FnDecl<'tcx>,
+        body_id: BodyId,
+        _span: Span,
+        def_id: LocalDefId,
+    ) {
+        if self.signature_only && def_id == self.root_owner.def_id {
+            rustc_hir::intravisit::walk_fn_kind(self, kind);
+            rustc_hir::intravisit::walk_fn_decl(self, decl);
+            self.scan_signature_headers(body_id);
+        } else {
+            rustc_hir::intravisit::walk_fn(self, kind, decl, body_id, def_id);
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
+        self.check_span(expr.span);
+        rustc_hir::intravisit::walk_expr(self, expr);
+    }
+
+    fn visit_stmt(&mut self, stmt: &'tcx rustc_hir::Stmt<'tcx>) {
+        self.check_span(stmt.span);
+        rustc_hir::intravisit::walk_stmt(self, stmt);
+    }
+
+    fn visit_pat(&mut self, pat: &'tcx rustc_hir::Pat<'tcx>) {
+        self.check_span(pat.span);
+        rustc_hir::intravisit::walk_pat(self, pat);
+    }
+
+    fn visit_ty(&mut self, t: &'tcx rustc_hir::Ty<'tcx, AmbigArg>) {
+        self.check_span(t.span);
+        rustc_hir::intravisit::walk_ty(self, t);
+    }
+}
+
+/// Run `ExpansionChecker` on every trusted owner that was recorded in the manifest.
+struct TrustedExpansionScanner<'a, 'tcx> {
+    ctxt: &'a ContextX<'tcx>,
+    policies: &'a HashMap<LocalDefId, EffectiveTrust>,
+    trusted_ranges: &'a HashMap<LocalDefId, SourceRange>,
+    errors: Vec<VirErr>,
+}
+
+impl<'a, 'tcx> TrustedExpansionScanner<'a, 'tcx> {
+    fn checker(&self, owner_id: OwnerId) -> Option<ExpansionChecker<'a, 'tcx>> {
+        let range = self.trusted_ranges.get(&owner_id.def_id)?;
+        let policy = self.policies.get(&owner_id.def_id).copied()?;
+        Some(ExpansionChecker {
+            ctxt: self.ctxt,
+            policies: self.policies,
+            root_owner: owner_id,
+            signature_only: policy == EffectiveTrust::TrustedSpec,
+            range,
+            reported: HashSet::new(),
+            errors: Vec::new(),
+        })
+    }
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for TrustedExpansionScanner<'a, 'tcx> {
+    type NestedFilter = nested_filter::All;
+
+    fn maybe_tcx(&mut self) -> TyCtxt<'tcx> {
+        self.ctxt.tcx
+    }
+
+    fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
+        if let Some(mut checker) = self.checker(item.owner_id) {
+            checker.visit_item(item);
+            self.errors.append(&mut checker.errors);
+        }
+        rustc_hir::intravisit::walk_item(self, item);
+    }
+
+    fn visit_impl_item(&mut self, item: &'tcx ImplItem<'tcx>) {
+        if let Some(mut checker) = self.checker(item.owner_id) {
+            checker.visit_impl_item(item);
+            self.errors.append(&mut checker.errors);
+        }
+        rustc_hir::intravisit::walk_impl_item(self, item);
+    }
+
+    fn visit_trait_item(&mut self, item: &'tcx TraitItem<'tcx>) {
+        if let Some(mut checker) = self.checker(item.owner_id) {
+            checker.visit_trait_item(item);
+            self.errors.append(&mut checker.errors);
+        }
+        rustc_hir::intravisit::walk_trait_item(self, item);
+    }
+
+    fn visit_foreign_item(&mut self, item: &'tcx ForeignItem<'tcx>) {
+        if let Some(mut checker) = self.checker(item.owner_id) {
+            checker.visit_foreign_item(item);
+            self.errors.append(&mut checker.errors);
+        }
+        rustc_hir::intravisit::walk_foreign_item(self, item);
+    }
+}
+
 fn write_tcb_manifest(
     ctxt: &ContextX<'_>,
     policies: &HashMap<LocalDefId, EffectiveTrust>,
     path: &Path,
-) -> Result<(), String> {
+) -> Result<(), Vec<VirErr>> {
     let tcx = ctxt.tcx;
     let mut collector = ManifestCollector {
         tcx,
         policies,
         nodes: Vec::new(),
+        trusted_ranges: HashMap::new(),
+        errors: Vec::new(),
         parents: Vec::new(),
         files: HashSet::new(),
         next_id: 1,
@@ -355,6 +613,19 @@ fn write_tcb_manifest(
     let root_module = tcx.hir_root_module();
     let root_owner = tcx.hir_owner_node(rustc_hir::CRATE_OWNER_ID);
     collector.visit_mod(root_module, root_owner.span(), rustc_span::def_id::CRATE_MOD_ID);
+    let mut errors = std::mem::take(&mut collector.errors);
+    let mut scanner = TrustedExpansionScanner {
+        ctxt,
+        policies,
+        trusted_ranges: &collector.trusted_ranges,
+        errors: Vec::new(),
+    };
+    scanner.visit_mod(root_module, root_owner.span(), rustc_span::def_id::CRATE_MOD_ID);
+    errors.append(&mut scanner.errors);
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    let io_err = |message: String| vec![vir_err_span_str(root_owner.span(), &message)];
     let crate_attributes: Vec<SourceRange> = tcx
         .hir_attrs(rustc_hir::CRATE_HIR_ID)
         .iter()
@@ -366,7 +637,8 @@ fn write_tcb_manifest(
     collector.files.extend(crate_attributes.iter().map(|range| range.file.clone()));
     let mut files = Vec::new();
     for file in collector.files {
-        let bytes = std::fs::read(&file).map_err(|err| format!("failed to read {file}: {err}"))?;
+        let bytes =
+            std::fs::read(&file).map_err(|err| io_err(format!("failed to read {file}: {err}")))?;
         files.push(SourceFile { path: file, sha256: source_hash(&bytes) });
     }
     files.sort_by(|a, b| a.path.cmp(&b.path));
@@ -386,11 +658,12 @@ fn write_tcb_manifest(
         && !parent.as_os_str().is_empty()
     {
         std::fs::create_dir_all(parent)
-            .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
+            .map_err(|err| io_err(format!("failed to create {}: {err}", parent.display())))?;
     }
     let json = serde_json::to_vec_pretty(&manifest)
-        .map_err(|err| format!("failed to serialize TCB manifest: {err}"))?;
-    std::fs::write(path, json).map_err(|err| format!("failed to write {}: {err}", path.display()))
+        .map_err(|err| io_err(format!("failed to serialize TCB manifest: {err}")))?;
+    std::fs::write(path, json)
+        .map_err(|err| io_err(format!("failed to write {}: {err}", path.display())))
 }
 
 struct PolicyCollector<'tcx> {
@@ -1076,9 +1349,9 @@ pub(crate) fn check_trust<'tcx>(ctxt: &ContextX<'tcx>) -> Vec<VirErr> {
     errors.append(&mut scanner.errors);
     if errors.is_empty()
         && let Some(path) = &ctxt.cmd_line_args.emit_trust_manifest
-        && let Err(message) = write_tcb_manifest(ctxt, &policies, Path::new(path))
+        && let Err(mut manifest_errors) = write_tcb_manifest(ctxt, &policies, Path::new(path))
     {
-        errors.push(vir_err_span_str(root_owner.span(), &message));
+        errors.append(&mut manifest_errors);
     }
     errors
 }
