@@ -5,7 +5,7 @@ use super::arithmetic::power2::*;
 use super::bits::*;
 use super::math::*;
 use super::prelude::*;
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 use super::string::StringSliceAdditionalSpecFns;
 use core::mem::MaybeUninit;
 
