@@ -159,6 +159,7 @@ fn check_decrease_call(
     span: &Span,
     target: &Fun,
     resolved_method: &Option<(Fun, Typs)>,
+    typ_args: &Typs,
     args: &Exps,
 ) -> Result<Exp, VirErr> {
     let name = if let Some(callee) = get_callee(ctxt.ctx, target, resolved_method) {
@@ -171,6 +172,12 @@ fn check_decrease_call(
         ));
     };
     let function = &ctxt.ctx.func_map[&name];
+    let typ_args = match resolved_method {
+        Some((m, ts)) if *m == name => ts,
+        _ => typ_args,
+    };
+    let typ_substs: HashMap<_, _> =
+        function.x.typ_params.iter().cloned().zip(typ_args.iter().cloned()).collect();
     // check_decrease(let params = args in decreases_exp, decreases_at_entry)
     let params = &function.x.params;
     assert!(params.len() == args.len());
@@ -198,6 +205,8 @@ fn check_decrease_call(
             &params_to_pars(&function.x.params),
             expr,
         )?;
+        let decreases_exp =
+            crate::sst_util::subst_exp(&typ_substs, &HashMap::new(), &decreases_exp);
         let dec_exp = exp_rename_vars(&decreases_exp, &renames);
         let e_decx = ExpX::Bind(
             Spanned::new(span.clone(), BndX::Let(Arc::new(binders.clone()))),
@@ -410,10 +419,22 @@ fn check_termination<'a>(
     let closure_call_spans = closure_call_spans(function);
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
         StmX::Call {
-            fun: crate::sst::CallTarget::Fun(fun), resolved_method, args, dest, ..
+            fun: crate::sst::CallTarget::Fun(fun),
+            resolved_method,
+            typ_args,
+            args,
+            dest,
+            ..
         } if is_recursive_call(&ctxt, fun, resolved_method) => {
-            let check =
-                check_decrease_call(&ctxt, diagnostics, &s.span, fun, resolved_method, args)?;
+            let check = check_decrease_call(
+                &ctxt,
+                diagnostics,
+                &s.span,
+                fun,
+                resolved_method,
+                typ_args,
+                args,
+            )?;
             let mut error = error(&s.span, "could not prove termination");
             if closure_call_spans.iter().any(|c| c.id == s.span.id) {
                 error = error

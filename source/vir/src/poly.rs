@@ -1433,6 +1433,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &KrateSst) -> KrateSst {
         trait_impls,
         assoc_type_impls,
         reveal_groups,
+        arch_word_bits,
     } = &**krate;
     let kratex = KrateSstX {
         functions: functions.iter().map(|f| visit_function(ctx, f)).collect(),
@@ -1442,6 +1443,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &KrateSst) -> KrateSst {
         trait_impls: trait_impls.clone(),
         assoc_type_impls: assoc_type_impls.iter().map(|a| visit_assoc_type_impl(ctx, a)).collect(),
         reveal_groups: reveal_groups.clone(),
+        arch_word_bits: *arch_word_bits,
     };
     ctx.func_sst_map = HashMap::new();
     for function in kratex.functions.iter() {

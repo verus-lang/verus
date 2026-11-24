@@ -58,23 +58,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let rust_item = verus_items::get_rust_item(tcx, f);
     let verus_item = bctx.ctxt.get_verus_item(f);
 
-    if bctx.external_body
-        && !matches!(
-            verus_item,
-            Some(
-                VerusItem::Spec(
-                    SpecItem::Requires
-                        | SpecItem::Recommends
-                        | SpecItem::Ensures
-                        | SpecItem::Returns
-                        | SpecItem::OpensInvariantMask
-                        | SpecItem::NoUnwind
-                        | SpecItem::NoUnwindWhen
-                        | SpecItem::Decreases
-                ) | VerusItem::Directive(DirectiveItem::ExtraDependency)
-            )
-        )
-    {
+    if bctx.external_body && !verus_item.is_some_and(crate::pre_header::is_header_verus_item) {
         return Ok(bctx.spanned_typed_new(
             expr.span,
             &expr_typ()?,
@@ -298,7 +282,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
     // REVIEW: The atomic function call is encoded using the following construction:
     //
-    // #[verifier::atomic_call]
+    // #[verus::internal(logatom_function_call)]
     // function(x1, x2, x3, ::vstd::atomic::atomically(|update| {
     //     ...
     //     ay = update(ax);
@@ -326,17 +310,29 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
     let is_atomic_function_call = || -> Result<bool, VirErr> {
         let hir_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
         let vir_attrs = crate::attributes::parse_attrs(hir_attrs, None)?;
-        Ok(vir_attrs.contains(&crate::attributes::Attr::AtomicCall))
+        Ok(vir_attrs.contains(&crate::attributes::Attr::LogatomFunctionCall))
+    };
+
+    let malformed_atomic_call = || -> Result<_, VirErr> {
+        err_span(
+            expr.span,
+            "malformed atomic function call; use `atomically |update| { ... }` syntax instead",
+        )
     };
 
     let (vir_args, call_body) = match args.as_deref() {
         Some(arg_slice) if is_atomic_function_call()? => {
             let [prefix @ .., au] = arg_slice else {
-                panic!("atomic call must have at least one argument");
+                return malformed_atomic_call();
             };
 
             let mut vir_args = mk_vir_args(bctx, prefix)?;
             let au_expr = expr_to_vir_consume(&bctx, au)?;
+
+            let ExprX::Atomically(..) = &au_expr.x else {
+                return malformed_atomic_call();
+            };
+
             vir_args.push(bctx.spanned_typed_new(
                 au.span,
                 &au_expr.typ,
@@ -926,7 +922,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     //     ...
                     // }
                     //
-                    // #[verifier::atomic_call]
+                    // #[verus::internal(logatom_function_call)]
                     // function(x1, x2, x3, ::vstd::atomic::atomically({
                     //     let _verus_internal_identifier_for_closures = ::vstd::prelude::dummy_capture_new();
                     //     |update, atomic_update| {
@@ -1126,6 +1122,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let bctx = &BodyCtxt { in_old: true, ..bctx.clone() };
                 let arg = expr_to_vir_consume(bctx, &args[0])?;
                 mk_expr(ExprX::Old(arg))
+            }
+            ExprItem::ForcePureAndNonProphetic => {
+                record_spec_fn_pure_args_only(bctx, expr);
+                internal_err_unless!(
+                    args_len == 2,
+                    expr.span,
+                    "expected force_pure_and_nonprophetic",
+                    &args
+                );
+                let reason = get_string_lit_arg(&args[0], "force_pure_and_nonprophetic")?;
+                let arg = expr_to_vir_consume(bctx, &args[1])?;
+                mk_expr(ExprX::ForcePureAndNonProphetic(Arc::new(reason), arg))
             }
             ExprItem::ArrayIndex => {
                 record_spec_fn(bctx, expr);
@@ -2061,9 +2069,14 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
         }
         VerusItem::CompilableOpr(CompilableOprItem::Implies) => {
-            // REVIEW: should this really be a 'compilable operator'?
-            // Imply is marked as unimplemented! in verus_builtin.
             record_misc(bctx, expr, MiscCall::Implies);
+
+            if !bctx.in_ghost {
+                return err_span(
+                    expr.span,
+                    "`implies` operator (`==>`) cannot be used in executable context",
+                );
+            }
 
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
             mk_expr(ExprX::Logical(LogicalOp::Implies, lhs, rhs))
@@ -2462,6 +2475,7 @@ fn uncompilable_verus_fn(verus_item: &VerusItem) -> bool {
             ExprItem::Choose
             | ExprItem::ChooseTuple
             | ExprItem::Old
+            | ExprItem::ForcePureAndNonProphetic
             | ExprItem::GetVariantField
             | ExprItem::GetUnionField
             | ExprItem::IsVariant

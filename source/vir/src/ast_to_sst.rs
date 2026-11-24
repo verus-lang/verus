@@ -1015,6 +1015,30 @@ fn expr_get_call(
                     return Ok(None);
                 }
 
+                let func_is_atomic = function.x.atomic_update.is_some();
+                let call_is_atomic = args.last().is_some_and(|expr| {
+                    // atomically block was replaced by init dummy
+                    matches!(expr.x, ExprX::AtomicUpdateInitDummy)
+                });
+
+                match (func_is_atomic, call_is_atomic) {
+                    (true, false) => {
+                        return Err(error_with_label(
+                            &expr.span,
+                            "invalid call to logically atomic function",
+                            "expected atomic function call here",
+                        ));
+                    }
+                    (false, true) => {
+                        return Err(error_with_label(
+                            &expr.span,
+                            "invalid atomic function call",
+                            "unexpected atomic function call here",
+                        ));
+                    }
+                    _ => {}
+                }
+
                 let (stms, all_obligations, exps, body) = get_call_args(
                     ctx,
                     state,
@@ -2935,7 +2959,8 @@ pub(crate) fn expr_to_stm_opt(
                 Ok((stms, Maybe::Never))
             }
         }
-        ExprX::OpenInvariant(inv, binder, body, atomicity) => {
+        ExprX::OpenInvariant(credit, inv, binder, body, atomicity) => {
+            // credit;
             // let inv_tmp = inv;
             // OpenInvariantBlock(inv_tmp.namespace(), {
             //   let mut inner = inner_tmp;
@@ -2946,8 +2971,12 @@ pub(crate) fn expr_to_stm_opt(
             //   assert(inv_tmp.inv(inner));
             // });
 
+            let (mut stms0, credit_exp) = expr_to_stm_opt(ctx, state, credit)?;
+            let _credit_exp = to_exp_or_return_never!(credit_exp, stms0);
+
             // Evaluate `inv`
-            let (mut stms0, big_inv_exp) = expr_to_stm_opt(ctx, state, inv)?;
+            let (stms_inv, big_inv_exp) = expr_to_stm_opt(ctx, state, inv)?;
+            stms0.extend(stms_inv);
             let big_inv_exp = to_exp_or_return_never!(big_inv_exp, stms0);
 
             // Assign it to a constant tmp variable to ensure it is constant
@@ -3039,23 +3068,25 @@ pub(crate) fn expr_to_stm_opt(
             // let au = $au_expr;
             // let x = new existential;
             //
-            // assume(req(au, x));
-            // assert(outer_mask(au) ⊆ state.mask);
+            // assume(au.req(x));
+            // assert(au.outer_mask() ⊆ state.mask);
             //
             // let y;
-            // with state.mask = inner_mask(au) {
+            // with state.mask = au.inner_mask() {
             //     let $mut $x = x;
             //     y = $body;
             // }
             //
-            // assert(ens(au, x, y));
+            // assert(au.ens(x, y));
             //
             // if branch_bool(y) {
-            //     assume(input(au, x));
-            //     assume(output(au, y));
-            //     assume(resolves(au));
+            //     assume(au.input() == x);
+            //     assume(au.output() == y);
+            //     assume(au.resolves());
             //
-            //     Ok(())
+            //     let resolution = new existential;
+            //     assume(resolution.atomic_update() == au);
+            //     Ok(resolution)
             // } else {
             //     Err(au)
             // }
@@ -3187,7 +3218,15 @@ pub(crate) fn expr_to_stm_opt(
 
             // generate condition
 
-            let res_dt = Dt::Path(def::result_type_path());
+            let expr_typ = undecorate_typ(&expr.typ);
+            let TypX::Datatype(res_dt, res_ty_args, _) = expr_typ.as_ref() else {
+                panic!("Result should be a datatype");
+            };
+
+            let [resolution_typ, _au_typ] = res_ty_args.as_slice() else {
+                panic!("Result should have two type arguments");
+            };
+
             let ok_variant = Arc::new("Ok".to_owned());
             let err_variant = Arc::new("Err".to_owned());
             let variant_field = Arc::new("0".to_owned());
@@ -3216,14 +3255,29 @@ pub(crate) fn expr_to_stm_opt(
                     &mut stms,
                 );
 
-                let unit_typ = crate::ast_util::mk_tuple_typ(&Default::default());
-                let (unit_var_id, unit_var_exp) = state.declare_temp_var_stm(
+                let (resolution_var_id, resolution_var_exp) = state.declare_temp_var_stm(
                     &expr.span,
-                    &unit_typ,
+                    &resolution_typ,
                     PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
                 );
 
-                stms.push(assume_has_typ(&unit_var_id, &unit_typ, &expr.span));
+                stms.push(assume_has_typ(&resolution_var_id, &resolution_typ, &expr.span));
+                stms.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assume(sst_equal(
+                        &expr.span,
+                        &SpannedTyped::new(
+                            &expr.span,
+                            &au_typ,
+                            ExpX::Call(
+                                CallFun::Fun(def::fn_resolution_atomic_update(), None),
+                                typ_args.clone(),
+                                Arc::new(vec![resolution_var_exp.clone()]),
+                            ),
+                        ),
+                        &au_var_exp,
+                    )),
+                ));
 
                 let out_exp = SpannedTyped::new(
                     &expr.span,
@@ -3233,7 +3287,7 @@ pub(crate) fn expr_to_stm_opt(
                         ok_variant.clone(),
                         Arc::new(vec![Arc::new(BinderX {
                             name: variant_field.clone(),
-                            a: unit_var_exp,
+                            a: resolution_var_exp,
                         })]),
                     ),
                 );
@@ -3867,6 +3921,7 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, Maybe::Some(Value::Exp(exp1))))
         }
         ExprX::Old(e) => expr_to_stm_opt(ctx, state, e),
+        ExprX::ForcePureAndNonProphetic(_, e) => expr_to_stm_opt(ctx, state, e),
         ExprX::MatchGuardFreeze(scrutinee, body) => {
             let (stms, e) = expr_to_stm_opt(ctx, state, body)?;
             let (stms0, scrutinee) = place_to_exp_pair(ctx, state, scrutinee)?;

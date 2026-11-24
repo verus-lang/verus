@@ -6,15 +6,14 @@ use rustc_errors::DiagArgValue;
 use rustc_hir::attrs::lang_items::LangItem;
 use rustc_hir::def::DefKind;
 use rustc_hir::{self as hir, BindingMode, ByRef, HirId, Mutability, find_attr};
+use rustc_lint_defs::builtin::{DEPRECATED_SAFE_2024, UNSAFE_OP_IN_UNSAFE_FN, UNUSED_UNSAFE};
 use rustc_middle::middle::codegen_fn_attrs::{TargetFeature, TargetFeatureKind};
-use rustc_middle::span_bug;
 use rustc_middle::thir::visit::Visitor;
 use rustc_middle::thir::*;
 use rustc_middle::ty::print::with_no_trimmed_paths;
 use rustc_middle::ty::{self, Ty, TyCtxt};
-use rustc_session::lint::builtin::{DEPRECATED_SAFE_2024, UNSAFE_OP_IN_UNSAFE_FN, UNUSED_UNSAFE};
 use rustc_span::def_id::{DefId, LocalDefId};
-use rustc_span::{Span, Symbol};
+use rustc_span::{Span, Symbol, span_bug};
 
 use crate::diagnostics::*;
 
@@ -393,7 +392,7 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
             | ExprKind::If { .. }
             | ExprKind::InlineAsm { .. }
             | ExprKind::LogicalOp { .. }
-            | ExprKind::Use { .. }
+            | ExprKind::ValueExpr { .. }
             | ExprKind::Reborrow { .. } => {
                 // We don't need to save the old value and restore it
                 // because all the place expressions can't have more

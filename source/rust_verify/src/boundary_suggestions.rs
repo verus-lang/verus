@@ -5,8 +5,8 @@ use std::{
 
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{
-    EarlyParamRegion, GenericArg, GenericParamDefKind, InstantiatedClauses, RegionExt, Ty, TyCtxt,
-    TyKind, TypingEnv,
+    EarlyParamRegion, GenericArg, GenericParamDefKind, InstantiatedClauses, Ty, TyCtxt, TyKind,
+    TypingEnv,
 };
 use rustc_type_ir::{
     Interner, TypeFoldable, TypeFolder, TypeSuperVisitable, TypeVisitable, TypeVisitor,
@@ -30,7 +30,7 @@ pub(crate) fn build_boundary_suggestion<'tcx>(
         rustc_hir::def::DefKind::AssocFn | rustc_hir::def::DefKind::Fn => {
             build_fn_assume_specification_suggestion(ctxt, external_def_id)
         }
-        rustc_hir::def::DefKind::Const { is_type_const: _ } => {
+        rustc_hir::def::DefKind::Const => {
             build_const_assume_specification_suggestion(ctxt, external_def_id, path)
         }
         _ => Err(crate::util::error("building boundary suggestion for non type/fn/const")),

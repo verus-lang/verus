@@ -55,6 +55,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             .enumerate()
             .filter_map(|(index, stmt)| {
                 let hir_id = stmt.hir_id;
+                let verus_ghost = crate::verus::ghost_enter_stmt(self, stmt);
                 let thir_stmt = match stmt.kind {
                     hir::StmtKind::Expr(expr) | hir::StmtKind::Semi(expr) => {
                         let stmt = Stmt {
@@ -80,7 +81,13 @@ impl<'tcx> ThirBuildCx<'tcx> {
                             )),
                         };
 
-                        let else_block = local.els.map(|els| self.mirror_block(els));
+                        // (Verus) In full-erasure mode, drop the initializer for ghost variables
+                        let verus_erase_init = crate::verus::full_erasure_erase_let(self, stmt);
+                        let else_block = if verus_erase_init {
+                            None
+                        } else {
+                            local.els.map(|els| self.mirror_block(els))
+                        };
 
                         let pattern = self.pattern_from_hir_with_annotation(local.pat, local.ty);
                         debug!(?pattern);
@@ -94,7 +101,11 @@ impl<'tcx> ThirBuildCx<'tcx> {
                             }
                             Some(_) | None => local.span,
                         };
-                        let initializer = local.init.map(|init| self.mirror_expr(init));
+                        let initializer = if verus_erase_init {
+                            None
+                        } else {
+                            local.init.map(|init| self.mirror_expr(init))
+                        };
                         let stmt = Stmt {
                             kind: StmtKind::Let {
                                 remainder_scope,
@@ -113,12 +124,14 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     }
                 };
 
-                match thir_stmt {
+                let thir_stmts = match thir_stmt {
                     None => None,
                     Some(thir_stmt) => Some(crate::verus_time_travel_prevention::expand_stmt(
                         self, stmt, thir_stmt, block_id, index,
                     )),
-                }
+                };
+                crate::verus::ghost_exit(self, verus_ghost);
+                thir_stmts
             })
             .flatten()
             .collect()

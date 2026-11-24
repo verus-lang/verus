@@ -952,41 +952,6 @@ pub(crate) fn exp_rename_vars(exp: &Exp, map: &HashMap<UniqueIdent, UniqueIdent>
     })
 }
 
-struct MapShallowExp<'a, E, FT, FE> {
-    env: &'a mut E,
-    ft: &'a FT,
-    fe: &'a FE,
-}
-
-impl<'a, E, FT, FE> Visitor<Rewrite, VirErr, NoScoper> for MapShallowExp<'a, E, FT, FE>
-where
-    FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
-    FE: Fn(&mut E, &Exp) -> Result<Exp, VirErr>,
-{
-    fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, VirErr> {
-        (self.ft)(&mut self.env, typ)
-    }
-
-    fn visit_exp(&mut self, exp: &Exp) -> Result<Exp, VirErr> {
-        (self.fe)(&mut self.env, exp)
-    }
-}
-
-// non-recursive visitor
-pub(crate) fn map_shallow_exp<E, FT, FE>(
-    exp: &Exp,
-    env: &mut E,
-    ft: &FT,
-    fe: &FE,
-) -> Result<Exp, VirErr>
-where
-    FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
-    FE: Fn(&mut E, &Exp) -> Result<Exp, VirErr>,
-{
-    let mut visitor = MapShallowExp { env, ft, fe };
-    visitor.visit_exp_rec(exp)
-}
-
 struct MapStmVisitor<'a, F> {
     fs: &'a mut F,
 }
@@ -1245,4 +1210,62 @@ where
 {
     let mut visitor = MapExpsInStmVisitor { fe };
     visitor.visit_stm(stm).unwrap()
+}
+
+struct ExpTypVisitorMap<'a, Env, FE, FT> {
+    map: &'a mut VisitorScopeMap,
+    env: &'a mut Env,
+    fe: &'a mut FE,
+    ft: &'a mut FT,
+}
+
+impl<'a, E, Env, FE, FT> Visitor<Rewrite, E, VisitorScopeMap> for ExpTypVisitorMap<'a, Env, FE, FT>
+where
+    FE: FnMut(&Exp, &mut Env, &mut VisitorScopeMap) -> Result<Exp, E>,
+    FT: FnMut(&Typ, &mut Env, &mut VisitorScopeMap) -> Result<Typ, E>,
+{
+    fn visit_exp(&mut self, exp: &Exp) -> Result<Exp, E> {
+        let exp = self.visit_exp_rec(exp)?;
+        (self.fe)(&exp, &mut self.env, &mut self.map)
+    }
+
+    fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, E> {
+        let typ = self.visit_typ_rec(typ)?;
+        (self.ft)(&typ, &mut self.env, &mut self.map)
+    }
+
+    fn scoper(&mut self) -> Option<&mut VisitorScopeMap> {
+        Some(&mut self.map)
+    }
+}
+
+impl<'a, E, Env, FE, FT> crate::ast_visitor::AstVisitor<Rewrite, E, crate::ast_visitor::NoScoper>
+    for ExpTypVisitorMap<'a, Env, FE, FT>
+where
+    FE: FnMut(&Exp, &mut Env, &mut VisitorScopeMap) -> Result<Exp, E>,
+    FT: FnMut(&Typ, &mut Env, &mut VisitorScopeMap) -> Result<Typ, E>,
+{
+    fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, E> {
+        let typ = self.visit_typ_rec(typ)?;
+        (self.ft)(&typ, &mut self.env, &mut self.map)
+    }
+}
+
+/// Bottom-up map over all the Exps and Typs in exp (including Typs nested inside Typs).
+/// Each node's children are mapped first, then fe/ft is applied to the rebuilt node.
+/// The result of fe/ft is not visited again.
+/// map tracks the variables bound by binders enclosing the current node.
+pub(crate) fn exp_typ_visitor_map<E, Env, FE, FT>(
+    exp: &Exp,
+    map: &mut VisitorScopeMap,
+    env: &mut Env,
+    fe: &mut FE,
+    ft: &mut FT,
+) -> Result<Exp, E>
+where
+    FE: FnMut(&Exp, &mut Env, &mut VisitorScopeMap) -> Result<Exp, E>,
+    FT: FnMut(&Typ, &mut Env, &mut VisitorScopeMap) -> Result<Typ, E>,
+{
+    let mut visitor = ExpTypVisitorMap { map, env, fe, ft };
+    visitor.visit_exp(exp)
 }

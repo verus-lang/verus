@@ -4667,7 +4667,7 @@ test_verify_one_file! {
             // when we support general assoc consts, should be a mode violation:
             const C: u8 = f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support const items in traits, except for")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::f` with mode exec")
 }
 
 test_verify_one_file! {
@@ -4680,7 +4680,7 @@ test_verify_one_file! {
         impl T for bool {
             const C: u8 = Q;
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -4694,6 +4694,19 @@ test_verify_one_file! {
             const C: u8 = Q;
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_const5 verus_code! {
+        spec const Q: bool = true;
+        trait T {
+            // implicitly dual exec-spec mode:
+            const C: u8;
+        }
+        impl T for bool {
+            const C: u8 = if Q { 3 } else { 4 };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -4757,7 +4770,7 @@ test_verify_one_file! {
             // implicitly dual exec-spec mode:
             const C: u8 = Q;
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -5037,5 +5050,132 @@ test_verify_one_file! {
                 assert(x == A::tag()); // FAILS
             }
         }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] cannot_use_demoted_trait_generically_issue629 code! {
+        use vstd::prelude::*;
+
+        trait Tr {
+            fn foo(&self);
+        }
+
+        verus!{
+            #[verifier::external_body]
+            fn takes_trait<T: Tr>(t: &T) { t.foo() }
+
+            struct X { }
+
+            impl Tr for X {
+                fn foo(&self)
+                    requires false
+                {
+                }
+            }
+
+            fn test() {
+                let x = X{};
+                takes_trait(&x);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use external trait `test_crate::Tr` as a bound without declaring the trait")
+}
+
+test_verify_one_file_with_options! {
+    // what serde's `#[derive(Serialize)]` expands to: `const _: () = { extern crate ..; ; impl .. };`
+    // made by a macro other than verus!, so it carries no Verus attribute; its block of item
+    // statements used to be translated as the const's value ("expected pure mathematical expression")
+    #[test] test_macro_generated_anonymous_const ["--no-external-by-default"] => code! {
+        use vstd::prelude::*;
+        pub trait Ser { fn ser(&self) -> u8; }
+        macro_rules! derive_ser {
+            ($t:ident) => {
+                #[allow(redundant_semicolons)]
+                const _: () = {
+                    #[allow(unused_extern_crates)]
+                    extern crate core as _core;
+                    ;
+                    #[automatically_derived]
+                    impl Ser for $t { fn ser(&self) -> u8 { 7 } }
+                };
+            };
+        }
+        verus! {
+            pub struct A { pub x: u8 }
+            derive_ser!(A);
+            fn test(a: &A) -> (r: u8) ensures r == a.x { a.x }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // an anonymous const outside verus! whose value is a block with statements
+    #[test] test_anonymous_const_block_outside_verus ["--no-external-by-default"] => code! {
+        use vstd::prelude::*;
+        const _: () = { let x = 1u8; };
+        verus! {
+            fn test() {}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // a hand-written `const _` inside verus! still has its items verified
+    #[test] test_anonymous_const_items_still_verified verus_code! {
+        trait T1 {
+            fn f(&self) -> (r: u8)
+                ensures
+                    r == 1; // FAILS
+        }
+        struct A;
+        #[allow(redundant_semicolons)]
+        const _: () = {
+            ;
+            impl T1 for A {
+                fn f(&self) -> (r: u8) {
+                    2
+                }
+            }
+        };
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // derive macros (serde, ...) put their impls in `const _: () = { ... };` blocks; two such
+    // blocks used to give their impls the same path ("duplicate specification")
+    #[test] test_impls_in_anonymous_consts verus_code! {
+        trait T1 { fn f(&self) -> u8; }
+        trait T2 { fn g(&self) -> u8; }
+        struct A;
+        const _: () = {
+            impl T1 for A { fn f(&self) -> u8 { 1 } }
+        };
+        const _: () = {
+            impl T2 for A { fn g(&self) -> u8 { 2 } }
+        };
+        fn test(a: &A) {
+            let x = a.f();
+            let y = a.g();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // items inside `const _` are verified like any other item
+    #[test] test_anonymous_const_items_verified verus_code! {
+        trait T1 {
+            fn f(&self) -> (r: u8)
+                ensures
+                    r == 1; // FAILS
+        }
+        struct A;
+        const _: () = {
+            impl T1 for A {
+                fn f(&self) -> (r: u8) {
+                    2
+                }
+            }
+        };
     } => Err(err) => assert_one_fails(err)
 }

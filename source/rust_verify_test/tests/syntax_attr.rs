@@ -736,6 +736,47 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "in the compiled program, `f` here resolves to `call::f`, not to `f` (declared with `#[verus_spec(with ...)]`)")
 }
 
+test_verify_one_file_with_options! {
+    #[test] test_proof_with_callee_incremental ["--incremental"] => code!{
+        // With incremental compilation, rustc sets the parent of item spans,
+        // so the spans of `f` and `_VERUS_VERIFIED_f` differ in their parent field
+        #[verus_verify]
+        struct S { x: u64 }
+
+        #[verus_verify]
+        impl S {
+            #[verus_spec(
+                with Tracked(perm): Tracked<&mut u64>
+                requires old(self).x < 10,
+            )]
+            fn write(&mut self, v: u64) {
+                self.x = 1;
+            }
+
+            #[verus_spec(
+                with Tracked(perm): Tracked<&mut u64>
+                requires old(self).x < 10,
+            )]
+            fn caller(&mut self) {
+                proof_with!(Tracked(perm));
+                self.write(3);
+            }
+        }
+
+        #[verus_spec(r =>
+            with Ghost(g): Ghost<u8>
+            ensures r == 1
+        )]
+        pub fn f(x: u8) -> u8 { 1 }
+
+        #[verus_spec(r => ensures r == 1)]
+        pub fn call() -> u8 {
+            proof_with!{Ghost(0u8)}
+            f(7)
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] test_proof_with_callee_ghost_arg_fixes_generic code!{
         use vstd::prelude::*;
@@ -1228,6 +1269,90 @@ test_verify_one_file! {
         // external call to const_fn does not need ghost var.
         pub const X: u64 = const_fn(1);
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_const_fn_with_ghost_direct_call code!{
+        use vstd::prelude::*;
+        #[verus_spec(with Ghost(g): Ghost<u8>)]
+        pub const fn f(x: u8) -> u8 { x }
+
+        #[verus_spec]
+        pub fn direct() {
+            let _r = f(3); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_callee_in_const_fn_compiled_typing code!{
+        use vstd::prelude::*;
+        // The proof block makes `v: u8` in `_VERUS_VERIFIED_f`, but `v: i32` in the compiled `f`
+        #[verus_spec(r => with Ghost(g): Ghost<u8>)]
+        pub const fn f() -> usize {
+            let v = 0;
+            proof!{
+                let x: u8 = v;
+                let _y: u8 = g@; // The executable copy must erase this ghost input reference
+            }
+            if !v > 0 { 1 } else { 2 }
+        }
+
+        #[verus_spec]
+        pub const fn g() -> usize {
+            proof_with!{Ghost(0u8)}
+            f()
+        }
+
+        #[verus_spec(ensures true)]
+        pub const K: usize = g();
+
+        // Const evaluation of `K` runs the compiled `f`, which returns 2
+        #[verus_spec(r => ensures r == 2)]
+        pub fn check() -> usize {
+            let a = [0u8; K];
+            a.len()
+        }
+    } => Ok(())
+}
+
+test_verify_crates! {
+    #[test] test_proof_with_callee_in_const_fn_ghost_outputs_cross_crate [
+        "a" => code! {
+            use vstd::prelude::*;
+
+            #[verus_spec(r =>
+                with Ghost(g): Ghost<u8> -> out: (Ghost<u8>, Ghost<u8>)
+                ensures r == 2, out.0@ == g, out.1@ == g
+            )]
+            pub const fn f() -> usize {
+                proof_with!{|= (Ghost(g), Ghost(g))}
+                2
+            }
+        },
+        "b" => code! {
+            use vstd::prelude::*;
+
+            #[verus_spec(r => ensures r == 2)]
+            pub const fn g() -> usize {
+                // Ignoring outputs exercises erasure of the tuple returned by the verified call
+                { proof_with!{Ghost(0u8)} a::f(); }
+                proof_with!{Ghost(5u8) => (Ghost(o1), Ghost(o2))}
+                let r = a::f();
+                proof!{ assert(o1 == 5 && o2 == 5); }
+                r
+            }
+
+            #[verus_spec(ensures true)]
+            pub const K: usize = g();
+
+            #[verus_spec(r => ensures r == 2)]
+            pub fn check() -> usize {
+                let a = [0u8; K];
+                a.len()
+            }
+        },
+    ] => Ok(())
 }
 
 test_verify_one_file! {

@@ -135,6 +135,7 @@ pub(crate) enum ExprItem {
     Choose,
     ChooseTuple,
     Old,
+    ForcePureAndNonProphetic,
     GetVariantField,
     GetUnionField,
     IsVariant,
@@ -334,8 +335,6 @@ pub(crate) enum InvariantItem {
     LocalInvariantNamespace,
     LocalInvariantInv,
     CreateOpenInvariantCredit,
-    SpendOpenInvariantCredit,
-    SpendOpenInvariantCreditInProof,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -368,6 +367,7 @@ pub(crate) enum VstdItem {
     ISetItem(SetItem),
     Invariant(InvariantItem),
     AtomicUpdate(AtomicUpdateItem),
+    ResolutionAtomicUpdate,
     PredArgs,
     BranchBool,
     ExecNonstaticCall,
@@ -393,6 +393,7 @@ pub(crate) enum VstdItem {
     SharedReference,
     RustDiv,
     RustRem,
+    StrictlyCloned,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -543,6 +544,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::choose",                  VerusItem::Expr(ExprItem::Choose)),
         ("verus::verus_builtin::choose_tuple",            VerusItem::Expr(ExprItem::ChooseTuple)),
         ("verus::verus_builtin::old",                     VerusItem::Expr(ExprItem::Old)),
+        ("verus::verus_builtin::force_pure_and_nonprophetic",     VerusItem::Expr(ExprItem::ForcePureAndNonProphetic)),
         ("verus::verus_builtin::get_variant_field",       VerusItem::Expr(ExprItem::GetVariantField)),
         ("verus::verus_builtin::get_union_field",         VerusItem::Expr(ExprItem::GetUnionField)),
         ("verus::verus_builtin::is_variant",              VerusItem::Expr(ExprItem::IsVariant)),
@@ -714,22 +716,21 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::LocalInvariant::namespace",            VerusItem::Vstd(VstdItem::Invariant(InvariantItem::LocalInvariantNamespace        ), Some(Arc::new("invariant::LocalInvariant::namespace"           .to_owned())))),
         ("verus::vstd::invariant::LocalInvariant::inv",                  VerusItem::Vstd(VstdItem::Invariant(InvariantItem::LocalInvariantInv              ), Some(Arc::new("invariant::LocalInvariant::inv"                 .to_owned())))),
         ("verus::vstd::invariant::create_open_invariant_credit",         VerusItem::Vstd(VstdItem::Invariant(InvariantItem::CreateOpenInvariantCredit      ), Some(Arc::new("invariant::create_open_invariant_credit"        .to_owned())))),
-        ("verus::vstd::invariant::spend_open_invariant_credit",          VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCredit       ), Some(Arc::new("invariant::spend_open_invariant_credit"         .to_owned())))),
-        ("verus::vstd::invariant::spend_open_invariant_credit_in_proof", VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditInProof), Some(Arc::new("invariant::spend_open_invariant_credit_in_proof".to_owned())))),
         ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
-        ("verus::vstd::atomic::atomically",               VerusItem::Spec(SpecItem::Atomically)),
-        ("verus::vstd::atomic::pred_args",                VerusItem::Vstd(VstdItem::PredArgs,                                              Some(Arc::new("atomic::pred_args".to_owned())))),
-        ("verus::vstd::atomic::branch_bool",              VerusItem::Vstd(VstdItem::BranchBool,                                            Some(Arc::new("atomic::branch_bool".to_owned())))),
-        ("verus::vstd::atomic::AtomicUpdate::req",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateReq),       Some(Arc::new("atomic::AtomicUpdate::req".to_owned())))),
-        ("verus::vstd::atomic::AtomicUpdate::ens",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateEns),       Some(Arc::new("atomic::AtomicUpdate::ens".to_owned())))),
-        ("verus::vstd::atomic::AtomicUpdate::pred",       VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdatePred),      Some(Arc::new("atomic::AtomicUpdate::pred".to_owned())))),
-        ("verus::vstd::atomic::AtomicUpdate::resolves",   VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateResolves),  Some(Arc::new("atomic::AtomicUpdate::resolves".to_owned())))),
-        ("verus::vstd::atomic::AtomicUpdate::input",      VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateInput),     Some(Arc::new("atomic::AtomicUpdate::input".to_owned())))),
-        ("verus::vstd::atomic::AtomicUpdate::output",     VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOutput),    Some(Arc::new("atomic::AtomicUpdate::output".to_owned())))),
-        ("verus::vstd::atomic::AtomicUpdate::outer_mask", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOuterMask), Some(Arc::new("atomic::AtomicUpdate::outer_mask".to_owned())))),
-        ("verus::vstd::atomic::AtomicUpdate::inner_mask", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateInnerMask), Some(Arc::new("atomic::AtomicUpdate::inner_mask".to_owned())))),
+        ("verus::vstd::atomic::atomically",                VerusItem::Spec(SpecItem::Atomically)),
+        ("verus::vstd::atomic::pred_args",                 VerusItem::Vstd(VstdItem::PredArgs,                                              Some(Arc::new("atomic::pred_args".to_owned())))),
+        ("verus::vstd::atomic::branch_bool",               VerusItem::Vstd(VstdItem::BranchBool,                                            Some(Arc::new("atomic::branch_bool".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::req",         VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateReq),       Some(Arc::new("atomic::AtomicUpdate::req".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::ens",         VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateEns),       Some(Arc::new("atomic::AtomicUpdate::ens".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::pred",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdatePred),      Some(Arc::new("atomic::AtomicUpdate::pred".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::resolves",    VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateResolves),  Some(Arc::new("atomic::AtomicUpdate::resolves".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::input",       VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateInput),     Some(Arc::new("atomic::AtomicUpdate::input".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::output",      VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOutput),    Some(Arc::new("atomic::AtomicUpdate::output".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::outer_mask",  VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOuterMask), Some(Arc::new("atomic::AtomicUpdate::outer_mask".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::inner_mask",  VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateInnerMask), Some(Arc::new("atomic::AtomicUpdate::inner_mask".to_owned())))),
+        ("verus::vstd::atomic::Resolution::atomic_update", VerusItem::Vstd(VstdItem::ResolutionAtomicUpdate,                                Some(Arc::new("atomic::Resolution::atomic_update".to_owned())))),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
         ("verus::vstd::std_specs::vec::vec_index_mut", VerusItem::Vstd(VstdItem::VecIndexMut, Some(Arc::new("std_specs::vec::vec_index_mut".to_owned())))),
@@ -749,6 +750,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::raw_ptr::cast_str_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastStrPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_str_ptr_to_slice_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
         ("verus::vstd::raw_ptr::SharedReference", VerusItem::Vstd(VstdItem::SharedReference, Some(Arc::new("raw_ptr::SharedReference".to_owned())))),
+        ("verus::vstd::pervasive::strictly_cloned", VerusItem::Vstd(VstdItem::StrictlyCloned, Some(Arc::new("pervasive::strictly_cloned".to_owned())))),
         ("verus::vstd::float::float_cast", VerusItem::Vstd(VstdItem::FloatCast, Some(Arc::new("float::float_cast".to_owned())))),
         ("verus::vstd::arithmetic::div_mod::rust_div", VerusItem::Vstd(VstdItem::RustDiv, Some(Arc::new("arithmetic::div_mod::rust_div".to_owned())))),
         ("verus::vstd::arithmetic::div_mod::rust_rem", VerusItem::Vstd(VstdItem::RustRem, Some(Arc::new("arithmetic::div_mod::rust_rem".to_owned())))),
@@ -902,6 +904,7 @@ pub(crate) enum RustItem {
     Sync,
     Any,
     Clone,
+    TrivialClone,
     StructuralPartialEq,
     Eq,
     PartialEq,
@@ -1005,11 +1008,22 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     if tcx.lang_items().destruct_trait() == Some(def_id) {
         return Some(RustItem::Destruct);
     }
+    if tcx.lang_items().trivial_clone_trait() == Some(def_id) {
+        return Some(RustItem::TrivialClone);
+    }
     if tcx.lang_items().partial_ord_trait() == Some(def_id) {
         return Some(RustItem::PartialOrd);
     }
     if let Some(item) = get_rust_int_intrinsic(tcx, def_id) {
         return Some(RustItem::IntIntrinsic(item));
+    }
+    // All the paths recognized by get_rust_item_str are in core or alloc.
+    // Since the paths are based on crate names, which aren't unique,
+    // make sure the item is actually defined in the real core or alloc crate
+    // (and not, say, in a user crate named `alloc`, or in a trait impl in a user crate).
+    match crate::rust_to_vir_path::mk_crate_id(tcx, def_id.krate) {
+        CrateId::Core | CrateId::Alloc => {}
+        CrateId::Internal | CrateId::Vstd | CrateId::Id(..) => return None,
     }
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);
     let rust_path = rust_path.as_ref().map(|x| x.as_str());
