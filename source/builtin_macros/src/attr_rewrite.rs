@@ -781,19 +781,17 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             // we add `requires false` and thus prevent verified function to use it.
             // Allow unverified code to use the function without changing in/output.
             if let Some(with) = &spec_attr.spec.with {
-                let mut extra_funs = rewrite_unverified_func(&mut fun, with.with.span(), erase);
+                let mut unverified_fun = rewrite_unverified_func(&mut fun, with.with.span(), erase);
 
                 if crate::rustdoc::env_rustdoc() {
-                    if let Some(unverified_fun) = extra_funs.last_mut() {
-                        unverified_fun.attrs.extend(rustdoc_attrs.clone());
-                    }
+                    unverified_fun.attrs.extend(rustdoc_attrs.clone());
                     fun.attrs.push(crate::syntax::mk_rust_attr_syn(
                         with.with.span(),
                         "doc",
                         quote! {hidden},
                     ));
                 }
-                extra_funs.iter().for_each(|f| f.to_tokens(&mut new_stream));
+                unverified_fun.to_tokens(&mut new_stream);
             } else if crate::rustdoc::env_rustdoc() {
                 fun.attrs.extend(rustdoc_attrs);
             }
@@ -1255,16 +1253,12 @@ impl VisitMut for StripProofWithCallee {
     }
 }
 
-// Create a copy of function with unverified function signature, to enable
-// seamless use of unverified call to the function in verification.
-// In keep mode, its body is `requires false` followed by `unimplemented!()`,
-// or, for a const fn, by its executable code without the proof code.
+// Return the original-signature function and rename `fun` to the verified counterpart.
 fn rewrite_unverified_func(
     fun: &mut syn::ItemFn,
     span: proc_macro2::Span,
     erase: EraseGhost,
-) -> Vec<syn::ItemFn> {
-    let mut ret = vec![];
+) -> syn::ItemFn {
     let mut unverified_fun = fun.clone();
     let unimplemented = syn::Stmt::Expr(
         syn::Expr::Verbatim(quote_spanned! {span => ::core::unimplemented!()}),
@@ -1316,6 +1310,5 @@ fn rewrite_unverified_func(
         fun.block.stmts.clear();
         fun.block.stmts.push(unimplemented);
     }
-    ret.push(unverified_fun);
-    ret
+    unverified_fun
 }
