@@ -129,7 +129,7 @@ test_verify_one_file_with_options! {
         #[verifier::external_type_specification]
         #[verifier::external_body]
         struct ExSomeStruct(SomeStruct);
-    } => Err(err) => assert_vir_error_msg(err, "`external_type_specification` cannot be used with `external_body` when --no-cheating is enabled")
+    } => Err(err) => assert_vir_error_msg(err, "`external_type_specification` cannot be used with `external_body` in untrusted code")
 }
 
 test_verify_one_file_with_options! {
@@ -144,7 +144,7 @@ test_verify_one_file_with_options! {
 
         #[verifier::external_type_specification]
         struct ExSomeStruct(SomeStruct);
-    } => Err(err) => assert_vir_error_msg(err, "`external_type_specification` cannot be used for a type with a `Drop` impl when --no-cheating is enabled")
+    } => Err(err) => assert_vir_error_msg(err, "`external_type_specification` cannot be used for a type with a `Drop` impl in untrusted code")
 }
 
 test_verify_one_file_with_options! {
@@ -159,7 +159,7 @@ test_verify_one_file_with_options! {
 
         #[verifier::external_type_specification]
         struct ExSomeEnum(SomeEnum);
-    } => Err(err) => assert_vir_error_msg(err, "`external_type_specification` cannot be used for a type with a `Drop` impl when --no-cheating is enabled")
+    } => Err(err) => assert_vir_error_msg(err, "`external_type_specification` cannot be used for a type with a `Drop` impl in untrusted code")
 }
 
 test_verify_one_file! {

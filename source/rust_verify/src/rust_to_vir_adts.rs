@@ -547,10 +547,13 @@ pub(crate) fn check_item_external<'tcx>(
         return err_span(span, "`external_type_specification` can only be used with exec types");
     }
 
-    if ctxt.cmd_line_args.no_cheating && vattrs.external_body {
+    let assumptions_allowed = !ctxt.cmd_line_args.no_cheating
+        || crate::no_cheating::effective_trust(ctxt.tcx, id.owner_id.to_def_id())?
+            .permits_assumptions();
+    if !assumptions_allowed && vattrs.external_body {
         return err_span(
             span,
-            "`external_type_specification` cannot be used with `external_body` when --no-cheating is enabled",
+            "`external_type_specification` cannot be used with `external_body` in untrusted code",
         );
     }
 
@@ -582,10 +585,10 @@ pub(crate) fn check_item_external<'tcx>(
         }
     };
 
-    if ctxt.cmd_line_args.no_cheating && external_adt_def.destructor(ctxt.tcx).is_some() {
+    if !assumptions_allowed && external_adt_def.destructor(ctxt.tcx).is_some() {
         return err_span(
             span,
-            "`external_type_specification` cannot be used for a type with a `Drop` impl when --no-cheating is enabled",
+            "`external_type_specification` cannot be used for a type with a `Drop` impl in untrusted code",
         );
     }
 
