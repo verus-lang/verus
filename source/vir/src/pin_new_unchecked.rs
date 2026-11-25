@@ -26,9 +26,9 @@ use crate::ast::{
     PlaceX, ReadKind, Stmt, StmtX, Typ, UnfinalizedReadKind, VarIdent, VirErr,
 };
 use crate::ast_visitor::{AstVisitor, NoScoper, Walk};
-use crate::messages::{AstId, Span, error};
+use crate::messages::{Span, error};
 use crate::resolution_inference::ResolutionInfo;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 const PIN_ERROR_MSG: &str = "possible safety violation: unable to check that the argument to `Pin::new_unchecked` obeys pinning restrictions";
 
@@ -67,8 +67,6 @@ struct Visitor<'a> {
     /// Locals that are mutably borrowed (in whole or in part), with the span of the first borrow,
     /// not counting the borrows passed directly to `Pin::new_unchecked`
     mut_borrowed: HashMap<VarIdent, Span>,
-    /// AstIds of the `&mut x` arguments to `Pin::new_unchecked` calls
-    pin_args: HashSet<AstId>,
     /// Locals that are referenced from within a closure, with the span of the first reference
     captured: HashMap<VarIdent, Span>,
 }
@@ -169,7 +167,6 @@ impl<'a> Visitor<'a> {
             ExprX::BorrowMut(place) | ExprX::TwoPhaseBorrowMut(place) => match &place.x {
                 PlaceX::Local(x) => {
                     self.pinned.push((x.clone(), expr.span.clone()));
-                    self.pin_args.insert(args[0].span.id);
                     Ok(())
                 }
                 _ => Err(arg_err()),
@@ -188,10 +185,15 @@ impl<'a> AstVisitor<Walk, VirErr, NoScoper> for Visitor<'a> {
         // This match is intentionally exhaustive, so that any new ExprX variant
         // (in particular, any variant with a Place child) must be considered here.
         match &expr.x {
-            ExprX::Call { target, args, post_args: _, body: _ } => {
+            ExprX::Call { target, args, post_args, body } => {
                 if let CallTarget::Fun(_, fun, _, _, _) = target {
                     if self.is_pin_new_unchecked(fun) {
                         self.check_call(expr, args)?;
+                        // check_call ensures the only argument is `&mut x` for a local `x`.
+                        // Don't recurse into it, since this borrow is the one that's allowed.
+                        self.visit_opt_expr(post_args)?;
+                        self.visit_opt_expr(body)?;
+                        return Ok(());
                     }
                 }
             }
@@ -218,9 +220,7 @@ impl<'a> AstVisitor<Walk, VirErr, NoScoper> for Visitor<'a> {
             | ExprX::TwoPhaseBorrowMut(place)
             | ExprX::BorrowMutTracked(place)
             | ExprX::ImplicitReborrowOrSpecRead(place, _, _) => {
-                if !self.pin_args.contains(&expr.span.id) {
-                    self.record_mut_borrow(place, &expr.span);
-                }
+                self.record_mut_borrow(place, &expr.span);
             }
             ExprX::Assign { place: _, rhs: _, op: _, typ: _, resolve: _ } => {
                 // Assigning to the pinned place (or a sub-place) drops the old value in place,
@@ -331,7 +331,6 @@ pub(crate) fn check_function(
         pinned: vec![],
         moved: HashMap::new(),
         mut_borrowed: HashMap::new(),
-        pin_args: HashSet::new(),
         captured: HashMap::new(),
     };
     visitor.visit_expr(body)?;
