@@ -44,7 +44,10 @@ pub fn derive_structural_eq(mut s: synstructure::Structure) -> proc_macro2::Toke
     }
     let mut tokens1 = derive_structural_mut(&mut s);
     let name = &s.ast().ident;
-    let tokens2 = quote_spanned_builtin_vstd! { builtin, vstd, s.ast().span() =>
+    // Resolve at call_site so that the impl's span carries this derive's expansion,
+    // which Verus checks to exempt this impl from the `--no-cheating` check.
+    let span = s.ast().span().resolved_at(proc_macro2::Span::call_site());
+    let tokens2 = quote_spanned_builtin_vstd! { builtin, vstd, span =>
         #[automatically_derived]
         #[allow(non_local_definitions)]
         // The PartialEq impl is typically derived (and therefore not verified),

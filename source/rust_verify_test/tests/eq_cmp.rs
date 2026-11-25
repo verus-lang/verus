@@ -642,6 +642,88 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "`#[verifier::assume_external_impl]` not allowed with `--no-cheating`")
 }
 
+test_verify_one_file_with_options! {
+    #[test] structural_eq_derive_no_cheating ["--no-cheating"] => verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(PartialEq, Eq, StructuralEq)]
+        pub struct S {
+            pub x: u8,
+        }
+
+        fn test(a: S, b: S) {
+            let r = a == b;
+            assert(r == (a == b));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] spec_impl_for_external_impl_assumed_automatically_derived_no_cheating ["--no-cheating"] => verus_code! {
+        use vstd::std_specs::cmp::{PartialEqSpec, PartialEqSpecImpl};
+
+        pub struct S {
+            pub x: u8,
+        }
+
+        #[verifier::external]
+        impl PartialEq for S {
+            fn eq(&self, other: &S) -> bool {
+                self.x == other.x
+            }
+        }
+
+        // a hand-written #[automatically_derived] does not get the StructuralEq exemption
+        #[automatically_derived]
+        #[verifier::assume_external_impl]
+        impl PartialEqSpecImpl for S {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &S) -> bool {
+                self.x == other.x
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`#[verifier::assume_external_impl]` not allowed with `--no-cheating`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] spec_impl_for_external_impl_assumed_no_cheating_trusted ["--no-cheating"] => verus_code! {
+        #[verus::trusted]
+        mod trusted {
+            use vstd::std_specs::cmp::{PartialEqSpec, PartialEqSpecImpl};
+
+            pub struct S {
+                pub x: u8,
+            }
+
+            #[verifier::external]
+            impl PartialEq for S {
+                fn eq(&self, other: &S) -> bool {
+                    self.x == other.x
+                }
+            }
+
+            #[verifier::assume_external_impl]
+            impl PartialEqSpecImpl for S {
+                open spec fn obeys_eq_spec() -> bool {
+                    true
+                }
+
+                open spec fn eq_spec(&self, other: &S) -> bool {
+                    self.x == other.x
+                }
+            }
+        }
+
+        fn test(a: trusted::S, b: trusted::S) {
+            let r = a == b;
+            assert(r == (a.x == b.x));
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] spec_impl_for_verified_impl_assumed verus_code! {
         use vstd::std_specs::cmp::{PartialEqSpec, PartialEqSpecImpl};
