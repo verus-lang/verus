@@ -14,6 +14,7 @@ use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, SmtSolver, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
+use rustc_driver::Compilation;
 use rustc_errors::Diag;
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
@@ -3167,12 +3168,14 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             {
                 let mut saved_dep_info_path = dep_info_path.clone();
                 saved_dep_info_path.as_mut_os_string().push(SAVED_DEP_INFO_SUFFIX);
-                std::fs::rename(&dep_info_path, &saved_dep_info_path).unwrap_or_else(|err| {
-                    panic!(
+                if let Err(err) = std::fs::rename(&dep_info_path, &saved_dep_info_path) {
+                    eprintln!(
                         "error: failed to save dep-info {} with `{SAVED_DEP_INFO_SUFFIX}` suffix due to {err}",
                         dep_info_path.display(),
-                    )
-                });
+                    );
+                    self.verifier.encountered_error = true;
+                    return Compilation::Stop;
+                };
                 self.first_pass_dep_info = Some(saved_dep_info_path);
             }
         }
