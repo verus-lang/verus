@@ -54,6 +54,14 @@ Not candidates (violations are UB, so the plain `requires` must stay): `NonZero:
 `MaybeUninit::assume_init*`. Some of these have debug UB checks that abort, but those checks are optional and
 can't be relied on.
 
+## Panic functions (follow-up commit)
+
+`core::panicking::{panic, panic_fmt, assert_failed}` (std_specs/core.rs) and vstd's `__call_panic`
+(pervasive.rs, used by `vpanic!`) were `requires false` (or `requires allow_panic()`, controlled by
+the `allow_panic` cargo feature). They are now `requires[no_panic exact] false` ("always panics"), and the `allow_panic`
+feature is removed. A reachable panic is still an error by default (the call-site check fails). With
+`#[verifier::deny_panic(false)]`, the caller may panic instead, unless it has its own no-panic obligations.
+
 ## Concerns and assumptions
 
 - **Destructors.** Several `no_panic` specs run a destructor of a user value (`PCell::write` in cell/pcell.rs,
