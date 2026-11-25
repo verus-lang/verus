@@ -519,13 +519,24 @@ pub(crate) fn get_root_module_path<'tcx>(ctxt: &ContextX<'tcx>) -> Path {
 /// The code emitted by the Verus macros refers to these crates by absolute paths
 /// (e.g., `::core::cfg!`, `::vstd::prelude`), so an `extern crate` item must not
 /// make these names refer to a different crate.
+/// The exception is `extern crate self as core;` in core itself (`--is-core`),
+/// where `core` still refers to core.
 const RESERVED_EXTERN_CRATE_NAMES: &[&str] =
     &["core", "vstd", "verus_builtin", "verus_builtin_macros"];
 
-fn check_extern_crate_alias<'tcx>(item: &'tcx Item<'tcx>) -> Result<(), VirErr> {
+fn check_extern_crate_alias<'tcx>(
+    ctxt: &ContextX<'tcx>,
+    item: &'tcx Item<'tcx>,
+) -> Result<(), VirErr> {
     if let ItemKind::ExternCrate(Some(orig_name), ident) = &item.kind {
         let alias = ident.name.as_str();
-        if RESERVED_EXTERN_CRATE_NAMES.contains(&alias) && orig_name.as_str() != alias {
+        let is_core_self = ctxt.cmd_line_args.vstd == crate::config::Vstd::IsCore
+            && alias == "core"
+            && orig_name.as_str() == "self";
+        if RESERVED_EXTERN_CRATE_NAMES.contains(&alias)
+            && orig_name.as_str() != alias
+            && !is_core_self
+        {
             return err_span(
                 item.span,
                 format!(
@@ -577,7 +588,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
 
     let mut typs_sizes_set: HashMap<TypIgnoreImplPaths, u128> = HashMap::new();
     for item in crate::util::iter_crate_free_items(tcx) {
-        if let Err(err) = check_extern_crate_alias(item) {
+        if let Err(err) = check_extern_crate_alias(&ctxtx, item) {
             errors.push(err);
         }
         if let Err(err) =

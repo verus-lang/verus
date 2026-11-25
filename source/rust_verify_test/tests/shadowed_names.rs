@@ -50,6 +50,33 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support renaming a crate to `core`")
 }
 
+test_verify_one_file_with_options! {
+    #[test] extern_crate_self_as_core_is_core ["--is-core", "no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(fn_traits))]
+
+        #[verifier::external]
+        #[path="../../../../builtin/src/lib.rs"]
+        mod verus_builtin;
+
+        // At the crate root, this would make the builtin module's `core::` paths refer to this crate
+        mod m {
+            extern crate self as core;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] extern_crate_self_as_vstd_is_core ["--is-core", "no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(fn_traits))]
+
+        extern crate self as vstd;
+
+        #[verifier::external]
+        #[path="../../../../builtin/src/lib.rs"]
+        mod verus_builtin;
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support renaming a crate to `vstd`")
+}
+
 test_verify_one_file! {
     #[test] extern_crate_self_as_vstd code! {
         extern crate self as vstd;
