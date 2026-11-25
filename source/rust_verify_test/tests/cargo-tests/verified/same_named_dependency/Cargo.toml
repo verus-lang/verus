@@ -1,0 +1,14 @@
+[package]
+name = "same_named_dependency"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+helper = { package = "same-name-helper", path = "helper" }
+vstd = { path = "../../../../../vstd" }
+
+[package.metadata.verus]
+verify = true
+trusted_crates = ["vstd"]
+
+[workspace]
