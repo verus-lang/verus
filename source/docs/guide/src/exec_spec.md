@@ -162,6 +162,9 @@ The following key types are supported:
   - structs and enums defined within `exec_spec_verified!`, whose field types are all supported key types.
 
 For example, a struct with a `Result` field compiles, but it cannot be used as a key.
+Generated exec types also implement `Clone` (field by field) whenever all their field types do.
+You can't write your own `Clone` impl for them, since hash tables rely on a clone being equal
+to the original.
 Using a type that is not a key results in a Rust error such as:
 ```
 the following trait bounds were not satisfied:

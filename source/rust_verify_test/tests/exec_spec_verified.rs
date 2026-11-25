@@ -3165,3 +3165,53 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    /// Generated types implement `Clone` (field by field), so a user can't write a `Clone`
+    /// impl that breaks the key model: here, `HashMap::clone` would keep the cloned key in
+    /// the original's bucket, so that the clone isn't equal to itself.
+    #[test] test_exec_spec_user_clone_rejected IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct Key { pub id: u8 }
+        }
+
+        impl Clone for ExecKey {
+            fn clone(&self) -> Self {
+                ExecKey { id: if self.id == 0 { 1 } else { 0 } }
+            }
+        }
+
+        fn reflexive_map_equality() -> (b: bool)
+            ensures b,
+        {
+            let mut m: HashMap<ExecKey, u8> = HashMap::new();
+            m.insert(ExecKey { id: 0 }, 7);
+            let c = m.clone();
+            deep_eq(&c, &c)
+        }
+    } => Err(err) => assert_rust_error_msg(err, "conflicting implementations of trait `std::clone::Clone` for type `ExecKey`")
+}
+
+test_verify_one_file! {
+    /// Generated types (with tuple and `Seq` fields) can be cloned, also inside hash tables.
+    #[test] test_exec_spec_generated_clone IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct Key { pub id: u8, pub t: (u8, Seq<u8>) }
+
+            pub enum E { A(Key), B { s: Seq<char> }, C }
+        }
+
+        fn map_clone() -> (b: bool)
+            ensures b,
+        {
+            let mut m: HashMap<ExecKey, u8> = HashMap::new();
+            m.insert(ExecKey { id: 0, t: (1, vec![2]) }, 7);
+            let c = m.clone();
+            deep_eq(&c, &c)
+        }
+
+        fn direct_clone(k: &ExecKey, e: &ExecE) -> (ExecKey, ExecE) {
+            (k.clone(), e.clone())
+        }
+    } => Ok(())
+}

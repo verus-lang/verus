@@ -307,6 +307,21 @@ fn compile_partial_eq(exec_name: &Ident, eq_body: TokenStream2) -> TokenStream2 
     }
 }
 
+/// The distinct compiled types of the given fields, in order of first occurrence.
+fn compile_field_types<'a>(
+    fields: impl Iterator<Item = &'a verus_syn::Field>,
+) -> Result<Vec<TokenStream2>, Error> {
+    let mut seen = std::collections::HashSet::new();
+    let mut types = Vec::new();
+    for field in fields {
+        let ty = compile_type(&field.ty, TypeKind::Owned)?;
+        if seen.insert(ty.to_string()) {
+            types.push(ty);
+        }
+    }
+    Ok(types)
+}
+
 /// Generates the `ExecSpecKey` impl for an exec type, so that it can be used as a
 /// key of the hash tables implementing `Set`, `Map` and `Multiset`.
 ///
@@ -322,11 +337,8 @@ fn compile_partial_eq(exec_name: &Ident, eq_body: TokenStream2) -> TokenStream2 
 /// The impl only applies when every field type is `ExecSpecKey`.
 /// The bounds are under a dummy binder (`for<'a>`) so that rustc
 /// doesn't reject the impl when one of them is unsatisfiable.
-fn compile_exec_spec_key(exec_name: &Ident, field_types: Vec<TokenStream2>) -> TokenStream2 {
+fn compile_exec_spec_key(exec_name: &Ident, field_types: &[TokenStream2]) -> TokenStream2 {
     let span = exec_name.span();
-    let mut seen = std::collections::HashSet::new();
-    let field_types: Vec<_> =
-        field_types.into_iter().filter(|ty| seen.insert(ty.to_string())).collect();
     let axiom_name = format_ident!("axiom_{}_obeys_key_model", exec_name);
     quote_spanned! { span =>
         // Not marked `#[verus::trusted]`, so `--no-cheating` rejects it.
@@ -353,6 +365,34 @@ fn compile_exec_spec_key(exec_name: &Ident, field_types: Vec<TokenStream2>) -> T
                 #(<#field_types as vstd::contrib::exec_spec::ExecSpecKey>::lemma_obeys_key_model();)*
                 #(<#field_types as vstd::contrib::exec_spec::ObeysDeepEq>::lemma_obeys_deep_eq();)*
                 #axiom_name();
+            }
+        }
+    }
+}
+
+/// Generates the `Clone` impl for an exec type, cloning field by field.
+///
+/// `obeys_key_model` (assumed by `compile_exec_spec_key`) requires that cloning a key
+/// yields an identical, equal copy; e.g., `HashMap::clone` clones keys without rehashing.
+/// Generating the impl keeps users from writing a `Clone` impl that breaks this.
+/// As in `compile_exec_spec_key`, the bounds are under a dummy binder (`for<'a>`) so that
+/// rustc doesn't reject the impl when a field type isn't `Clone`.
+/// The impl is `external`, since Verus doesn't support rustc's built-in `Clone` impls
+/// (e.g., for tuples); it is plain field-wise cloning, as `#[derive(Clone)]` would generate.
+fn compile_clone(
+    exec_name: &Ident,
+    field_types: &[TokenStream2],
+    body: TokenStream2,
+) -> TokenStream2 {
+    let span = exec_name.span();
+    quote_spanned! { span =>
+        #[verifier::external]
+        impl Clone for #exec_name
+        where
+            #(for<'a> #field_types: Clone,)*
+        {
+            fn clone(&self) -> Self {
+                #body
             }
         }
     }
@@ -437,14 +477,14 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         }
     };
 
-    // Generate body of the DeepViewClone impl
-    let clone_body = match &item_struct.fields {
+    // Generate the body of the DeepViewClone (`deep_clone`) and Clone (`clone`) impls
+    let clone_body = |clone_method: Ident| match &item_struct.fields {
         Fields::Named(fields_named) => {
             let span = fields_named.span();
             let field_views = fields_named.named.iter().map(|field| {
                 let field_name = &field.ident;
                 let span = field.span();
-                quote_spanned! { span => #field_name: self.#field_name.deep_clone() }
+                quote_spanned! { span => #field_name: self.#field_name.#clone_method() }
             });
 
             quote_spanned! { span => #exec_name { #(#field_views,)* } }
@@ -454,7 +494,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
             let field_views = fields_unnamed.unnamed.iter().enumerate().map(|(i, field)| {
                 let i = Index::from(i);
                 let span = field.span();
-                quote_spanned! { span => self.#i.deep_clone() }
+                quote_spanned! { span => self.#i.#clone_method() }
             });
 
             quote_spanned! { span => #exec_name(#(#field_views,)*) }
@@ -515,12 +555,14 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
 
     let partial_eq = compile_partial_eq(&exec_name, eq_body);
 
-    let field_types = item_struct
-        .fields
-        .iter()
-        .map(|field| compile_type(&field.ty, TypeKind::Owned))
-        .collect::<Result<Vec<_>, Error>>()?;
-    let exec_spec_key = compile_exec_spec_key(&exec_name, field_types);
+    let field_types = compile_field_types(item_struct.fields.iter())?;
+    let clone = compile_clone(
+        &exec_name,
+        &field_types,
+        clone_body(Ident::new("clone", item_struct.span())),
+    );
+    let deep_clone_body = clone_body(Ident::new("deep_clone", item_struct.span()));
+    let exec_spec_key = compile_exec_spec_key(&exec_name, &field_types);
 
     let span = item_struct.span();
     Ok(quote_spanned! { span =>
@@ -558,9 +600,11 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
 
         impl vstd::contrib::exec_spec::DeepViewClone for #exec_name {
             fn deep_clone(&self) -> Self {
-                #clone_body
+                #deep_clone_body
             }
         }
+
+        #clone
 
         #partial_eq
 
@@ -674,8 +718,9 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
             }
         });
 
-    // Match arms in the DeepViewClone implementation
-    let clone_variant_arms = item_enum.variants.iter()
+    // Match arms in the DeepViewClone (`deep_clone`) and Clone (`clone`) implementations
+    let clone_variant_arms = |clone_method: Ident| {
+        item_enum.variants.iter()
         .map(|variant| {
             let variant_name = &variant.ident;
 
@@ -687,7 +732,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                     let field_views = fields_named.named.iter().map(|field| {
                         let field_name = &field.ident;
                         let span = field.span();
-                        quote_spanned! { span => #field_name: #field_name.deep_clone() }
+                        quote_spanned! { span => #field_name: #field_name.#clone_method() }
                     });
 
                     quote_spanned! { span => #exec_name::#variant_name { #(#field_names,)* } => #exec_name::#variant_name { #(#field_views,)* } }
@@ -702,7 +747,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                     let field_views = fields_unnamed.unnamed.iter().enumerate().map(|(i, field)| {
                         let field_name = &field_names[i];
                         let span = field.span();
-                        quote_spanned! { span => #field_name.deep_clone() }
+                        quote_spanned! { span => #field_name.#clone_method() }
                     });
 
                     quote_spanned! { span => #exec_name::#variant_name(#(#field_names,)*) => #exec_name::#variant_name(#(#field_views,)*) }
@@ -714,7 +759,8 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                     }
                 }
             }
-        });
+        }).collect::<Vec<_>>()
+    };
 
     // Match arms in the PartialEq implementation
     let eq_variant_arms = item_enum.variants.iter()
@@ -909,13 +955,20 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
         },
     );
 
-    let field_types = item_enum
-        .variants
-        .iter()
-        .flat_map(|variant| variant.fields.iter())
-        .map(|field| compile_type(&field.ty, TypeKind::Owned))
-        .collect::<Result<Vec<_>, Error>>()?;
-    let exec_spec_key = compile_exec_spec_key(&exec_name, field_types);
+    let field_types =
+        compile_field_types(item_enum.variants.iter().flat_map(|variant| variant.fields.iter()))?;
+    let clone_arms = clone_variant_arms(Ident::new("clone", item_enum.span()));
+    let clone = compile_clone(
+        &exec_name,
+        &field_types,
+        quote! {
+            match self {
+                #(#clone_arms,)*
+            }
+        },
+    );
+    let deep_clone_variant_arms = clone_variant_arms(Ident::new("deep_clone", item_enum.span()));
+    let exec_spec_key = compile_exec_spec_key(&exec_name, &field_types);
 
     let span = item_enum.span();
     Ok(quote_spanned! { span =>
@@ -959,10 +1012,12 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
         impl vstd::contrib::exec_spec::DeepViewClone for #exec_name {
             fn deep_clone(&self) -> Self {
                 match self {
-                    #(#clone_variant_arms,)*
+                    #(#deep_clone_variant_arms,)*
                 }
             }
         }
+
+        #clone
 
         impl #exec_name {
             #(#is_variant_methods)*
