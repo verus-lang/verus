@@ -185,20 +185,28 @@ impl<'a> AstVisitor<Walk, VirErr, NoScoper> for Visitor<'a> {
     }
 
     fn visit_expr(&mut self, expr: &Expr) -> Result<(), VirErr> {
+        // This match is intentionally exhaustive, so that any new ExprX variant
+        // (in particular, any variant with a Place child) must be considered here.
         match &expr.x {
-            ExprX::Call { target: CallTarget::Fun(_, fun, _, _, _), args, .. }
-                if self.is_pin_new_unchecked(fun) =>
-            {
-                self.check_call(expr, args)?;
+            ExprX::Call { target, args, post_args: _, body: _ } => {
+                if let CallTarget::Fun(_, fun, _, _, _) = target {
+                    if self.is_pin_new_unchecked(fun) {
+                        self.check_call(expr, args)?;
+                    }
+                }
             }
+
+            // Variants with Place children
             ExprX::ReadPlace(place, rk) => {
                 if self.is_move_or_unused(rk) {
                     self.record_move(place, &expr.span);
                 }
             }
-            ExprX::Ctor(_, _, _, Some(CtorUpdateTail { place, taken_fields })) => {
-                if taken_fields.iter().any(|(_, rk)| self.is_move_or_unused(rk)) {
-                    self.record_move(place, &expr.span);
+            ExprX::Ctor(_, _, _, update) => {
+                if let Some(CtorUpdateTail { place, taken_fields }) = update {
+                    if taken_fields.iter().any(|(_, rk)| self.is_move_or_unused(rk)) {
+                        self.record_move(place, &expr.span);
+                    }
                 }
             }
             ExprX::Match(place, arms, _) => {
@@ -214,6 +222,18 @@ impl<'a> AstVisitor<Walk, VirErr, NoScoper> for Visitor<'a> {
                     self.record_mut_borrow(place, &expr.span);
                 }
             }
+            ExprX::Assign { place: _, rhs: _, op: _, typ: _, resolve: _ } => {
+                // Assigning to the pinned place (or a sub-place) drops the old value in place,
+                // which is permitted by the pinning contract.
+            }
+            ExprX::MatchGuardFreeze(..) => {
+                return Err(crate::messages::internal_error(
+                    &expr.span,
+                    "MatchGuardFreeze shouldn't be created yet",
+                ));
+            }
+
+            // Variables and closures
             ExprX::Var(x) | ExprX::VarAt(x, _) => {
                 self.record_capture(x, &expr.span);
             }
@@ -223,7 +243,54 @@ impl<'a> AstVisitor<Walk, VirErr, NoScoper> for Visitor<'a> {
                 self.closure_depth -= 1;
                 return r;
             }
-            _ => {}
+
+            // Variants with no Place children and nothing to check
+            ExprX::Const(_)
+            | ExprX::ConstVar(..)
+            | ExprX::StaticVar(_)
+            | ExprX::NullaryOpr(_)
+            | ExprX::Unary(..)
+            | ExprX::UnaryOpr(..)
+            | ExprX::Logical(..)
+            | ExprX::Binary(..)
+            | ExprX::BinaryOpr(..)
+            | ExprX::Multi(..)
+            | ExprX::Quant(..)
+            | ExprX::Closure(..)
+            | ExprX::ArrayLiteral(_)
+            | ExprX::ExecFnByName(_)
+            | ExprX::Choose { .. }
+            | ExprX::WithTriggers { .. }
+            | ExprX::Fuel(..)
+            | ExprX::RevealString(_)
+            | ExprX::RevealByteString(_)
+            | ExprX::Header(_)
+            | ExprX::AssertAssume { .. }
+            | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
+            | ExprX::AssertBy { .. }
+            | ExprX::AssertQuery { .. }
+            | ExprX::AssertCompute(..)
+            | ExprX::If(..)
+            | ExprX::Loop { .. }
+            | ExprX::OpenInvariant(..)
+            | ExprX::TryOpenAtomicUpdate(..)
+            | ExprX::AtomicUpdateInitDummy
+            | ExprX::Atomically(..)
+            | ExprX::Update(_)
+            | ExprX::InvMask(_)
+            | ExprX::Return(_)
+            | ExprX::BreakOrContinue { .. }
+            | ExprX::Ghost { .. }
+            | ExprX::ProofInSpec(_)
+            | ExprX::Block(..)
+            | ExprX::AirStmt(_)
+            | ExprX::NeverToAny(_)
+            | ExprX::Nondeterministic
+            | ExprX::EvalAndResolve(..)
+            | ExprX::Old(_)
+            | ExprX::ForcePureAndNonProphetic(..)
+            | ExprX::Await(_)
+            | ExprX::ShrRefStructWrap(..) => {}
         }
         self.visit_expr_rec(expr)
     }

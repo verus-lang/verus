@@ -296,6 +296,8 @@ pub struct ResolutionInfo {
     pub(crate) var_modes: HashMap<VarIdent, Mode>,
     pub(crate) temporary_modes: HashMap<AstId, Mode>,
     pub(crate) dual_mode: bool,
+    /// Does the function contain any calls to `Pin::new_unchecked`? (recorded by modes.rs)
+    pub(crate) has_pin_new_unchecked: bool,
 }
 
 pub fn krate_infer_resolution(
@@ -322,11 +324,13 @@ pub fn krate_infer_resolution(
     let mut errors = vec![];
     for function in &mut Arc::make_mut(&mut krate).functions {
         if let Some(res_info) = infos.get(&function.x.name) {
-            if let Err(err) =
-                crate::pin_new_unchecked::check_function(function, res_info, &datatypes, &functions)
-            {
-                errors.push(err);
-                continue;
+            if res_info.has_pin_new_unchecked {
+                if let Err(err) = crate::pin_new_unchecked::check_function(
+                    function, res_info, &datatypes, &functions,
+                ) {
+                    errors.push(err);
+                    continue;
+                }
             }
             let new_body = infer_resolution(
                 &function.x.params,
