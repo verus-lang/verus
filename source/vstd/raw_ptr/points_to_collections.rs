@@ -1819,7 +1819,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 &&& init[k].ptr()@.addr == base@.addr + k * size_of::<T>()
                 &&& init[k].ptr()@.provenance == base@.provenance
                 &&& init[k].ptr()@.is_real
-            } by {}
+            } by {
+                assert(init[k] == old_perms[k]);
+            }
 
             // The prefix, joined
             let tracked a = Self::untyped_mut_join(init, base);
@@ -2021,6 +2023,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 &&& init[i].ptr()@.is_real
             } by {
                 assert(init[i] == old_perms[i]);
+                assert(old_perms[i].wf());
+                assert(old_perms[i].ptr()@.addr == base@.addr + i * size_of::<T>());
             }
 
             // The prefix

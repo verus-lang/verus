@@ -1347,6 +1347,12 @@ impl <I: Iterator> VerusForLoopWrapper<I> {
             ret is None ==> final(self).history@ == old(self).history@,
             // All of the standard Iterator::next guarantees still hold
             exists |m: &mut I| #![auto] (I::next).ensures((m,), ret) && *m == old(self).iter && *final(m) == final(self).iter,
+            // The facts the loop's default `decreases` needs, stated directly:
+            // in rustlib's core, `Iterator::next` has shadow data,
+            // so `(I::next).ensures` above gives the caller nothing.
+            iter_state_preserved!(&old(self).iter, &final(self).iter),
+            old(self).iter.obeys_prophetic_iter_laws() && ret is Some && final(self).iter.decrease() is Some ==>
+                decreases_to!(old(self).iter.decrease()->0 => final(self).iter.decrease()->0),
     {
         let ghost old_history = self.history@;
         let ret = self.iter.next();
