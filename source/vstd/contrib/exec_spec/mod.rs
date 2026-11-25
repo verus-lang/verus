@@ -110,6 +110,8 @@ impl<'a, T: ObeysDeepEq> ObeysDeepEq for &'a T {
 /// vstd provides impls for primitive types, `String`, `Vec<T>`, `Option<T>` and tuples
 /// (up to arity 4).
 /// For other key types, `obeys_key_model` cannot be proved and must be assumed.
+/// The assumed `obeys_key_model` also covers `Hash::hash_slice`, which is used to hash
+/// `Vec<Self>`.
 pub trait ExecSpecKey: ObeysDeepEq + std::hash::Hash + std::cmp::Eq {
     proof fn lemma_obeys_key_model()
         ensures

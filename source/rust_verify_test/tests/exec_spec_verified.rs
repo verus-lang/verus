@@ -3133,3 +3133,35 @@ test_verify_one_file! {
         assert_vir_error_msg(err, "precondition not satisfied");
     }
 }
+
+test_verify_one_file! {
+    /// A hand-written key also makes `Vec`s of it keys; `Vec`'s `Hash` uses `K::hash_slice`,
+    /// which `obeys_key_model::<K>` covers.
+    #[test] test_exec_spec_handwritten_key_in_vec IMPORTS.to_string() + LAWFUL_KEY_IMPLS + verus_code_str! {
+        #[derive(PartialEq, Eq, Hash)]
+        pub struct K(pub u64);
+
+        impl ExecSpecKey for K {
+            proof fn lemma_obeys_key_model() {
+                assume(vstd::std_specs::hash::obeys_key_model::<K>());
+            }
+        }
+
+        fn two_inserts() -> (n: usize)
+            ensures n == 1,
+        {
+            let m0: HashMap<Vec<K>, u64> = HashMap::new();
+            let k1 = vec![K(1)];
+            let k2 = vec![K(1)];
+            assert(k1.deep_view() =~= seq![1u64]);
+            assert(k2.deep_view() =~= seq![1u64]);
+            let m1 = (&m0).exec_insert(k1, 7u64);
+            let m2 = (&m1).exec_insert(k2, 7u64);
+            assert(m0.deep_view() =~= Map::<Seq<u64>, u64>::empty()) by {
+                broadcast use vstd::std_specs::hash::lemma_hashmap_deepview_dom;
+            };
+            assert(m2.deep_view() =~= map![seq![1u64] => 7u64]);
+            (&m2).exec_len()
+        }
+    } => Ok(())
+}

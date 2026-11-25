@@ -184,14 +184,17 @@ To use your own exec type as a key (for example, as the exec type of a spec type
 `ExecSpecType` impl), implement `ExecSpecKey` for it.
 Because Verus does not reason about `Hash`, `obeys_key_model` can't be proved for such a type,
 so it must be assumed. The assumption is sound only if equal values hash identically under the
-type's `Hash` impl:
+type's `Hash` impl, including `Hash::hash_slice`, which is used to hash a `Vec` (compiled from
+`Seq`) of the type. This holds automatically if the type doesn't override `hash_slice`
+(derived `Hash` impls don't):
 ```rust
 #[derive(PartialEq, Eq, Hash)]
 pub struct K(pub u64);
 
 impl ExecSpecKey for K {
     proof fn lemma_obeys_key_model() {
-        // `==` and the derived `Hash` both use only the `u64` field.
+        // `==` and the derived `Hash` both use only the `u64` field,
+        // and the derived `Hash` doesn't override `hash_slice`.
         assume(vstd::std_specs::hash::obeys_key_model::<K>());
     }
 }

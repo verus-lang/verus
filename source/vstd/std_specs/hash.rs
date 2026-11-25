@@ -111,11 +111,15 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 /// `<Key as PartialEqSpec>::obeys_eq_spec()` is true and executable
 /// equality is reflexive, symmetric, and transitive; (2) the hash
 /// function is deterministic; (3) executable-equal keys have equal
-/// hashes; and (4) if `Key` implements `Clone`, cloning produces a
-/// result structurally identical and executable-equal to its input.
-/// `Key` need not implement `Clone`. Requirement (2) isn't satisfied
-/// by having `Key` implement `Hash`, since this trait doesn't mandate
-/// determinism.
+/// hashes; (4) if `Key` implements `Clone`, cloning produces a
+/// result structurally identical and executable-equal to its input;
+/// and (5) if `Key` is `Sized`, `Hash::hash_slice` is deterministic and
+/// executable-equal slices (same length, elementwise executable-equal)
+/// have equal hashes. `Key` need not implement `Clone`. Requirement (2)
+/// isn't satisfied by having `Key` implement `Hash`, since this trait
+/// doesn't mandate determinism. Requirement (5) holds if `Key` doesn't
+/// override `hash_slice`, whose default hashes each element in order; it
+/// matters because the `Hash` impls of slices and `Vec`s call `hash_slice`.
 ///
 /// The standard library has axioms that all primitive types, `String`, `str`,
 /// and `Box`es of primitive types obey this model, as do `Vec`s, `Option`s and
@@ -307,9 +311,9 @@ pub broadcast axiom fn axiom_char_obeys_hash_table_key_model()
         #[trigger] obeys_key_model::<char>(),
 ;
 
-// `Vec`'s `Hash` writes the length and then hashes each element in order, and its `==`
-// compares lengths and then elements in order, so equal vectors of a key-model element
-// type hash identically.
+// `Vec`'s `Hash` writes the length and then calls `T::hash_slice` on the elements, and
+// its `==` compares lengths and then elements in order. So equal vectors of a key-model
+// element type hash identically, by requirement (5) of `obeys_key_model::<T>`.
 pub broadcast axiom fn axiom_vec_obeys_hash_table_key_model<T: Hash + Eq, A: Allocator>()
     requires
         obeys_key_model::<T>(),
