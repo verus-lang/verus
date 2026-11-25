@@ -343,6 +343,8 @@ impl PartialEqSpecImpl for S {
 }
 ```
 
-The attribute is rejected if the matching impl is verified, and it is not allowed with `--no-cheating`.
+The attribute is rejected if the matching impl is verified.
+Because it introduces an unverified assumption, it is rejected under
+[no-cheating mode](./tcb.md#no-cheating-mode) unless the impl is (directly or indirectly) [annotated as trusted](./tcb.md).
 A matching impl inside `verus!` counts as verified even if some of its methods are
 `#[verifier::external_body]`; those methods are already marked as assumptions.

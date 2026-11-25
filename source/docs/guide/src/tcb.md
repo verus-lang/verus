@@ -60,6 +60,7 @@ explicitly allowed:
  * [`#[verifier::external_body]`](./calling-unverified-from-verified.md) on functions (including axioms)
  * [`assume_specification`](./reference-assume-specification.md) and `#[verifier::external_fn_specification]`
  * [`#[verifier::assume_termination]`](./reference-attributes.md#verifierassume_termination)
+ * [`#[verifier::assume_external_impl]`](./reference-attributes.md#verifierassume_external_impl)
  * calls enabled by `externals_available_without_declaration`
 
 (`#[verifier::external]` is not affected, since on its own it does not introduce an assumption.)

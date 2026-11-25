@@ -752,6 +752,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] assume_external_impl_on_inherent_impl verus_code! {
+        pub struct S {
+            pub x: u8,
+        }
+
+        #[verifier::assume_external_impl]
+        impl S {
+            fn get(&self) -> u8 {
+                self.x
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`#[verifier::assume_external_impl]` is only allowed on impls of external trait extensions")
+}
+
+test_verify_one_file! {
     #[test] assume_external_impl_on_non_extension_impl verus_code! {
         pub struct S {
             pub x: u8,
