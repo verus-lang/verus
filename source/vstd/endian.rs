@@ -1126,6 +1126,8 @@ pub open spec fn to_big_from_digits<BIG, B>(n: Seq<B>) -> EndianNat<BIG> where
     EndianNat::<B>::to_big::<BIG>(EndianNat::<B>::new(endianness(), n.map(|i, d| digit_to_int(d))))
 }
 
+/// Proof that converting exactly one `BIG` digit's worth of `B` digits (`EndianNat::<B>::exp::<BIG>()` of them)
+/// gives a single `BIG` digit equal to the value of the `B` digits.
 pub proof fn to_big_from_digits_single<BIG, B>(n: Seq<B>) where
     BIG: BasePow2,
     B: CompatibleSmallerBaseFor<BIG> + Integer,
