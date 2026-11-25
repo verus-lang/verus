@@ -320,6 +320,16 @@ pub fn proof_with_callee<V: ProofWithVerifiedResult<C>, C>(verified: V, _compile
     verified
 }
 
+// Wraps each extra `proof_with!` argument so that it cannot drive the inference of
+// the call's executable types. The verifier requires `A` and `B` to be equal after
+// type checking and lowers the call as the identity.
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::ghost_arg_no_infer"]
+#[verifier::proof]
+pub fn ghost_arg_no_infer<A, B>(_a: A) -> B {
+    unimplemented!();
+}
+
 // example: forall with three triggers [f(x), g(y)], [h(x, y)], [m(y, x)]:
 //   forall(|x: int, y: int| with_triggers!([f(x), g(y)], [h(x, y)], [m(y, x)] => body))
 #[macro_export]

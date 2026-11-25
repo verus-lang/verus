@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 basic_verified_lib = { path = "../../verified/basic_verified_lib" }
+proof_with_lib = { path = "../../verified/proof_with_lib" }
 
 [package.metadata.verus]
 

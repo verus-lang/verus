@@ -426,6 +426,7 @@ pub(crate) enum BuiltinFunctionItem {
     ConstrainType,
     GetFutureOutputType,
     ProofWithCallee,
+    GhostArgNoInfer,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -790,6 +791,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::constrain_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)),
         ("verus::verus_builtin::get_future_output_type",  VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType)),
         ("verus::verus_builtin::proof_with_callee",       VerusItem::BuiltinFunction(BuiltinFunctionItem::ProofWithCallee)),
+        ("verus::verus_builtin::ghost_arg_no_infer",      VerusItem::BuiltinFunction(BuiltinFunctionItem::GhostArgNoInfer)),
 
         ("verus::verus_builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
 

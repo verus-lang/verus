@@ -2,7 +2,8 @@ use crate::verus_items::{VerusItem, VerusItems};
 use rustc_hir::QPath;
 use rustc_hir::definitions::DefPath;
 use rustc_middle::ty::{TyCtxt, TyKind};
-use rustc_span::def_id::{CrateNum, DefId};
+use rustc_span::def_id::{CrateNum, DefId, LOCAL_CRATE};
+use rustc_span::sym;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -101,11 +102,10 @@ fn register_friendly_path_as_rust_name<'tcx>(
 }
 
 fn def_to_friendly_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Segment {
-    let def_path = tcx.def_path(def_id);
-    match def_path.data.last().expect("unexpected empty impl path").data {
-        rustc_hir::definitions::DefPathData::ValueNs(name) => {
-            Segment::V(Arc::new(name.to_string()), 0)
-        }
+    let path = def_path_to_vir_path(tcx, tcx.def_path(def_id)).expect("unexpected empty impl path");
+    // A function declared with `with ..` is shown under its name in VIR.
+    match with_fn_path(tcx, def_id, path).last_segment() {
+        Segment::V(name, _) => Segment::V(name, 0),
         _ => panic!("unexpected name of impl"),
     }
 }
@@ -192,10 +192,84 @@ fn unchecked_def_id_to_vir_path<'tcx>(
         segments.push(if in_type_ns { Segment::T(last, 0) } else { Segment::V(last, 0) });
         return Some(Arc::new(PathX { krate: CrateId::Vstd, segments: Arc::new(segments) }));
     }
-    def_path_to_vir_path(tcx, tcx.def_path(def_id))
+    def_path_to_vir_path(tcx, tcx.def_path(def_id)).map(|p| with_fn_path(tcx, def_id, p))
 }
 
-fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
+/// Maps generated pairs so the verified counterpart, which holds the specification, retains
+/// the source name in VIR. This keeps diagnostics, `--verify-function`, and profiler output
+/// aligned with the user's function rather than a generated counterpart name.
+///
+/// Attribute markers disambiguate user-written names that begin with `VERIFIED_PREFIX`.
+/// Definitions and call sites both pass through this function, so the mapping cannot live only
+/// in `check_item_fn`. Trait-method specification items are separate items whose names embed
+/// the function name, so only the portion after their prefix is renamed.
+fn with_fn_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, path: Path) -> Path {
+    use rustc_hir::def::DefKind;
+    if !matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn) {
+        return path;
+    }
+    let Segment::V(name, disambiguator) = path.last_segment() else {
+        return path;
+    };
+    let (prefix, base) = match name.strip_prefix(vir::def::VERUS_SPEC) {
+        Some(rest) => (vir::def::VERUS_SPEC, rest),
+        None => ("", name.as_str()),
+    };
+    fn strip_verified(base: &str) -> Option<&str> {
+        base.strip_prefix(crate::attributes::VERIFIED_IMPL_PREFIX)
+            .or_else(|| base.strip_prefix(crate::attributes::VERIFIED_PREFIX))
+    }
+    let renamed = match strip_verified(base) {
+        Some(base) if crate::attributes::is_verified_counterpart(def_attrs(tcx, def_id)) => {
+            base.to_owned()
+        }
+        Some(_) => return path,
+        None if crate::attributes::is_unverified_stub(def_attrs(tcx, def_id))
+            && has_sibling_counterpart(tcx, def_id) =>
+        {
+            format!("{}{base}", crate::attributes::UNVERIFIED_PREFIX)
+        }
+        None => return path,
+    };
+    path.replace_last(Segment::V(Arc::new(format!("{prefix}{renamed}")), disambiguator))
+}
+
+/// Does `with_fn_path` rename this function? Only the two halves of a `with ..` split
+/// are renamed; every other function keeps the name it is written with.
+pub(crate) fn is_with_fn_renamed<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
+    match def_path_to_vir_path(tcx, tcx.def_path(def_id)) {
+        Some(path) => with_fn_path(tcx, def_id, path.clone()).last_segment() != path.last_segment(),
+        None => false,
+    }
+}
+
+/// A free function, inherent method, or method of a trait declared in this crate can give up
+/// its name because its counterpart is a sibling item or a companion-trait method.
+/// An `external_trait_specification` method cannot because it is named after the external
+/// method it specifies, and call sites compute exactly that name.
+fn has_sibling_counterpart<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
+    use rustc_hir::def::DefKind;
+    let Some(parent) = tcx.opt_parent(def_id) else {
+        return false;
+    };
+    match tcx.def_kind(parent) {
+        DefKind::Mod | DefKind::Impl { .. } => true,
+        DefKind::Trait => crate::attributes::parse_attrs_opt(def_attrs(tcx, parent), None)
+            .into_iter()
+            .all(|a| !matches!(a, crate::attributes::Attr::ExternalTraitSpecification(..))),
+        _ => false,
+    }
+}
+
+/// The attributes of any item, local or not.
+fn def_attrs<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> &'tcx [rustc_hir::Attribute] {
+    match def_id.as_local() {
+        Some(local) => tcx.hir_attrs(tcx.local_def_id_to_hir_id(local)),
+        None => tcx.attrs_for_def(def_id),
+    }
+}
+
+pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
     let krate = mk_crate_id(tcx, def_path.krate);
     let mut segments: Vec<Segment> = Vec::new();
     for d in def_path.data.iter() {
@@ -262,14 +336,22 @@ const VSTD_IDENTIFYING_DIAGNOSTIC_ITEM: &str = "verus::vstd::invariant::open_inv
 /// get a `CrateId::Id` with Rust's stable crate id.
 pub(crate) fn mk_crate_id<'tcx>(tcx: TyCtxt<'tcx>, krate: CrateNum) -> CrateId {
     let s = tcx.crate_name(krate).to_string();
-    let defined_by_krate = |def_id: Option<DefId>| def_id.map(|d| d.krate) == Some(krate);
+    // The AST rewrite needs dependency IDs before local HIR is available.
+    let defines_lang_item = |name| {
+        if krate == LOCAL_CRATE {
+            tcx.lang_items().iter().any(|(item, id)| item.name() == name && id.is_local())
+        } else {
+            tcx.defined_lang_items(krate).iter().any(|&(_, item)| item.name() == name)
+        }
+    };
     match s.as_str() {
-        "core" if defined_by_krate(tcx.lang_items().sized_trait()) => CrateId::Core,
-        "alloc" if defined_by_krate(tcx.lang_items().owned_box()) => CrateId::Alloc,
+        "core" if defines_lang_item(sym::sized) => CrateId::Core,
+        "alloc" if defines_lang_item(sym::owned_box) => CrateId::Alloc,
         "vstd"
-            if defined_by_krate(tcx.get_diagnostic_item(rustc_span::Symbol::intern(
-                VSTD_IDENTIFYING_DIAGNOSTIC_ITEM,
-            ))) =>
+            if tcx
+                .diagnostic_items(krate)
+                .name_to_id
+                .contains_key(&rustc_span::Symbol::intern(VSTD_IDENTIFYING_DIAGNOSTIC_ITEM)) =>
         {
             CrateId::Vstd
         }

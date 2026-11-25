@@ -1742,6 +1742,9 @@ pub(crate) fn check_item_fn<'tcx>(
         .is_some_and(|name| name.starts_with(VERUS_SPEC));
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
+    if crate::attributes::is_unverified_stub(attrs) {
+        crate::proof_with_check::check_ghost_only_generics(ctxt, sig.span, id)?;
+    }
     let mode = match &sig.sig {
         FnOrConstSigEnum::Fn(..) => get_mode(Mode::Exec, attrs),
         FnOrConstSigEnum::ConstVar(..) => get_mode(Mode::Spec, attrs),

@@ -73,7 +73,7 @@ fn exec_tracked(x: u32) -> u32 {
 fn exec_tracked_test(x: u32) {
   proof_decl!{
     let ghost mut z = 0u32;
-    let tracked mut y = 0;
+    let tracked mut y: int = 0;
   }
 
   proof_with!{Tracked(&mut y), Ghost(0) => Ghost(z)}

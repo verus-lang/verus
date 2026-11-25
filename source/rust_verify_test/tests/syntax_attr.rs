@@ -442,7 +442,7 @@ test_verify_one_file! {
         #[verus_spec]
         fn test_call_mut_tracked(x: u32) {
             proof_decl!{
-                let tracked mut y = 0;
+                let tracked mut y: int = 0;
             }
             {#[verus_spec(with Tracked(&mut y), Ghost(0) => _)]
             test_mut_tracked(1);
@@ -465,6 +465,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_trait_signature code!{
+        #[verus_verify]
         trait X {
             #[verus_spec(ret =>
                 with
@@ -474,7 +475,33 @@ test_verify_one_file! {
             )]
             fn f(&self, x: u32) -> bool;
         }
-    } => Err(e) => assert_any_vir_error_msg(e, "`with` does not support trait")
+
+        #[verus_verify]
+        struct S;
+
+        #[verus_verify]
+        impl X for S {
+            #[verus_spec(
+                with
+                    Tracked(y): Tracked<&mut u32>,
+                    Ghost(w): Ghost<u32>,
+                    -> z: Ghost<u32>
+            )]
+            fn f(&self, x: u32) -> bool {
+                #[verus_spec(with |= Ghost(w))]
+                true
+            }
+        }
+
+        #[verus_spec]
+        fn call(s: &S, x: u32) {
+            proof_decl!{
+                let tracked mut y = 0u32;
+            }
+            #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))]
+            let _ = s.f(x);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -495,7 +522,7 @@ test_verify_one_file! {
 
         #[verifier::external]
         fn external_call_with_dummy(x: u32) -> u32 {
-            #[verus_spec(with Tracked::assume_new(), Ghost::assume_new() => _)]
+            #[verus_spec(with Tracked::<&mut int>::assume_new(), Ghost::<u32>::assume_new() => _)]
             test_mut_tracked(0)
         }
 
@@ -559,7 +586,7 @@ test_verify_one_file! {
         fn test_cal_mut_tracked(x: u32) {
             proof_decl!{
                 let ghost mut z = 0u32;
-                let tracked mut y = 0;
+                let tracked mut y: int = 0;
             }
             if #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))] test_mut_tracked(1) == 0 {
                 proof!{
@@ -602,7 +629,7 @@ test_verify_one_file! {
         fn test_cal_mut_tracked(x: u32) {
             proof_decl!{
                 let ghost mut z = 0u32;
-                let tracked mut y = 0;
+                let tracked mut y: int = 0;
             }
             if {
                 proof_with!{Tracked(&mut y), Ghost(0) => Ghost(z)} test_mut_tracked(1)
@@ -733,7 +760,7 @@ test_verify_one_file! {
             proof_with!{Ghost(0u8)}
             f(7)
         }
-    } => Err(err) => assert_vir_error_msg(err, "in the compiled program, `f` here resolves to `call::f`, not to `f` (declared with `#[verus_spec(with ...)]`)")
+    } => Err(err) => assert_vir_error_msg(err, "`f` does not accept extra ghost/tracked arguments: it is not declared with `#[verus_spec(with ..)]`")
 }
 
 test_verify_one_file_with_options! {
@@ -795,12 +822,12 @@ test_verify_one_file! {
 
         #[verus_spec(r => ensures r == 1)]
         pub fn call() -> u8 {
-            // the verified call infers T = u64 from the ghost argument,
-            // the compiled call `h(3)` infers T = i32
+            // the ghost argument must not make the verified call infer T = u64,
+            // while the compiled call `h(3)` infers T = i32
             proof_with!{Ghost(5u64)}
             h(3)
         }
-    } => Err(err) => assert_vir_error_msg(err, "in the compiled program, this call to `h` has different type arguments than in the verified program")
+    } => Err(err) => assert_vir_error_msg(err, "cannot infer this ghost/tracked argument's type")
 }
 
 test_verify_one_file! {
@@ -821,7 +848,7 @@ test_verify_one_file! {
 
         #[verus_verify]
         impl Tr for A {
-            // `f` is called by the compiled program, `_VERUS_VERIFIED_f` by the verified one
+            // Overriding `f` without repeating `with` would leave the override unverified
             fn f(&self) -> u8 { 0 }
         }
 
@@ -830,7 +857,7 @@ test_verify_one_file! {
             proof_with!{Ghost(0u8)}
             a.f()
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot override `Tr::f`: a trait method declared with `#[verus_spec(with ...)]` cannot be overridden")
+    } => Err(err) => assert_vir_error_msg(err, "cannot override `Tr::f`: a trait method declared with `#[verus_spec(with ...)]` cannot be overridden without repeating the `with` clause")
 }
 
 test_verify_one_file! {
@@ -1707,6 +1734,35 @@ test_verify_one_file! {
         fn qux(x: u32) -> u32 {
             proof_with!(|= Ghost(x));
             (x + 1)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Several extra outputs make the function return the tuple `(ret, (y, z))`,
+    // which the tuple a `|=` clause supplies and the tuple pattern a `=>`
+    // clause binds match directly.
+    #[test] test_verus_spec_with_multiple_extra_outputs code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(ret =>
+            with -> y: Ghost<u8>, z: Ghost<u32>
+            ensures ret == 1u64, y@ == 3u8, z@ == 2u32,
+        )]
+        fn test() -> u64 {
+            proof_with!{|= (Ghost(3u8), Ghost(2u32))}
+            1
+        }
+
+        #[verus_spec]
+        fn call_test() {
+            proof_with!{=> (Ghost(y), Ghost(z))}
+            let r = test();
+            proof!{
+                assert(r == 1);
+                assert(y == 3);
+                assert(z == 2);
+            }
         }
     } => Ok(())
 }

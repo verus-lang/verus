@@ -12,6 +12,17 @@ use rustc_middle::thir::{ExprId, LocalVarId, Pat, PatKind};
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, DerefAdjustKind};
 use rustc_middle::ty::{Ty, TyKind};
 
+fn is_ghost_arg_no_infer<'tcx>(cx: &ThirBuildCx<'tcx>, fun: &'tcx Expr<'tcx>) -> bool {
+    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.as_ref() else {
+        return false;
+    };
+    let ExprKind::Path(qpath) = &fun.kind else {
+        return false;
+    };
+    cx.typeck_results.qpath_res(qpath, fun.hir_id).opt_def_id()
+        == Some(erasure_ctxt.ghost_arg_no_infer_fn_def_id)
+}
+
 // To avoid edits and conflicts in thir/cx/expr.rs, postprocess some of the work for expr.rs here
 pub(crate) fn apply_adjustment_post<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
@@ -69,6 +80,13 @@ pub(crate) fn mirror_expr_pre<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx Expr<'tcx>,
 ) -> Option<rustc_middle::thir::ExprKind<'tcx>> {
+    if let ExprKind::Call(fun, [arg]) = expr.kind
+        && is_ghost_arg_no_infer(cx, fun)
+    {
+        // The verifier has checked that the argument and result types are equal up to
+        // regions, so the argument's borrows flow into the result.
+        return Some(rustc_middle::thir::ExprKind::ValueExpr { source: cx.mirror_expr(arg) });
+    }
     if cx.verus_ctxt.full_erasure.is_some() {
         return crate::verus::full_erasure_mirror_expr_pre(cx, expr);
     }

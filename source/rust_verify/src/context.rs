@@ -64,6 +64,7 @@ pub struct ContextX<'tcx> {
     pub(crate) crate_name: CrateId,
     pub(crate) name_def_id_map: Rc<RefCell<HashMap<Path, DefId>>>,
     pub(crate) next_read_kind_id: AtomicU64,
+    pub(crate) proof_with: Arc<crate::proof_with_ast_rewrite::ProofWithCtx>,
 }
 
 /// Warnings and notes collected while translating HIR to VIR, waiting to be reported.
@@ -173,6 +174,7 @@ impl<'tcx> ContextX<'tcx> {
         verus_items: Arc<VerusItems>,
         no_vstd: bool,
         crate_name: CrateId,
+        proof_with: Arc<crate::proof_with_ast_rewrite::ProofWithCtx>,
     ) -> Self {
         ContextX {
             cmd_line_args,
@@ -185,6 +187,7 @@ impl<'tcx> ContextX<'tcx> {
             crate_name,
             name_def_id_map: Rc::new(RefCell::new(HashMap::new())),
             next_read_kind_id: AtomicU64::new(0),
+            proof_with,
         }
     }
 

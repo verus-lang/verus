@@ -6,7 +6,7 @@ use crate::context::ErasureInfo;
 use vir::ast::{Datatype, Fun, FunctionStub, Mode, Path};
 use vir::modes::ErasureModes;
 
-use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
+use crate::verus_items::{BuiltinFunctionItem, DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::ty::TyCtxt;
 use rustc_mir_build_verus::verus::{
@@ -460,6 +460,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             .get(&VerusItem::TwoPhaseMutableReferenceTie)
             .unwrap(),
         get_first_fn_def_id: *verus_items.name_to_id.get(&VerusItem::GetFirst).unwrap(),
+        ghost_arg_no_infer_fn_def_id: *verus_items
+            .name_to_id
+            .get(&VerusItem::BuiltinFunction(BuiltinFunctionItem::GhostArgNoInfer))
+            .unwrap(),
     };
     set_verus_erasure_ctxt(local_def_id, Arc::new(verus_erasure_ctxt));
 
