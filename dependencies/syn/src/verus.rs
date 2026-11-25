@@ -177,12 +177,13 @@ ast_struct! {
 }
 
 ast_struct! {
-    /// `ensures[on unwind] exprs`
+    /// `ensures[on unwind] exprs` or `ensures[on panic] exprs`
     pub struct UnwindEnsures {
         pub token: Token![ensures],
         pub bracket_token: token::Bracket,
         pub on_token: Ident,
-        pub unwind_token: Ident,
+        /// `unwind` or `panic`
+        pub kind: Ident,
         pub exprs: Specification,
     }
 }
@@ -249,6 +250,13 @@ ast_struct! {
     pub struct SignatureUnwind {
         pub token: Token![no_unwind],
         pub when: Option<(Token![when], Expr)>,
+    }
+}
+
+ast_struct! {
+    /// `no_panic`
+    pub struct SignatureNoPanic {
+        pub token: Token![no_panic],
     }
 }
 
@@ -324,11 +332,13 @@ ast_struct! {
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
         pub unwind_ensures: Option<UnwindEnsures>,
+        pub panic_ensures: Option<UnwindEnsures>,
         pub default_ensures: Option<DefaultEnsures>,
         pub returns: Option<Returns>,
         pub decreases: Option<SignatureDecreases>,
         pub invariants: Option<SignatureInvariants>,
         pub unwind: Option<SignatureUnwind>,
+        pub no_panic: Option<SignatureNoPanic>,
         pub with: Option<WithSpecOnFn>,
     }
 }
@@ -342,11 +352,13 @@ impl SignatureSpec {
         self.recommends = None;
         self.ensures = None;
         self.unwind_ensures = None;
+        self.panic_ensures = None;
         self.default_ensures = None;
         self.returns = None;
         self.decreases = None;
         self.invariants = None;
         self.unwind = None;
+        self.no_panic = None;
     }
 }
 
@@ -445,10 +457,12 @@ ast_struct! {
         pub no_panic_requires: Option<NoPanicRequires>,
         pub ensures: Option<Ensures>,
         pub unwind_ensures: Option<UnwindEnsures>,
+        pub panic_ensures: Option<UnwindEnsures>,
         pub default_ensures: Option<DefaultEnsures>,
         pub returns: Option<Returns>,
         pub invariants: Option<SignatureInvariants>,
         pub unwind: Option<SignatureUnwind>,
+        pub no_panic: Option<SignatureNoPanic>,
         pub semi: Token![;],
     }
 }
@@ -946,6 +960,7 @@ pub mod parsing {
                 || input.peek(Token![via])
                 || input.peek(Token![when])
                 || input.peek(Token![no_unwind])
+                || input.peek(Token![no_panic])
                 || input.peek(Token![opens_invariants])
                 || input.peek(Token![outer_mask])
                 || input.peek(Token![inner_mask])
@@ -963,6 +978,7 @@ pub mod parsing {
                 || input.peek2(Token![via])
                 || input.peek2(Token![when])
                 || input.peek2(Token![no_unwind])
+                || input.peek2(Token![no_panic])
                 || input.peek2(Token![opens_invariants])
                 || input.peek2(Token![outer_mask])
                 || input.peek2(Token![inner_mask])
@@ -1195,11 +1211,14 @@ pub mod parsing {
             let bracket_token = bracketed!(content in input);
             let on_token: Ident = content.parse()?;
             if on_token != "on" {
-                return Err(Error::new(on_token.span(), "expected `on unwind`"));
+                return Err(Error::new(
+                    on_token.span(),
+                    "expected `on unwind` or `on panic`",
+                ));
             }
-            let unwind_token: Ident = content.parse()?;
-            if unwind_token != "unwind" {
-                return Err(Error::new(unwind_token.span(), "expected `unwind`"));
+            let kind: Ident = content.parse()?;
+            if kind != "unwind" && kind != "panic" {
+                return Err(Error::new(kind.span(), "expected `unwind` or `panic`"));
             }
             if !content.is_empty() {
                 return Err(content.error("unexpected token in `ensures[...]`"));
@@ -1209,9 +1228,47 @@ pub mod parsing {
                 token,
                 bracket_token,
                 on_token,
-                unwind_token,
+                kind,
                 exprs,
             })
+        }
+
+        /// Parse `ensures`, `ensures[on unwind]`, and `ensures[on panic]` clause groups
+        /// (each optional, in any order)
+        pub fn parse_all_ensures(
+            input: ParseStream,
+        ) -> Result<(
+            Option<Ensures>,
+            Option<UnwindEnsures>,
+            Option<UnwindEnsures>,
+        )> {
+            let mut ensures: Option<Ensures> = None;
+            let mut unwind_ensures: Option<UnwindEnsures> = None;
+            let mut panic_ensures: Option<UnwindEnsures> = None;
+            while input.peek(Token![ensures]) {
+                if Self::peek(input) {
+                    let e = Self::parse_in(Context::Item, input)?;
+                    let slot = if e.kind == "unwind" {
+                        &mut unwind_ensures
+                    } else {
+                        &mut panic_ensures
+                    };
+                    if slot.is_some() {
+                        return Err(Error::new(
+                            e.token.span,
+                            std::format!("duplicate `ensures[on {}]` clause", e.kind),
+                        ));
+                    }
+                    *slot = Some(e);
+                } else {
+                    if ensures.is_some() {
+                        // let the caller report the unexpected `ensures`
+                        break;
+                    }
+                    ensures = Some(Ensures::parse_in(Context::Item, input)?);
+                }
+            }
+            Ok((ensures, unwind_ensures, panic_ensures))
         }
 
         /// Parse an optional `ensures[on unwind]` clause group in a given context.
@@ -1539,6 +1596,19 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<SignatureNoPanic> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![no_panic]) {
+                Ok(Some(SignatureNoPanic {
+                    token: input.parse()?,
+                }))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<SignatureUnwind> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![no_unwind]) {
@@ -1563,18 +1633,17 @@ pub mod parsing {
                 requires = Requires::parse_optional_in(Context::Item, input)?;
             }
             let recommends: Option<Recommends> = input.parse()?;
-            // ensures and ensures[on unwind] may appear in either order
-            let mut ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
-            let unwind_ensures: Option<UnwindEnsures> =
-                UnwindEnsures::parse_optional_in(Context::Item, input)?;
-            if ensures.is_none() {
-                ensures = Ensures::parse_optional_in(Context::Item, input)?;
-            }
+            let (ensures, unwind_ensures, panic_ensures) = UnwindEnsures::parse_all_ensures(input)?;
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
-            let unwind: Option<SignatureUnwind> = input.parse()?;
+            // no_unwind and no_panic may appear in either order
+            let mut unwind: Option<SignatureUnwind> = input.parse()?;
+            let no_panic: Option<SignatureNoPanic> = input.parse()?;
+            if unwind.is_none() {
+                unwind = input.parse()?;
+            }
 
             Ok(SignatureSpec {
                 prover,
@@ -1584,11 +1653,13 @@ pub mod parsing {
                 recommends,
                 ensures,
                 unwind_ensures,
+                panic_ensures,
                 default_ensures,
                 returns,
                 decreases,
                 invariants,
                 unwind,
+                no_panic,
                 with,
             })
         }
@@ -1884,17 +1955,16 @@ pub mod parsing {
             if requires.is_none() {
                 requires = Requires::parse_optional_in(Context::Item, input)?;
             }
-            // ensures and ensures[on unwind] may appear in either order
-            let mut ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
-            let unwind_ensures: Option<UnwindEnsures> =
-                UnwindEnsures::parse_optional_in(Context::Item, input)?;
-            if ensures.is_none() {
-                ensures = Ensures::parse_optional_in(Context::Item, input)?;
-            }
+            let (ensures, unwind_ensures, panic_ensures) = UnwindEnsures::parse_all_ensures(input)?;
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
-            let unwind: Option<SignatureUnwind> = input.parse()?;
+            // no_unwind and no_panic may appear in either order
+            let mut unwind: Option<SignatureUnwind> = input.parse()?;
+            let no_panic: Option<SignatureNoPanic> = input.parse()?;
+            if unwind.is_none() {
+                unwind = input.parse()?;
+            }
 
             let semi = input.parse()?;
 
@@ -1912,10 +1982,12 @@ pub mod parsing {
                 no_panic_requires,
                 ensures,
                 unwind_ensures,
+                panic_ensures,
                 default_ensures,
                 returns,
                 invariants,
                 unwind,
+                no_panic,
                 semi,
             })
         }
@@ -2430,7 +2502,7 @@ mod printing {
             self.token.to_tokens(tokens);
             self.bracket_token.surround(tokens, |tokens| {
                 self.on_token.to_tokens(tokens);
-                self.unwind_token.to_tokens(tokens);
+                self.kind.to_tokens(tokens);
             });
             self.exprs.to_tokens(tokens);
         }
@@ -2524,6 +2596,13 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for SignatureNoPanic {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for SignatureUnwind {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
@@ -2585,11 +2664,13 @@ mod printing {
             self.recommends.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
             self.unwind_ensures.to_tokens(tokens);
+            self.panic_ensures.to_tokens(tokens);
             self.default_ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.decreases.to_tokens(tokens);
             self.invariants.to_tokens(tokens);
             self.unwind.to_tokens(tokens);
+            self.no_panic.to_tokens(tokens);
         }
     }
 
@@ -2945,10 +3026,12 @@ mod printing {
             self.no_panic_requires.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
             self.unwind_ensures.to_tokens(tokens);
+            self.panic_ensures.to_tokens(tokens);
             self.default_ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.invariants.to_tokens(tokens);
             self.unwind.to_tokens(tokens);
+            self.no_panic.to_tokens(tokens);
             self.semi.to_tokens(tokens);
         }
     }
@@ -3378,6 +3461,7 @@ impl parse::Parse for WithSpecOnFn {
                 || input.peek(Token![via])
                 || input.peek(Token![when])
                 || input.peek(Token![no_unwind])
+                || input.peek(Token![no_panic])
                 || input.peek(Token![opens_invariants])
         };
 

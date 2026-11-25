@@ -189,7 +189,7 @@
     - [requires / ensures]()
     - [returns](./reference-returns.md)
     - [opens_invariants](./reference-opens-invariants.md)
-    - [no_unwind](./reference-unwind-sig.md)
+    - [no_panic / no_unwind](./reference-unwind-sig.md)
     - [recommends](./reference-recommends.md)
   - [Traits and signature inheritance](./reference-signature-inheritance.md)
   - [Specifications on FnOnce](./reference-signature-fnonce.md)

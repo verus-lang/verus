@@ -119,10 +119,12 @@ impl Hash for crate::AssumeSpecification {
         self.no_panic_requires.hash(state);
         self.ensures.hash(state);
         self.unwind_ensures.hash(state);
+        self.panic_ensures.hash(state);
         self.default_ensures.hash(state);
         self.returns.hash(state);
         self.invariants.hash(state);
         self.unwind.hash(state);
+        self.no_panic.hash(state);
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -3262,6 +3264,13 @@ impl Hash for crate::SignatureInvariants {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::SignatureNoPanic {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::SignatureSpec {
     fn hash<H>(&self, state: &mut H)
     where
@@ -3274,11 +3283,13 @@ impl Hash for crate::SignatureSpec {
         self.recommends.hash(state);
         self.ensures.hash(state);
         self.unwind_ensures.hash(state);
+        self.panic_ensures.hash(state);
         self.default_ensures.hash(state);
         self.returns.hash(state);
         self.decreases.hash(state);
         self.invariants.hash(state);
         self.unwind.hash(state);
+        self.no_panic.hash(state);
         self.with.hash(state);
     }
 }
@@ -3826,7 +3837,7 @@ impl Hash for crate::UnwindEnsures {
         H: Hasher,
     {
         self.on_token.hash(state);
-        self.unwind_token.hash(state);
+        self.kind.hash(state);
         self.exprs.hash(state);
     }
 }

@@ -94,7 +94,7 @@ test_verify_one_file! {
         }
         fn f(x: X) -> ((val1, val2): (usize, bool))
         ensures check_x_b(x, val1, val2)
-        no_unwind when is_a(x)
+        ensures[on panic] !is_a(x)
         {
             let X::A(A {x, ..}, .., b) = x else {
                 call_panic();

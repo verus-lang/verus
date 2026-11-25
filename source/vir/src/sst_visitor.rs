@@ -683,6 +683,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let unwind_condition: <R as Returner>::Opt<Arc<SpannedTyped<ExpX>>> =
             R::map_opt(&func_decl.unwind_condition, &mut |exp| self.visit_exp(exp))?;
         let unwind_ensures = self.visit_exps(&func_decl.unwind_ensures)?;
+        let panic_ensures = self.visit_exps(&func_decl.panic_ensures)?;
 
         R::ret(|| FuncDeclSst {
             req_inv_pars: R::get_vec_a(req_inv_pars),
@@ -692,16 +693,19 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             inv_masks: R::get_vec_a(inv_masks),
             unwind_condition: R::get_opt(unwind_condition),
             unwind_ensures: R::get_vec_a(unwind_ensures),
+            panic_ensures: R::get_vec_a(panic_ensures),
             fndef_axioms: R::get_vec_a(fndef_axioms),
         })
     }
 
     fn visit_unwind(&mut self, unwind: &UnwindSst) -> Result<R::Ret<UnwindSst>, Err> {
         match unwind {
-            UnwindSst::MayUnwind | UnwindSst::NoUnwind => R::ret(|| unwind.clone()),
-            UnwindSst::NoUnwindWhen(exp) => {
+            UnwindSst::MayUnwind | UnwindSst::NoUnwind | UnwindSst::NoPanic => {
+                R::ret(|| unwind.clone())
+            }
+            UnwindSst::NoUnwindWhen(exp, no_panic) => {
                 let exp = self.visit_exp(exp)?;
-                R::ret(|| UnwindSst::NoUnwindWhen(R::get(exp)))
+                R::ret(|| UnwindSst::NoUnwindWhen(R::get(exp), *no_panic))
             }
         }
     }
@@ -720,6 +724,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let local_decls_decreases_init = self.visit_stms(&def.local_decls_decreases_init)?;
         let unwind = self.visit_unwind(&def.unwind)?;
         let unwind_ens = self.visit_exps(&def.unwind_ens)?;
+        let panic_ens = self.visit_exps(&def.panic_ens)?;
 
         R::ret(|| FuncCheckSst {
             reqs: R::get_vec_a(reqs),
@@ -727,6 +732,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             post_condition: Arc::new(R::get(post_condition)),
             unwind: R::get(unwind),
             unwind_ens: R::get_vec_a(unwind_ens),
+            panic_ens: R::get_vec_a(panic_ens),
             body: R::get(body),
             local_decls: R::get_vec_a(local_decls),
             local_decls_decreases_init: R::get_vec_a(local_decls_decreases_init),

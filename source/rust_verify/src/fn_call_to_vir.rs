@@ -670,10 +670,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                     | SpecItem::InvMaskListCompl
                     | SpecItem::InvMaskSet
                     | SpecItem::NoUnwind
+                    | SpecItem::NoPanic
                     | SpecItem::NoUnwindWhen
                     | SpecItem::NoPanicRequires
                     | SpecItem::NoPanicRequiresExact
-                    | SpecItem::UnwindEnsures => (true, false),
+                    | SpecItem::UnwindEnsures
+                    | SpecItem::PanicEnsures => (true, false),
 
                     SpecItem::Ensures | SpecItem::Returns => (true, true),
 
@@ -699,6 +701,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 | SpecItem::NoPanicRequires
                 | SpecItem::NoPanicRequiresExact
                 | SpecItem::UnwindEnsures
+                | SpecItem::PanicEnsures
                 | SpecItem::Recommends
                 | SpecItem::Returns => {
                     record_spec_fn_pure_args_only(bctx, expr);
@@ -727,6 +730,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                             | SpecItem::NoPanicRequires
                             | SpecItem::NoPanicRequiresExact
                             | SpecItem::UnwindEnsures
+                            | SpecItem::PanicEnsures
                             | SpecItem::Recommends => match &*typ {
                                 TypX::Bool => {}
                                 _ => {
@@ -753,6 +757,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                         }
                         SpecItem::UnwindEnsures => {
                             Arc::new(HeaderExprX::UnwindEnsures(Arc::new(vir_args)))
+                        }
+                        SpecItem::PanicEnsures => {
+                            Arc::new(HeaderExprX::PanicEnsures(Arc::new(vir_args)))
                         }
                         SpecItem::Recommends => {
                             Arc::new(HeaderExprX::Recommends(Arc::new(vir_args)))
@@ -941,6 +948,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                 SpecItem::NoUnwind => {
                     record_spec_fn_pure_args_only(bctx, expr);
                     let header = Arc::new(HeaderExprX::NoUnwind);
+                    mk_expr(ExprX::Header(header))
+                }
+                SpecItem::NoPanic => {
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    let header = Arc::new(HeaderExprX::NoPanic);
                     mk_expr(ExprX::Header(header))
                 }
                 SpecItem::NoUnwindWhen => {

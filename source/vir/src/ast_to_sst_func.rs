@@ -230,6 +230,7 @@ fn func_body_to_sst(
             reqs: Arc::new(vec![]),
             unwind: UnwindSst::NoUnwind,
             unwind_ens: Arc::new(vec![]),
+            panic_ens: Arc::new(vec![]),
         };
         Some(termination_check)
     } else {
@@ -415,7 +416,7 @@ pub fn func_decl_to_sst(
 
     let unwind_condition = match &function.x.unwind_spec {
         None => None,
-        Some(UnwindSpec::NoUnwind) => None,
+        Some(UnwindSpec::NoUnwind | UnwindSpec::NoPanic) => None,
         Some(UnwindSpec::MayUnwind) => None,
         Some(UnwindSpec::NoUnwindWhen(e, _)) => {
             let (_pars, exps) = req_ens_to_sst(ctx, diagnostics, function, &vec![e.clone()], true)?;
@@ -425,6 +426,8 @@ pub fn func_decl_to_sst(
     };
     let (_pars, unwind_ensures) =
         req_ens_to_sst(ctx, diagnostics, function, &function.x.unwind_ensure, true)?;
+    let (_pars, panic_ensures) =
+        req_ens_to_sst(ctx, diagnostics, function, &function.x.panic_ensure, true)?;
 
     let mut fndef_axiom_exps: Vec<Exp> = Vec::new();
     if crate::ast_simplify::need_fndef_axiom(&ctx.fndef_type_set, function) {
@@ -494,6 +497,7 @@ pub fn func_decl_to_sst(
         inv_masks: Arc::new(inv_masks),
         unwind_condition,
         unwind_ensures: Arc::new(unwind_ensures),
+        panic_ensures: Arc::new(panic_ensures),
         fndef_axioms: Arc::new(fndef_axiom_exps),
     })
 }
@@ -750,7 +754,10 @@ impl UnwindSpec {
         let unwind_sst = match self {
             UnwindSpec::NoUnwind => UnwindSst::NoUnwind,
             UnwindSpec::MayUnwind => UnwindSst::MayUnwind,
-            UnwindSpec::NoUnwindWhen(expr, _) => UnwindSst::NoUnwindWhen(f(expr)?),
+            UnwindSpec::NoPanic => UnwindSst::NoPanic,
+            UnwindSpec::NoUnwindWhen(expr, kind) => {
+                UnwindSst::NoUnwindWhen(f(expr)?, kind.is_no_panic())
+            }
         };
         Ok(unwind_sst)
     }
@@ -761,7 +768,8 @@ impl UnwindSst {
         let unwind_sst = match self {
             UnwindSst::NoUnwind => UnwindSst::NoUnwind,
             UnwindSst::MayUnwind => UnwindSst::MayUnwind,
-            UnwindSst::NoUnwindWhen(exp) => UnwindSst::NoUnwindWhen(f(exp)?),
+            UnwindSst::NoPanic => UnwindSst::NoPanic,
+            UnwindSst::NoUnwindWhen(exp, no_panic) => UnwindSst::NoUnwindWhen(f(exp)?, *no_panic),
         };
         Ok(unwind_sst)
     }
@@ -944,6 +952,10 @@ pub fn func_def_to_sst(
     for expr in specs_function.x.unwind_ensure.iter() {
         unwind_ens.push(lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms)?);
     }
+    let mut panic_ens: Vec<Exp> = Vec::new();
+    for expr in specs_function.x.panic_ensure.iter() {
+        panic_ens.push(lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms)?);
+    }
 
     // Decreases: add recommends if necessary; otherwise nothing to do
     if ctx.checking_spec_preconditions() {
@@ -1013,19 +1025,21 @@ pub fn func_def_to_sst(
         .collect();
     let ens_spec_precondition_stms = ens_spec_precondition_stms?;
     let unwind_sst = unwind_sst.map(&|e| Ok(exp_pre(&state.finalize_exp(&ctx, e)?)))?;
-    let unwind_ens = if ctx.checking_spec_preconditions() || check_api_safety {
-        vec![]
-    } else {
-        let unwind_ens: Result<Vec<_>, VirErr> =
-            unwind_ens.iter().map(|e| Ok(exp_pre(&state.finalize_exp(&ctx, e)?))).collect();
-        unwind_ens?
+    let finalize_unwind_ens = |state: &mut State, es: Vec<Exp>| -> Result<Vec<Exp>, VirErr> {
+        if ctx.checking_spec_preconditions() || check_api_safety {
+            Ok(vec![])
+        } else {
+            es.iter().map(|e| Ok(exp_pre(&state.finalize_exp(&ctx, e)?))).collect()
+        }
     };
+    let unwind_ens = finalize_unwind_ens(&mut state, unwind_ens)?;
+    let panic_ens = finalize_unwind_ens(&mut state, panic_ens)?;
 
     // For `requires[no_panic exact]`, the function must panic when the condition fails,
     // so a normal return must establish the condition
     if let (
         UnwindSpec::NoUnwindWhen(_, NoUnwindWhenKind::NoPanicRequiresExact),
-        UnwindSst::NoUnwindWhen(e),
+        UnwindSst::NoUnwindWhen(e, _),
     ) = (&unwind_ast, &unwind_sst)
     {
         if !ctx.checking_spec_preconditions() && !check_api_safety {
@@ -1078,6 +1092,7 @@ pub fn func_def_to_sst(
         }),
         unwind: unwind_sst,
         unwind_ens: Arc::new(unwind_ens),
+        panic_ens: Arc::new(panic_ens),
         body: stm,
         local_decls: Arc::new(local_decls),
         local_decls_decreases_init,

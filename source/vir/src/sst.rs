@@ -370,7 +370,9 @@ pub struct LocalDeclX {
 pub enum UnwindSst {
     MayUnwind,
     NoUnwind,
-    NoUnwindWhen(Exp),
+    /// The bool is true if the condition also guarantees that the function doesn't panic
+    NoUnwindWhen(Exp, bool),
+    NoPanic,
 }
 
 #[derive(Debug, Clone, Copy, ToDebugSNode)]
@@ -405,6 +407,8 @@ pub struct FuncDeclSst {
     pub unwind_condition: Option<Exp>,
     /// `ensures[on unwind]` conditions (functions of the arguments' pre-state)
     pub unwind_ensures: Exps,
+    /// `ensures[on panic]` conditions (functions of the arguments' pre-state)
+    pub panic_ensures: Exps,
     pub fndef_axioms: Exps,
 }
 
@@ -416,6 +420,8 @@ pub struct FuncCheckSst {
     pub unwind: UnwindSst,
     /// `ensures[on unwind]` conditions, checked at the end of each unwind path
     pub unwind_ens: Exps,
+    /// `ensures[on panic]` conditions, checked at the end of each unwind or panic path
+    pub panic_ens: Exps,
     pub body: Stm,
     pub local_decls: Arc<Vec<LocalDecl>>,
     /// LocalDeclKind::Decreases have an assignment that must be carried into loop_isolation(false):

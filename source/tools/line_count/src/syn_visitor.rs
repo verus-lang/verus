@@ -212,6 +212,13 @@ impl<'f> Visitor<'f> {
                     LineContent::FunctionSpec,
                 );
             }
+            if let Some(panic_ensures) = &sig.spec.panic_ensures {
+                self.mark(
+                    panic_ensures,
+                    self.mode_or_trusted(CodeKind::Spec),
+                    LineContent::FunctionSpec,
+                );
+            }
             if let Some(ensures) = &sig.spec.ensures {
                 self.mark(ensures, self.mode_or_trusted(CodeKind::Spec), LineContent::FunctionSpec);
             }

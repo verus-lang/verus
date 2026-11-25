@@ -94,11 +94,18 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
                     ),
                 ));
             }
-            if function.x.mode == Mode::Exec && function.x.unwind_ensure.len() > 0 {
+            if function.x.mode == Mode::Exec
+                && (function.x.unwind_ensure.len() > 0 || function.x.panic_ensure.len() > 0)
+            {
+                let clause = if function.x.unwind_ensure.len() > 0 {
+                    "`ensures[on unwind]`"
+                } else {
+                    "`ensures[on panic]`"
+                };
                 return Err(error(
                     &function.span,
                     &format!(
-                        "safe API violation: `ensures[on unwind]` clause is nontrivial for trait method `{:}`; unverified, safe client code may be able to implement this trait without meeting these unwinding requirements",
+                        "safe API violation: {clause} clause is nontrivial for trait method `{:}`; unverified, safe client code may be able to implement this trait without meeting these panicking requirements",
                         fun_as_friendly_rust_name(&function.x.name),
                     ),
                 ));

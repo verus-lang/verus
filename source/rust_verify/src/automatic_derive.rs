@@ -570,6 +570,7 @@ fn stub_to_spec_function(stub: &FunctionStub, body: Option<Expr>) -> Function {
             mask_spec: None,
             unwind_spec: None,
             unwind_ensure: Arc::new(vec![]),
+            panic_ensure: Arc::new(vec![]),
             item_kind,
             attrs,
             body: body,

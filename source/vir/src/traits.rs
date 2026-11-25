@@ -782,6 +782,7 @@ pub fn inherit_default_bodies(
                     mask_spec: None,
                     unwind_spec: None,
                     unwind_ensure: Arc::new(vec![]),
+                    panic_ensure: Arc::new(vec![]),
                     item_kind: default_function.x.item_kind,
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
                     body: None,
@@ -1934,6 +1935,7 @@ fn check_dyn_spec(f: &Function) -> Result<(), ()> {
         atomic_update,
         unwind_spec,
         unwind_ensure,
+        panic_ensure,
         item_kind: _,
         attrs: _,
         body: _,
@@ -1958,6 +1960,7 @@ fn check_dyn_spec(f: &Function) -> Result<(), ()> {
         visitor.visit_unwind_spec(unwind_spec)?;
     }
     visitor.visit_exprs(unwind_ensure)?;
+    visitor.visit_exprs(panic_ensure)?;
     Ok(())
 }
 

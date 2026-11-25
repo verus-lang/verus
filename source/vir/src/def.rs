@@ -55,6 +55,7 @@ const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_OPEN_INV: &str = "openinv%";
 const PREFIX_NO_UNWIND_WHEN: &str = "no_unwind_when%";
 const PREFIX_UNWIND_ENSURES: &str = "unwind_ens%";
+const PREFIX_PANIC_ENSURES: &str = "panic_ens%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
@@ -745,6 +746,10 @@ pub fn prefix_no_unwind_when(ident: &Ident) -> Ident {
 
 pub fn prefix_unwind_ensures(ident: &Ident) -> Ident {
     Arc::new(PREFIX_UNWIND_ENSURES.to_string() + ident)
+}
+
+pub fn prefix_panic_ensures(ident: &Ident) -> Ident {
+    Arc::new(PREFIX_PANIC_ENSURES.to_string() + ident)
 }
 
 fn prefix_path(prefix: String, path: &Path) -> Path {

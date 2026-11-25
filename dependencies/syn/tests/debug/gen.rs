@@ -299,6 +299,20 @@ impl Debug for Lite<syn::AssumeSpecification> {
             }
             formatter.field("unwind_ensures", Print::ref_cast(val));
         }
+        if let Some(val) = &self.value.panic_ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::UnwindEnsures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("panic_ensures", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.default_ensures {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -354,6 +368,20 @@ impl Debug for Lite<syn::AssumeSpecification> {
                 }
             }
             formatter.field("unwind", Print::ref_cast(val));
+        }
+        if let Some(val) = &self.value.no_panic {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::SignatureNoPanic);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("no_panic", Print::ref_cast(val));
         }
         formatter.finish()
     }
@@ -6241,6 +6269,12 @@ impl Debug for Lite<syn::SignatureInvariants> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::SignatureNoPanic> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("SignatureNoPanic");
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::SignatureSpec> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("SignatureSpec");
@@ -6342,6 +6376,20 @@ impl Debug for Lite<syn::SignatureSpec> {
             }
             formatter.field("unwind_ensures", Print::ref_cast(val));
         }
+        if let Some(val) = &self.value.panic_ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::UnwindEnsures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("panic_ensures", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.default_ensures {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -6411,6 +6459,20 @@ impl Debug for Lite<syn::SignatureSpec> {
                 }
             }
             formatter.field("unwind", Print::ref_cast(val));
+        }
+        if let Some(val) = &self.value.no_panic {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::SignatureNoPanic);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("no_panic", Print::ref_cast(val));
         }
         if let Some(val) = &self.value.with {
             #[derive(RefCast)]
@@ -7397,7 +7459,7 @@ impl Debug for Lite<syn::UnwindEnsures> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("UnwindEnsures");
         formatter.field("on_token", Lite(&self.value.on_token));
-        formatter.field("unwind_token", Lite(&self.value.unwind_token));
+        formatter.field("kind", Lite(&self.value.kind));
         formatter.field("exprs", Lite(&self.value.exprs));
         formatter.finish()
     }
@@ -8134,6 +8196,11 @@ impl Debug for Lite<syn::token::Ne> {
 impl Debug for Lite<syn::token::NeEq> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![!==]")
+    }
+}
+impl Debug for Lite<syn::token::NoPanic> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![no_panic]")
     }
 }
 impl Debug for Lite<syn::token::NoUnwind> {

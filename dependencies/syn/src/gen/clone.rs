@@ -122,10 +122,12 @@ impl Clone for crate::AssumeSpecification {
             no_panic_requires: self.no_panic_requires.clone(),
             ensures: self.ensures.clone(),
             unwind_ensures: self.unwind_ensures.clone(),
+            panic_ensures: self.panic_ensures.clone(),
             default_ensures: self.default_ensures.clone(),
             returns: self.returns.clone(),
             invariants: self.invariants.clone(),
             unwind: self.unwind.clone(),
+            no_panic: self.no_panic.clone(),
             semi: self.semi.clone(),
         }
     }
@@ -2640,6 +2642,14 @@ impl Clone for crate::SignatureInvariants {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::SignatureNoPanic {
+    fn clone(&self) -> Self {
+        crate::SignatureNoPanic {
+            token: self.token.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::SignatureSpec {
     fn clone(&self) -> Self {
         crate::SignatureSpec {
@@ -2650,11 +2660,13 @@ impl Clone for crate::SignatureSpec {
             recommends: self.recommends.clone(),
             ensures: self.ensures.clone(),
             unwind_ensures: self.unwind_ensures.clone(),
+            panic_ensures: self.panic_ensures.clone(),
             default_ensures: self.default_ensures.clone(),
             returns: self.returns.clone(),
             decreases: self.decreases.clone(),
             invariants: self.invariants.clone(),
             unwind: self.unwind.clone(),
+            no_panic: self.no_panic.clone(),
             with: self.with.clone(),
         }
     }
@@ -3069,7 +3081,7 @@ impl Clone for crate::UnwindEnsures {
             token: self.token.clone(),
             bracket_token: self.bracket_token.clone(),
             on_token: self.on_token.clone(),
-            unwind_token: self.unwind_token.clone(),
+            kind: self.kind.clone(),
             exprs: self.exprs.clone(),
         }
     }

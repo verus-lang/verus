@@ -4160,7 +4160,7 @@ fn check_function_inner(
         }
     }
     match &function.x.unwind_spec {
-        None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
+        None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind | UnwindSpec::NoPanic) => {}
         Some(UnwindSpec::NoUnwindWhen(expr, _)) => {
             let mut unw_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
             let mut unw_typing = unw_typing.push_in_pure(true);
@@ -4175,7 +4175,7 @@ fn check_function_inner(
             )?;
         }
     }
-    for expr in function.x.unwind_ensure.iter() {
+    for expr in function.x.unwind_ensure.iter().chain(function.x.panic_ensure.iter()) {
         let mut unw_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
         let mut unw_typing = unw_typing.push_in_pure(true);
         check_expr_has_mode(

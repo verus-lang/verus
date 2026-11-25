@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2026-09-06-0133",
+  "version": "0.0.0-2026-11-01-0251",
   "types": [
     {
       "ident": "Abi",
@@ -353,6 +353,11 @@
             "syn": "UnwindEnsures"
           }
         },
+        "panic_ensures": {
+          "option": {
+            "syn": "UnwindEnsures"
+          }
+        },
         "default_ensures": {
           "option": {
             "syn": "DefaultEnsures"
@@ -371,6 +376,11 @@
         "unwind": {
           "option": {
             "syn": "SignatureUnwind"
+          }
+        },
+        "no_panic": {
+          "option": {
+            "syn": "SignatureNoPanic"
           }
         },
         "semi": {
@@ -6635,6 +6645,17 @@
       }
     },
     {
+      "ident": "SignatureNoPanic",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "NoPanic"
+        }
+      }
+    },
+    {
       "ident": "SignatureSpec",
       "features": {
         "any": []
@@ -6675,6 +6696,11 @@
             "syn": "UnwindEnsures"
           }
         },
+        "panic_ensures": {
+          "option": {
+            "syn": "UnwindEnsures"
+          }
+        },
         "default_ensures": {
           "option": {
             "syn": "DefaultEnsures"
@@ -6698,6 +6724,11 @@
         "unwind": {
           "option": {
             "syn": "SignatureUnwind"
+          }
+        },
+        "no_panic": {
+          "option": {
+            "syn": "SignatureNoPanic"
           }
         },
         "with": {
@@ -7706,7 +7737,7 @@
         "on_token": {
           "proc_macro2": "Ident"
         },
-        "unwind_token": {
+        "kind": {
           "proc_macro2": "Ident"
         },
         "exprs": {
@@ -8204,6 +8235,7 @@
     "Mut": "mut",
     "Ne": "!=",
     "NeEq": "!==",
+    "NoPanic": "no_panic",
     "NoUnwind": "no_unwind",
     "Not": "!",
     "Open": "open",

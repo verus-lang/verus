@@ -867,6 +867,11 @@ pub enum HeaderExprX {
     NoPanicRequiresExact(Exprs),
     /// `ensures[on unwind]`: the conditions hold if the function unwinds
     UnwindEnsures(Exprs),
+    /// `no_panic`: the function never panics (and hence never unwinds)
+    NoPanic,
+    /// `ensures[on panic]`: the conditions hold if the function panics
+    /// (whether it unwinds or aborts)
+    PanicEnsures(Exprs),
     /// The visibility used in, e.g., `open(crate)`
     OpenVisibilityQualifier(Visibility),
 }
@@ -1689,12 +1694,19 @@ pub enum NoUnwindWhenKind {
     NoPanicRequiresExact,
 }
 
-/// Function specification of whether it may unwind
+/// Function specification of whether it may unwind or panic.
+/// Unwinding implies panicking, but a panic may also abort without unwinding.
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum UnwindSpec {
+    /// `no_unwind`: never unwinds, but may panic (by aborting)
     NoUnwind,
+    /// Doesn't unwind if the condition holds; for the `NoPanicRequires` kinds,
+    /// it also doesn't panic if the condition holds
     NoUnwindWhen(Expr, NoUnwindWhenKind),
+    /// May unwind or panic
     MayUnwind,
+    /// `no_panic`: never panics (and hence never unwinds)
+    NoPanic,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
@@ -1828,6 +1840,9 @@ pub struct FunctionX {
     /// `ensures[on unwind]` conditions that hold if the function unwinds
     /// (functions of the arguments' pre-state, like the UnwindSpec conditions)
     pub unwind_ensure: Exprs,
+    /// `ensures[on panic]` conditions that hold if the function panics,
+    /// whether it unwinds or aborts (functions of the arguments' pre-state)
+    pub panic_ensure: Exprs,
     /// Allows the item to be a const declaration or static
     pub item_kind: ItemKind,
     /// Various attributes

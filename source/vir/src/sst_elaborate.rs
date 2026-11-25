@@ -209,6 +209,7 @@ impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
         let local_decls_decreases_init = self.visit_stms(&def.local_decls_decreases_init)?;
         let unwind = self.visit_unwind(&def.unwind)?;
         let unwind_ens = self.visit_exps(&def.unwind_ens)?;
+        let panic_ens = self.visit_exps(&def.panic_ens)?;
         let is_native = self.is_native.take().expect("is_native");
 
         let mut def = FuncCheckSst {
@@ -217,6 +218,7 @@ impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
             post_condition: Arc::new(post_condition),
             unwind,
             unwind_ens: Arc::new(unwind_ens),
+            panic_ens: Arc::new(panic_ens),
             body,
             local_decls: Arc::new(local_decls),
             local_decls_decreases_init: Arc::new(local_decls_decreases_init),

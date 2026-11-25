@@ -129,10 +129,12 @@ impl Debug for crate::AssumeSpecification {
         formatter.field("no_panic_requires", &self.no_panic_requires);
         formatter.field("ensures", &self.ensures);
         formatter.field("unwind_ensures", &self.unwind_ensures);
+        formatter.field("panic_ensures", &self.panic_ensures);
         formatter.field("default_ensures", &self.default_ensures);
         formatter.field("returns", &self.returns);
         formatter.field("invariants", &self.invariants);
         formatter.field("unwind", &self.unwind);
+        formatter.field("no_panic", &self.no_panic);
         formatter.field("semi", &self.semi);
         formatter.finish()
     }
@@ -3644,6 +3646,14 @@ impl Debug for crate::SignatureInvariants {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::SignatureNoPanic {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("SignatureNoPanic");
+        formatter.field("token", &self.token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::SignatureSpec {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("SignatureSpec");
@@ -3654,11 +3664,13 @@ impl Debug for crate::SignatureSpec {
         formatter.field("recommends", &self.recommends);
         formatter.field("ensures", &self.ensures);
         formatter.field("unwind_ensures", &self.unwind_ensures);
+        formatter.field("panic_ensures", &self.panic_ensures);
         formatter.field("default_ensures", &self.default_ensures);
         formatter.field("returns", &self.returns);
         formatter.field("decreases", &self.decreases);
         formatter.field("invariants", &self.invariants);
         formatter.field("unwind", &self.unwind);
+        formatter.field("no_panic", &self.no_panic);
         formatter.field("with", &self.with);
         formatter.finish()
     }
@@ -4268,7 +4280,7 @@ impl Debug for crate::UnwindEnsures {
         formatter.field("token", &self.token);
         formatter.field("bracket_token", &self.bracket_token);
         formatter.field("on_token", &self.on_token);
-        formatter.field("unwind_token", &self.unwind_token);
+        formatter.field("kind", &self.kind);
         formatter.field("exprs", &self.exprs);
         formatter.finish()
     }

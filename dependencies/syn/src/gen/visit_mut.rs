@@ -977,6 +977,9 @@ pub trait VisitMut {
     fn visit_signature_invariants_mut(&mut self, i: &mut crate::SignatureInvariants) {
         visit_signature_invariants_mut(self, i);
     }
+    fn visit_signature_no_panic_mut(&mut self, i: &mut crate::SignatureNoPanic) {
+        visit_signature_no_panic_mut(self, i);
+    }
     fn visit_signature_spec_mut(&mut self, i: &mut crate::SignatureSpec) {
         visit_signature_spec_mut(self, i);
     }
@@ -1369,6 +1372,9 @@ where
     if let Some(it) = &mut node.unwind_ensures {
         v.visit_unwind_ensures_mut(it);
     }
+    if let Some(it) = &mut node.panic_ensures {
+        v.visit_unwind_ensures_mut(it);
+    }
     if let Some(it) = &mut node.default_ensures {
         v.visit_default_ensures_mut(it);
     }
@@ -1380,6 +1386,9 @@ where
     }
     if let Some(it) = &mut node.unwind {
         v.visit_signature_unwind_mut(it);
+    }
+    if let Some(it) = &mut node.no_panic {
+        v.visit_signature_no_panic_mut(it);
     }
     skip!(node.semi);
 }
@@ -4465,6 +4474,12 @@ where
     v.visit_invariant_name_set_mut(&mut node.set);
     skip!(node.comma);
 }
+pub fn visit_signature_no_panic_mut<V>(v: &mut V, node: &mut crate::SignatureNoPanic)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+}
 pub fn visit_signature_spec_mut<V>(v: &mut V, node: &mut crate::SignatureSpec)
 where
     V: VisitMut + ?Sized,
@@ -4490,6 +4505,9 @@ where
     if let Some(it) = &mut node.unwind_ensures {
         v.visit_unwind_ensures_mut(it);
     }
+    if let Some(it) = &mut node.panic_ensures {
+        v.visit_unwind_ensures_mut(it);
+    }
     if let Some(it) = &mut node.default_ensures {
         v.visit_default_ensures_mut(it);
     }
@@ -4504,6 +4522,9 @@ where
     }
     if let Some(it) = &mut node.unwind {
         v.visit_signature_unwind_mut(it);
+    }
+    if let Some(it) = &mut node.no_panic {
+        v.visit_signature_no_panic_mut(it);
     }
     if let Some(it) = &mut node.with {
         v.visit_with_spec_on_fn_mut(it);
@@ -5031,7 +5052,7 @@ where
     skip!(node.token);
     skip!(node.bracket_token);
     v.visit_ident_mut(&mut node.on_token);
-    v.visit_ident_mut(&mut node.unwind_token);
+    v.visit_ident_mut(&mut node.kind);
     v.visit_specification_mut(&mut node.exprs);
 }
 #[cfg(feature = "full")]

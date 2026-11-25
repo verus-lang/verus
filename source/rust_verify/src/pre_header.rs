@@ -183,7 +183,9 @@ pub(crate) fn is_header_verus_item(verus_item: &VerusItem) -> bool {
             | SpecItem::NoUnwindWhen
             | SpecItem::NoPanicRequires
             | SpecItem::NoPanicRequiresExact
-            | SpecItem::UnwindEnsures => true,
+            | SpecItem::UnwindEnsures
+            | SpecItem::NoPanic
+            | SpecItem::PanicEnsures => true,
         },
         VerusItem::Directive(dir_item) => match dir_item {
             crate::verus_items::DirectiveItem::ExtraDependency => true,

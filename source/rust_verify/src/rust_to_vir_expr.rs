@@ -387,6 +387,7 @@ pub(crate) fn add_param_decls<'tcx>(
         atomic_update,
         unwind_spec,
         unwind_ensure,
+        panic_ensure,
         invariant_except_break: _,
         invariant: _,
         atomic_call_loop: _,
@@ -422,10 +423,12 @@ pub(crate) fn add_param_decls<'tcx>(
     });
     *unwind_spec = unwind_spec.as_ref().map(|spec| match spec {
         UnwindSpec::NoUnwind => UnwindSpec::NoUnwind,
+        UnwindSpec::NoPanic => UnwindSpec::NoPanic,
         UnwindSpec::NoUnwindWhen(e, k) => UnwindSpec::NoUnwindWhen(wrap(e), *k),
         UnwindSpec::MayUnwind => UnwindSpec::MayUnwind,
     });
     *unwind_ensure = wrap_all(unwind_ensure);
+    *panic_ensure = wrap_all(panic_ensure);
     *body = bctx.ctxt.spanned_typed_new_vir(
         &body.span,
         &body.typ,

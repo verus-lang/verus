@@ -961,6 +961,9 @@ pub trait Visit<'ast> {
     fn visit_signature_invariants(&mut self, i: &'ast crate::SignatureInvariants) {
         visit_signature_invariants(self, i);
     }
+    fn visit_signature_no_panic(&mut self, i: &'ast crate::SignatureNoPanic) {
+        visit_signature_no_panic(self, i);
+    }
     fn visit_signature_spec(&mut self, i: &'ast crate::SignatureSpec) {
         visit_signature_spec(self, i);
     }
@@ -1363,6 +1366,9 @@ where
     if let Some(it) = &node.unwind_ensures {
         v.visit_unwind_ensures(it);
     }
+    if let Some(it) = &node.panic_ensures {
+        v.visit_unwind_ensures(it);
+    }
     if let Some(it) = &node.default_ensures {
         v.visit_default_ensures(it);
     }
@@ -1374,6 +1380,9 @@ where
     }
     if let Some(it) = &node.unwind {
         v.visit_signature_unwind(it);
+    }
+    if let Some(it) = &node.no_panic {
+        v.visit_signature_no_panic(it);
     }
     skip!(node.semi);
 }
@@ -4660,6 +4669,12 @@ where
     v.visit_invariant_name_set(&node.set);
     skip!(node.comma);
 }
+pub fn visit_signature_no_panic<'ast, V>(v: &mut V, node: &'ast crate::SignatureNoPanic)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+}
 pub fn visit_signature_spec<'ast, V>(v: &mut V, node: &'ast crate::SignatureSpec)
 where
     V: Visit<'ast> + ?Sized,
@@ -4685,6 +4700,9 @@ where
     if let Some(it) = &node.unwind_ensures {
         v.visit_unwind_ensures(it);
     }
+    if let Some(it) = &node.panic_ensures {
+        v.visit_unwind_ensures(it);
+    }
     if let Some(it) = &node.default_ensures {
         v.visit_default_ensures(it);
     }
@@ -4699,6 +4717,9 @@ where
     }
     if let Some(it) = &node.unwind {
         v.visit_signature_unwind(it);
+    }
+    if let Some(it) = &node.no_panic {
+        v.visit_signature_no_panic(it);
     }
     if let Some(it) = &node.with {
         v.visit_with_spec_on_fn(it);
@@ -5244,7 +5265,7 @@ where
     skip!(node.token);
     skip!(node.bracket_token);
     v.visit_ident(&node.on_token);
-    v.visit_ident(&node.unwind_token);
+    v.visit_ident(&node.kind);
     v.visit_specification(&node.exprs);
 }
 #[cfg(feature = "full")]
