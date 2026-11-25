@@ -2701,6 +2701,8 @@ impl Verifier {
         // --is-stdlib-outside-of-core) may do so.
         // In fact, defining a lang_item would likely come with a number of assumptions
         // that we do not currently check.
+        // Note: we check panic_impl in rust_to_vir_func.rs rather than here,
+        // in order to allow verifier::external panic handlers.
         if !matches!(
             self.args.vstd,
             crate::config::Vstd::IsCore | crate::config::Vstd::ImportedViaCore
