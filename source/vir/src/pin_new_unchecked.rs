@@ -3,18 +3,23 @@
 //! `Pin::new_unchecked` is an unsafe function: the caller must guarantee that the pointee
 //! is never moved again (until it is dropped). Verus doesn't model this obligation in the
 //! function's spec. Instead, we syntactically restrict calls to it, so that the obligation
-//! is guaranteed to hold:
+//! is guaranteed to hold.
 //!
 //!  - The argument must be a mutable borrow of a local variable of the function,
-//!    i.e., `Pin::new_unchecked(&mut x)`. The variable cannot be a local of a closure
-//!    (i.e., the call cannot be inside a closure).
+//!    i.e., `Pin::new_unchecked(&mut x)`. The variable cannot be a local of a closure,
+//!    nor do we allow the call to be inside a closure.
 //!  - There can be no move out of `x` (or any sub-place of `x`) anywhere in the function.
-//!    For this purpose, `ReadKind::Unused` counts as a move.
 //!  - There can be no mutable borrow of `x` (or any sub-place of `x`) anywhere in the
 //!    function, other than the borrows that are passed directly to `Pin::new_unchecked`.
 //!    (Otherwise, e.g., `core::mem::swap(&mut x, &mut y)` could move the pinned value.)
 //!    This includes `ref mut` bindings in patterns.
 //!  - `x` cannot be captured by any closure.
+//!
+//! These checks are, of course, overly conservative. For example, we don't consider the ordering
+//! of instructions at all.
+//!
+//! The main purpose of allowing
+//! `new_unchecked` at the present time is because it appears in the de-sugaring of async/await.
 //!
 //! This check needs to run after mode-checking, because it relies on the final read kinds
 //! computed by modes.rs (e.g., reads in ghost code are finalized as `Spec` and are not moves),
@@ -89,8 +94,7 @@ impl<'a> Visitor<'a> {
         self.functions.get(fun).is_some_and(|f| f.x.attrs.is_pin_new_unchecked)
     }
 
-    /// Is this read a move? Note that unlike in resolution_inference,
-    /// `Unused` is conservatively treated as a move here.
+    /// Is this read a move? Note that `Unused` counts as a move.
     fn is_move_or_unused(&self, rk: &UnfinalizedReadKind) -> bool {
         match rk.preliminary_kind {
             ReadKind::Move(_) | ReadKind::Unused => match self.info.read_kind_finals.get(&rk.id) {

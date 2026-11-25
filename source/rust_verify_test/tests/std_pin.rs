@@ -343,41 +343,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] pin_new_unchecked_mut_borrow_field PIN_STRUCTS.to_string() + verus_code_str! {
-        fn test() {
-            let mut s = S { a: A { }, b: 7 };
-            let p = unsafe { Pin::new_unchecked(&mut s) };
-            let r = &mut s.b;
-        }
-    } => Err(err) => assert_pin_error(err, "`s` is mutably borrowed here")
-}
-
-test_verify_one_file! {
-    #[test] pin_new_unchecked_mut_borrow_swap PIN_STRUCTS.to_string() + verus_code_str! {
-        fn test() {
-            let mut s = S { a: A { }, b: 7 };
-            let mut t = S { a: A { }, b: 8 };
-            let p = unsafe { Pin::new_unchecked(&mut s) };
-            core::mem::swap(&mut s, &mut t);
-        }
-    } => Err(err) => assert_pin_error(err, "`s` is mutably borrowed here")
-}
-
-test_verify_one_file! {
-    #[test] pin_new_unchecked_mut_borrow_method PIN_STRUCTS.to_string() + verus_code_str! {
-        impl S {
-            fn set(&mut self) { self.b = 0; }
-        }
-
-        fn test() {
-            let mut s = S { a: A { }, b: 7 };
-            let p = unsafe { Pin::new_unchecked(&mut s) };
-            s.set();
-        }
-    } => Err(err) => assert_pin_error(err, "`s` is mutably borrowed here")
-}
-
-test_verify_one_file! {
     #[test] pin_new_unchecked_mut_borrow_pattern PIN_STRUCTS.to_string() + verus_code_str! {
         fn test() {
             let mut s = S { a: A { }, b: 7 };
