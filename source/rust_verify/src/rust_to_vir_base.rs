@@ -10,10 +10,10 @@ use rustc_ast::{BindingMode, ByRef, Mutability};
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
-    AdtDef, AliasTyKind, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind,
-    ConstKind, GenericArg, GenericArgKind, GenericParamDefKind, IsRigid, TermKind, TyCtxt, TyKind,
-    TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value,
-    Visibility,
+    AdtDef, AliasTerm, AliasTyKind, BoundVarIndexKind, BoundVarReplacerDelegate, Clause,
+    ClauseKind, ConstKind, GenericArg, GenericArgKind, GenericArgsRef, GenericParamDefKind,
+    IsRigid, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
+    TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
 };
 use rustc_middle::ty::{TraitClause, TypingEnv};
 use rustc_span::Span;
@@ -1169,8 +1169,12 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     //   use crate::rustc_middle::ty::DefIdTree;
                     //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
                     let trait_def = tcx.generics_of(def_id).parent;
-                    let t_args: Vec<_> =
-                        al_ty.args.iter().filter(|x| x.as_region().is_none()).collect();
+                    // The args of a generic associated type follow the trait's args
+                    let parent_count = tcx.generics_of(def_id).parent_count;
+                    let t_args: Vec<_> = al_ty.args[..parent_count]
+                        .iter()
+                        .filter(|x| x.as_region().is_none())
+                        .collect();
                     match trait_def {
                         Some(trait_def) if t_args.len() >= 1 => {
                             let trait_path = def_id_to_vir_path(
@@ -1207,8 +1211,29 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                                 let proj = TypX::PointeeMetadata(trait_typ_args[0].clone());
                                 return Ok((Arc::new(proj), false));
                             } else {
+                                let mut assoc_typ_args = Vec::new();
+                                for arg in al_ty.args[parent_count..].iter() {
+                                    match arg.kind() {
+                                        rustc_middle::ty::GenericArgKind::Type(t) => {
+                                            assoc_typ_args.push(t_rec_flags(&t)?.0);
+                                        }
+                                        rustc_middle::ty::GenericArgKind::Lifetime(_) => {}
+                                        rustc_middle::ty::GenericArgKind::Const(_) => {
+                                            unsupported_err!(
+                                                span,
+                                                "const parameters on generic associated types"
+                                            )
+                                        }
+                                    }
+                                }
                                 let trait_typ_args = Arc::new(trait_typ_args);
-                                let proj = TypX::Projection { trait_typ_args, trait_path, name };
+                                let assoc_typ_args = Arc::new(assoc_typ_args);
+                                let proj = TypX::Projection {
+                                    trait_typ_args,
+                                    trait_path,
+                                    name,
+                                    assoc_typ_args,
+                                };
                                 return Ok((Arc::new(proj), false));
                             }
                         }
@@ -1785,6 +1810,21 @@ pub(crate) fn param_ty_to_vir_name(param: &rustc_middle::ty::ParamTy) -> String 
     }
 }
 
+/// The trait arguments of the projection in an equality bound `T: Tr<X = Y>`
+fn equality_bound_trait_args<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    projection_term: AliasTerm<'tcx>,
+    span: Span,
+) -> Result<GenericArgsRef<'tcx>, VirErr> {
+    let (trait_ref, own_args) = projection_term.trait_ref_and_own_args(tcx);
+    for arg in own_args.iter() {
+        if arg.as_region().is_none() {
+            unsupported_err!(span, "equality bounds on generic associated types");
+        }
+    }
+    Ok(trait_ref.args)
+}
+
 pub(crate) fn process_predicate_bounds<'tcx, 'a>(
     tcx: TyCtxt<'tcx>,
     param_env_src: DefId,
@@ -1848,7 +1888,7 @@ where
                 } else {
                     return err_span(*span, "Verus does not currently support this type of bound");
                 };
-                let substs = pred.projection_term.args;
+                let substs = equality_bound_trait_args(tcx, pred.projection_term, *span)?;
                 let trait_def_id = pred.projection_term.trait_def_id(tcx);
                 let assoc_item = tcx.associated_item(item_def_id);
                 let name = assoc_item_name(&assoc_item, *span)?;
@@ -2203,6 +2243,19 @@ fn check_generics_bounds_main<'tcx>(
     }
 }
 
+pub(crate) fn check_assoc_type_generics<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: DefId,
+    span: Span,
+) -> Result<(), VirErr> {
+    for param in tcx.generics_of(def_id).own_params.iter() {
+        if let GenericParamDefKind::Const { .. } = param.kind {
+            unsupported_err!(span, "const parameters on generic associated types");
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn check_generics_bounds_no_polarity<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
@@ -2499,7 +2552,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 "Verus does not currently support this type of bound",
                             );
                         };
-                        let substs = pred.projection_term.args;
+                        let substs =
+                            equality_bound_trait_args(ctxt.tcx, pred.projection_term, span)?;
                         let trait_def_id = pred.projection_term.trait_def_id(ctxt.tcx);
                         let assoc_item = ctxt.tcx.associated_item(item_def_id);
                         let name = assoc_item_name(&assoc_item, span)?;

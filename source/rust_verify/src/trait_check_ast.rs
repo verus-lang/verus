@@ -44,7 +44,7 @@ pub(crate) enum TypX {
         // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
         trait_as_datatype: Typ,
         name: Id,
-        assoc_typ_args: Vec<Id>,
+        assoc_typ_args: Vec<Typ>,
     },
     PointeeMetadata(Typ),
 }
@@ -63,7 +63,7 @@ pub(crate) enum Datatype {
 pub(crate) enum Bound {
     Sized,
     Tuple,
-    Trait { trait_path: Id, args: Vec<Typ>, equality: Option<(Id, Vec<Id>, Typ)> },
+    Trait { trait_path: Id, args: Vec<Typ>, equality: Option<(Id, Vec<Typ>, Typ)> },
 }
 
 // where typ: bound
@@ -97,7 +97,7 @@ pub(crate) struct TraitImpl {
     // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
     pub(crate) trait_as_datatype: Typ,
     pub(crate) trait_polarity: rustc_middle::ty::ImplPolarity,
-    pub(crate) assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)>,
+    pub(crate) assoc_typs: Vec<(Id, Vec<GenericParam>, Vec<GenericBound>, Typ)>,
     pub(crate) is_clone: bool,
 }
 

@@ -10,7 +10,7 @@
 //!   (View::V u8) == u8
 //!   (View::V (Vec A)) == (Seq (View::V A))
 
-use crate::ast::{AssocTypeImpl, AssocTypeImplX, Trait};
+use crate::ast::{AssocTypeImpl, AssocTypeImplX, GenericBounds, Idents, Trait, TypX, Typs};
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::context::Ctx;
 use crate::def::QID_ASSOC_TYPE_IMPL;
@@ -23,11 +23,12 @@ use std::sync::Arc;
 pub fn assoc_type_decls_to_air(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
     let mut commands: Vec<Command> = Vec::new();
     for tr in traits {
-        for name in tr.x.assoc_typs.iter() {
+        for assoc_typ in tr.x.assoc_typs.iter() {
             let mut push_command = |decoration: bool, index: usize| {
-                let projector = ctx.name_ctxt.projection(decoration, &tr.x.name, name);
+                let projector = ctx.name_ctxt.projection(decoration, &tr.x.name, &assoc_typ.name);
                 let mut typs: Vec<air::ast::Typ> = Vec::new();
-                let n = 1 + tr.x.typ_params.len(); // self type + type arguments
+                // self type + type arguments + generic associated type arguments
+                let n = 1 + tr.x.typ_params.len() + assoc_typ.typ_params.len();
                 for _ in 0..n {
                     typs.extend(crate::def::types().iter().map(|s| str_typ(s)));
                 }
@@ -54,6 +55,8 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
             impl_path,
             typ_params,
             typ_bounds,
+            assoc_typ_params,
+            assoc_typ_bounds,
             trait_path,
             trait_typ_args,
             typ,
@@ -65,12 +68,22 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
         // Example:
         //   impl<A> T<u8, u16> for S<A> { type X = bool; }
         //   forall A. T/X(decoration, S<A>, u8, u16) == bool
-        let mut typ_params = typ_params.clone();
-        let mut typ_bounds = typ_bounds.clone();
+        // The type parameters of a generic associated type are quantified too:
+        //   impl<A> T for S<A> { type X<U: B> = (A, U); }
+        //   forall A, U. tr_bound%B(U) ==> T/X(decoration, S<A>, U) == (A, U)
+        let assoc_typ_args: Typs = Arc::new(
+            assoc_typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect(),
+        );
+        let mut typ_params: Idents =
+            Arc::new(typ_params.iter().chain(assoc_typ_params.iter()).cloned().collect());
+        let mut typ_bounds: GenericBounds =
+            Arc::new(typ_bounds.iter().chain(assoc_typ_bounds.iter()).cloned().collect());
+        let trigger_typ_args: Typs =
+            Arc::new(trait_typ_args.iter().chain(assoc_typ_args.iter()).cloned().collect());
         let (substs, extra_trigger_terms) = crate::traits::fix_missing_trigger_params(
             &mut typ_params,
             &mut typ_bounds,
-            trait_typ_args,
+            &trigger_typ_args,
         );
         let substs: std::collections::HashMap<crate::ast::Ident, crate::ast::Typ> =
             substs.into_iter().collect();
@@ -81,7 +94,7 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
         let mut push_command = |decoration: bool, index: usize| {
             let projector = ctx.name_ctxt.projection(decoration, trait_path, name);
             let mut args: Vec<Expr> = Vec::new();
-            for arg in trait_typ_args.iter() {
+            for arg in trait_typ_args.iter().chain(assoc_typ_args.iter()) {
                 args.extend(typ_to_ids(ctx, arg));
             }
             let projection = ident_apply(&projector, &args);

@@ -1,10 +1,11 @@
 use crate::ast::{
-    Arm, ArmX, Arms, AssocTypeImpl, AssocTypeImplX, BinaryOpr, CallTarget, CallTargetKind,
-    CtorUpdateTail, Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind,
-    FunctionX, GenericBound, GenericBoundX, Krate, KrateX, LoopInvariant, LoopInvariants, MaskSpec,
-    NullaryOpr, Param, ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX,
-    SpannedTyped, Stmt, StmtX, Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX,
-    Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr,
+    Arm, ArmX, Arms, AssocTypDeclX, AssocTypeImpl, AssocTypeImplX, BinaryOpr, CallTarget,
+    CallTargetKind, CtorUpdateTail, Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function,
+    FunctionKind, FunctionX, GenericBound, GenericBoundX, Krate, KrateX, LoopInvariant,
+    LoopInvariants, MaskSpec, NullaryOpr, Param, ParamX, Params, Pattern, PatternBinding, PatternX,
+    Place, PlaceX, SpannedTyped, Stmt, StmtX, Trait, TraitImpl, TraitImplX, TraitX, Typ,
+    TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders,
+    VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -1050,13 +1051,15 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let t = self.visit_typ(t)?;
                 R::ret(|| Arc::new(TypX::Boxed(R::get(t))))
             }
-            TypX::Projection { trait_typ_args, trait_path, name } => {
+            TypX::Projection { trait_typ_args, trait_path, name, assoc_typ_args } => {
                 let trait_typ_args = self.visit_typs(trait_typ_args)?;
+                let assoc_typ_args = self.visit_typs(assoc_typ_args)?;
                 R::ret(|| {
                     Arc::new(TypX::Projection {
                         trait_typ_args: R::get_vec_a(trait_typ_args),
                         trait_path: trait_path.clone(),
                         name: name.clone(),
+                        assoc_typ_args: R::get_vec_a(assoc_typ_args),
                     })
                 })
             }
@@ -1366,14 +1369,25 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             typ_params,
             typ_bounds,
             assoc_typs,
-            assoc_typs_bounds,
             methods,
             is_unsafe,
             dyn_compatible,
             external_trait_extension,
         } = &tr.x;
         let type_bounds = self.visit_generic_bounds(typ_bounds)?;
-        let assoc_typs_bounds = self.visit_generic_bounds(assoc_typs_bounds)?;
+        let assoc_typs = R::map_vec(assoc_typs, &mut |a| {
+            let AssocTypDeclX { name, typ_params, typ_bounds, item_bounds } = &**a;
+            let typ_bounds = self.visit_generic_bounds(typ_bounds)?;
+            let item_bounds = self.visit_generic_bounds(item_bounds)?;
+            R::ret(|| {
+                Arc::new(AssocTypDeclX {
+                    name: name.clone(),
+                    typ_params: typ_params.clone(),
+                    typ_bounds: R::get_vec_a(typ_bounds),
+                    item_bounds: R::get_vec_a(item_bounds),
+                })
+            })
+        })?;
         R::ret(|| {
             tr.new_x(TraitX {
                 name: name.clone(),
@@ -1381,8 +1395,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 visibility: visibility.clone(),
                 typ_params: typ_params.clone(),
                 typ_bounds: R::get_vec_a(type_bounds),
-                assoc_typs: assoc_typs.clone(),
-                assoc_typs_bounds: R::get_vec_a(assoc_typs_bounds),
+                assoc_typs: R::get_vec_a(assoc_typs),
                 methods: methods.clone(),
                 is_unsafe: *is_unsafe,
                 dyn_compatible: dyn_compatible.clone(),
@@ -1397,12 +1410,15 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             impl_path,
             typ_params,
             typ_bounds,
+            assoc_typ_params,
+            assoc_typ_bounds,
             trait_path,
             trait_typ_args,
             typ,
             impl_paths,
         } = &imp.x;
         let type_bounds = self.visit_generic_bounds(typ_bounds)?;
+        let assoc_typ_bounds = self.visit_generic_bounds(assoc_typ_bounds)?;
         let trait_typ_args = self.visit_typs(trait_typ_args)?;
         let typ = self.visit_typ(typ)?;
         R::ret(|| {
@@ -1411,6 +1427,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 impl_path: impl_path.clone(),
                 typ_params: typ_params.clone(),
                 typ_bounds: R::get_vec_a(type_bounds),
+                assoc_typ_params: assoc_typ_params.clone(),
+                assoc_typ_bounds: R::get_vec_a(assoc_typ_bounds),
                 trait_path: trait_path.clone(),
                 trait_typ_args: R::get_vec_a(trait_typ_args),
                 typ: R::get(typ),

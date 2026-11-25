@@ -2,7 +2,9 @@ use crate::attributes::VerifierAttrs;
 use crate::context::Context;
 use crate::external::CrateItems;
 use crate::rust_to_vir::State;
-use crate::rust_to_vir_base::{check_generics_bounds_with_polarity, process_predicate_bounds};
+use crate::rust_to_vir_base::{
+    check_assoc_type_generics, check_generics_bounds_with_polarity, process_predicate_bounds,
+};
 use crate::rust_to_vir_func::{
     CheckItemFnEither, FunctionInfo, FunctionOrConstInfo, check_item_fn,
 };
@@ -18,7 +20,9 @@ use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Fun, FunctionKind, GenericBound, Ident, KrateX, TraitX, VirErr, Visibility};
+use vir::ast::{
+    AssocTypDecl, AssocTypDeclX, Fun, FunctionKind, KrateX, TraitX, VirErr, Visibility,
+};
 use vir::ast_util::params_equal_opt;
 use vir::def::VERUS_SPEC;
 use vir::messages::error;
@@ -201,8 +205,7 @@ pub(crate) fn translate_trait<'tcx>(
         vir::traits::remove_self_is_itself_bound(&mut typ_bounds, &trait_path, &generics_params);
         (generics_params, typ_bounds)
     };
-    let mut assoc_typs: Vec<Ident> = Vec::new();
-    let mut assoc_typs_bounds: Vec<GenericBound> = Vec::new();
+    let mut assoc_typs: Vec<AssocTypDecl> = Vec::new();
     let mut methods: Vec<FunctionOrConstInfo> = Vec::new();
     let mut method_names: Vec<Fun> = Vec::new();
     let ex_trait_ref_for = external_trait_specification_of(tcx, trait_items, trait_vattrs)?;
@@ -486,11 +489,36 @@ pub(crate) fn translate_trait<'tcx>(
                     "Verus does not currently support associated types with a concrete type",
                 );
             }
+            TraitItemKind::Type(_generic_bounds, None) if item_generics_params.len() != 0 => {
+                check_assoc_type_generics(tcx, owner_id.to_def_id(), *span)?;
+                if ex_trait_ref_for.is_some() {
+                    crate::unsupported_err!(
+                        *span,
+                        "generic associated types in `external_trait_specification`"
+                    );
+                }
+                // Translate the bounds in the associated type's own environment,
+                // which includes its own type parameters and where clauses
+                let bounds = tcx.item_bounds(owner_id.to_def_id()).skip_binder();
+                let bounds = bounds.iter().map(|p| (p, *span)).collect::<Vec<_>>();
+                let item_bounds = process_predicate_bounds(
+                    tcx,
+                    owner_id.to_def_id(),
+                    &ctxt.verus_items,
+                    bounds.iter(),
+                    tcx.generics_of(owner_id.to_def_id()),
+                )?;
+                assoc_typs.push(Arc::new(AssocTypDeclX {
+                    name: Arc::new(ident.to_string()),
+                    typ_params: Arc::new(
+                        item_generics_params.iter().map(|(x, _)| x.clone()).collect(),
+                    ),
+                    typ_bounds: item_typ_bounds,
+                    item_bounds: Arc::new(item_bounds),
+                }));
+            }
             TraitItemKind::Type(_generic_bounds, None) => {
-                unsupported_err_unless!(item_generics_params.len() == 0, *span, "trait generics");
                 unsupported_err_unless!(item_typ_bounds.len() == 0, *span, "trait generics");
-                assoc_typs.push(Arc::new(ident.to_string()));
-
                 let bounds = tcx.item_bounds(trait_item.owner_id.def_id.to_def_id()).skip_binder();
                 let bounds = bounds.iter().map(|p| (p, *span)).collect::<Vec<_>>();
                 let vir_bounds = process_predicate_bounds(
@@ -500,7 +528,12 @@ pub(crate) fn translate_trait<'tcx>(
                     bounds.iter(),
                     tcx.generics_of(trait_def_id),
                 )?;
-                assoc_typs_bounds.extend(vir_bounds);
+                assoc_typs.push(Arc::new(AssocTypDeclX {
+                    name: Arc::new(ident.to_string()),
+                    typ_params: Arc::new(vec![]),
+                    typ_bounds: Arc::new(vec![]),
+                    item_bounds: Arc::new(vir_bounds),
+                }));
 
                 if let Some(ex_trait_ref_for) = ex_trait_ref_for {
                     let ex_item_id_for = ex_item_id_for.expect("ex_item_id_for");
@@ -589,12 +622,17 @@ pub(crate) fn translate_trait<'tcx>(
     }
     let mut methods = make_trait_decls(methods)?;
     infos.append(&mut methods);
-    let mut assoc_typs_bounds = Arc::new(assoc_typs_bounds);
     let target_trait_id = if let Some(target_trait_id) = ex_trait_id_for {
         typ_bounds =
             vir::traits::rewrite_external_bounds(&orig_trait_path, &trait_path, &typ_bounds);
-        assoc_typs_bounds =
-            vir::traits::rewrite_external_bounds(&orig_trait_path, &trait_path, &assoc_typs_bounds);
+        for assoc_typ in assoc_typs.iter_mut() {
+            let item_bounds = vir::traits::rewrite_external_bounds(
+                &orig_trait_path,
+                &trait_path,
+                &assoc_typ.item_bounds,
+            );
+            Arc::make_mut(assoc_typ).item_bounds = item_bounds;
+        }
         target_trait_id
     } else {
         trait_def_id
@@ -615,7 +653,6 @@ pub(crate) fn translate_trait<'tcx>(
         assoc_typs: Arc::new(assoc_typs),
         typ_params: generics_params,
         typ_bounds,
-        assoc_typs_bounds,
         is_unsafe: match safety {
             Safety::Safe => false,
             Safety::Unsafe => true,

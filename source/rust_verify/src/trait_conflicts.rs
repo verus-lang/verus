@@ -28,6 +28,7 @@
 use crate::trait_check_ast::*;
 use crate::trait_check_generate::*;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use vir::ast::{
     AssocTypeImpl, CrateId, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, Sizedness,
     TraitId, TypDecoration, TypDecorationArg,
@@ -160,13 +161,14 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
                 Box::new(TypX::TypParam(state.typ_param(x.to_string(), None)))
             }
         }
-        vir::ast::TypX::Projection { trait_typ_args, trait_path, name } => {
+        vir::ast::TypX::Projection { trait_typ_args, trait_path, name, assoc_typ_args } => {
             let self_typ = gen_typ(state, &trait_typ_args[0]);
             let args = gen_typ_slice(state, &trait_typ_args[1..]);
             let path = state.trait_name(trait_path);
             let trait_as_datatype = Box::new(TypX::Datatype(path, Vec::new(), args));
             let name = state.typ_param(name.to_string(), None);
-            Box::new(TypX::Projection { self_typ, trait_as_datatype, name, assoc_typ_args: vec![] })
+            let assoc_typ_args = gen_typs(state, assoc_typ_args);
+            Box::new(TypX::Projection { self_typ, trait_as_datatype, name, assoc_typ_args })
         }
         vir::ast::TypX::PointeeMetadata(t) => {
             let t = gen_typ(state, t);
@@ -322,18 +324,41 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             &t.x.typ_params.iter().map(|(x, _)| x.clone()).collect(),
             &t.x.typ_bounds,
         );
-        let (a_params, mut a_bounds) = gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds);
+        let (a_params, mut a_bounds) = gen_generics(
+            state,
+            &t.x.assoc_typs.iter().map(|assoc_typ| assoc_typ.name.clone()).collect(),
+            &t.x.non_generic_assoc_typs_bounds(),
+        );
         used_traits.insert(t.x.name.clone());
-        for a in t.x.assoc_typs.iter() {
-            used_assoc_typs.insert((t.x.name.clone(), a.clone()));
+        for assoc_typ in t.x.assoc_typs.iter() {
+            used_assoc_typs.insert((t.x.name.clone(), assoc_typ.name.clone()));
         }
         let name = state.trait_name(&t.x.name);
         let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Vec<GenericBound>)> = Vec::new();
-        for x in &a_params {
-            let (bounds_x, bounds_other) =
-                crate::trait_check_emit::simplify_assoc_typ_bounds(&name, &x.name, a_bounds);
-            a_bounds = bounds_other;
-            assoc_typs.push((x.name.clone(), vec![], bounds_x));
+        for (x, assoc_typ) in a_params.iter().zip(t.x.assoc_typs.iter()) {
+            if assoc_typ.typ_params.len() == 0 {
+                let (bounds_x, bounds_other) = crate::trait_check_emit::simplify_assoc_typ_bounds(
+                    &name,
+                    &x.name,
+                    &vec![],
+                    a_bounds,
+                );
+                a_bounds = bounds_other;
+                assoc_typs.push((x.name.clone(), vec![], bounds_x));
+            } else {
+                // These bounds can mention the associated type's own parameters,
+                // so they stay on the associated type rather than moving to the trait
+                let bounds = Arc::new(
+                    assoc_typ
+                        .typ_bounds
+                        .iter()
+                        .chain(assoc_typ.item_bounds.iter())
+                        .cloned()
+                        .collect(),
+                );
+                let (params, bounds) = gen_generics(state, &assoc_typ.typ_params, &bounds);
+                assoc_typs.push((x.name.clone(), params, bounds));
+            }
         }
         t_bounds.extend(a_bounds);
         let decl =
@@ -368,12 +393,15 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             vec![],
             gen_typ_slice(state, &i.x.trait_typ_args[1..]),
         ));
-        let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)> = Vec::new();
+        let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Vec<GenericBound>, Typ)> = Vec::new();
         for a in &impl_path_to_assoc_typs[&i.x.impl_path] {
             if used_assoc_typs.contains(&(i.x.trait_path.clone(), a.x.name.clone())) {
+                let (params, bounds) =
+                    gen_generics(state, &a.x.assoc_typ_params, &a.x.assoc_typ_bounds);
                 assoc_typs.push((
                     state.typ_param(a.x.name.to_string(), None),
-                    vec![],
+                    params,
+                    bounds,
                     gen_typ(state, &a.x.typ),
                 ));
             }
@@ -412,12 +440,19 @@ pub(crate) fn gen_check_trait_impl_conflicts(
         );
         let t_args =
             generic_params.iter().map(|p| Box::new(TypX::TypParam(p.name.clone()))).collect();
-        let (a_params, a_bounds) = gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds);
-        let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)> = Vec::new();
+        let (a_params, a_bounds) = gen_generics(
+            state,
+            &t.x.assoc_typs.iter().map(|assoc_typ| assoc_typ.name.clone()).collect(),
+            &t.x.non_generic_assoc_typs_bounds(),
+        );
+        // Verus rejects dyn for traits with generic associated types (compute_dyn_compatibility)
+        assert!(t.x.assoc_typs.iter().all(|assoc_typ| assoc_typ.typ_params.len() == 0));
+        let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Vec<GenericBound>, Typ)> = Vec::new();
         for x in &a_params {
             // TODO: test associated types once we support "dyn with more than one trait"
             generic_params.push(x.clone());
-            assoc_typs.push((x.name.clone(), vec![], Box::new(TypX::TypParam(x.name.clone()))));
+            let typ = Box::new(TypX::TypParam(x.name.clone()));
+            assoc_typs.push((x.name.clone(), vec![], vec![], typ));
         }
         generic_bounds.extend(a_bounds);
 

@@ -1246,6 +1246,8 @@ fn add_fndef_axioms_to_function(
             impl_path: impl_fndef_path(&function.x.name, ClosureKind::FnOnce),
             typ_params: function.x.typ_params.clone(),
             typ_bounds: function.x.typ_bounds.clone(),
+            assoc_typ_params: Arc::new(vec![]),
+            assoc_typ_bounds: Arc::new(vec![]),
             trait_path: ClosureKind::FnOnce.trait_path(),
             trait_typ_args,
             typ: function.x.outer_ret.x.typ.clone(),
@@ -1484,7 +1486,7 @@ fn simplify_assoc_type_impl(
     assoc: &AssocTypeImpl,
 ) -> Result<AssocTypeImpl, VirErr> {
     let mut local = LocalCtxt { span: assoc.span.clone(), typ_params: Vec::new(), fun: None };
-    for x in assoc.x.typ_params.iter() {
+    for x in assoc.x.typ_params.iter().chain(assoc.x.assoc_typ_params.iter()) {
         local.typ_params.push(x.clone());
     }
     crate::ast_visitor::map_assoc_type_impl_visitor_env(assoc, state, &|state, typ| {
@@ -1781,6 +1783,8 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
                 impl_path,
                 typ_params: function.x.typ_params.clone(),
                 typ_bounds: function.x.typ_bounds.clone(),
+                assoc_typ_params: Arc::new(vec![]),
+                assoc_typ_bounds: Arc::new(vec![]),
                 trait_path: fn_once_trait_path,
                 trait_typ_args,
                 typ: closure.output.clone(),

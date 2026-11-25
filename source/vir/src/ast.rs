@@ -333,6 +333,8 @@ pub enum TypX {
         trait_typ_args: Typs,
         trait_path: Path,
         name: Ident,
+        // type arguments of a generic associated type, such as S in <D as T>::X<S>
+        assoc_typ_args: Typs,
     },
     /// <T as Pointee>::Metadata (see https://doc.rust-lang.org/beta/core/ptr/trait.Pointee.html)
     /// For the msot part, this should be treated identically to a Projection, but the AIR
@@ -1964,8 +1966,7 @@ pub struct TraitX {
     // REVIEW: typ_params does not yet explicitly include Self (right now, Self is implicit)
     pub typ_params: TypPositives,
     pub typ_bounds: GenericBounds,
-    pub assoc_typs: Arc<Vec<Ident>>,
-    pub assoc_typs_bounds: GenericBounds,
+    pub assoc_typs: Arc<Vec<AssocTypDecl>>,
     pub methods: Arc<Vec<Fun>>,
     pub is_unsafe: bool,
     // Initially set to None during translation to VIR,
@@ -1974,6 +1975,17 @@ pub struct TraitX {
     // If this trait has a verifier::external_trait_extension(TSpec via TSpecImpl),
     // Some((TSpec, TSpecImpl))
     pub external_trait_extension: Option<(Path, Path)>,
+}
+
+/// type name<typ_params>: item_bounds where typ_bounds;
+pub type AssocTypDecl = Arc<AssocTypDeclX>;
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct AssocTypDeclX {
+    pub name: Ident,
+    /// Type parameters of a generic associated type (lifetimes are erased)
+    pub typ_params: Idents,
+    pub typ_bounds: GenericBounds,
+    pub item_bounds: GenericBounds,
 }
 
 /// impl<typ_params> trait_name<trait_typ_args[1..]> for trait_typ_args[0] { type name = typ; }
@@ -1985,6 +1997,9 @@ pub struct AssocTypeImplX {
     pub impl_path: Path,
     pub typ_params: Idents,
     pub typ_bounds: GenericBounds,
+    /// type name<assoc_typ_params> = typ where assoc_typ_bounds;
+    pub assoc_typ_params: Idents,
+    pub assoc_typ_bounds: GenericBounds,
     pub trait_path: Path,
     pub trait_typ_args: Typs,
     pub typ: Typ,

@@ -333,11 +333,16 @@ fn check_positive_uses(
                 )),
             }
         }
-        TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
+        TypX::Projection { assoc_typ_args, .. } => {
             // Treat projection as AcceptRecursiveType::Reject,
             // and rely on type_graph to reject any cycles
+            for t in assoc_typ_args.iter() {
+                // As for dyn T, just reject recursive types going through these type args
+                check_positive_uses(datatype, global, local, None, t)?;
+            }
             Ok(())
         }
+        TypX::PointeeMetadata(_) => Ok(()),
         TypX::TypeId => Ok(()),
         TypX::ConstInt(_) => Ok(()),
         TypX::ConstBool(_) => Ok(()),
@@ -386,7 +391,7 @@ pub(crate) fn build_datatype_graph(krate: &Krate, span_infos: &mut Vec<Span>) ->
     for tr in &krate.traits {
         let src_node = TypNode::Trait(tr.x.name.clone());
         type_graph.add_node(src_node.clone());
-        for bound in tr.x.typ_bounds.iter().chain(tr.x.assoc_typs_bounds.iter()) {
+        for bound in tr.x.all_bounds().iter() {
             if let GenericBoundX::Trait(TraitId::Path(u_path), _) = &**bound {
                 type_graph.add_edge(src_node.clone(), TypNode::Trait(u_path.clone()));
             }
@@ -780,7 +785,7 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut GraphBuilder<Node>, trt: &Trai
     // Add T --> U1, ..., T --> Un edges (see comments below for more details.)
     let t_path = &trt.x.name;
     let t_node = Node::Trait(t_path.clone());
-    for bound in trt.x.typ_bounds.iter().chain(trt.x.assoc_typs_bounds.iter()) {
+    for bound in trt.x.all_bounds().iter() {
         use crate::ast_visitor::{AstVisitor, WalkTypVisitorEnv};
         let ft = &|call_graph: &mut GraphBuilder<Node>, t: &Typ| {
             add_trait_type_edges(call_graph, &t_node, t);

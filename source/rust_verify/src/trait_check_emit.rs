@@ -40,7 +40,7 @@ fn typ_args_to_string(
     path: Option<&Id>,
     lifetimes: &Vec<Id>,
     args: &Vec<Typ>,
-    equality: &Option<(Id, Vec<Id>, Typ)>,
+    equality: &Option<(Id, Vec<Typ>, Typ)>,
 ) -> String {
     let mut buf = String::new();
     if let Some(path) = path {
@@ -58,7 +58,7 @@ fn typ_args_to_string(
         }
         if let Some((x, x_args, t)) = equality {
             buf += &x.to_string();
-            buf += &typ_args_to_string(None, x_args, &vec![], &None);
+            buf += &typ_args_to_string(None, &vec![], x_args, &None);
             buf += " = ";
             buf += &t.to_string();
         }
@@ -97,7 +97,7 @@ impl ToString for TypX {
                     "<{} as {}>::{}",
                     self_typ.to_string(),
                     tr.to_string(),
-                    typ_args_to_string(Some(name), assoc_typ_args, &vec![], &None)
+                    typ_args_to_string(Some(name), &vec![], assoc_typ_args, &None)
                 )
             }
             TypX::PointeeMetadata(t) => {
@@ -310,6 +310,7 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool) -> Option<String> {
 pub(crate) fn simplify_assoc_typ_bounds(
     trait_name: &Id,
     assoc_name: &Id,
+    assoc_params: &Vec<GenericParam>,
     bounds: Vec<GenericBound>,
 ) -> (Vec<GenericBound>, Vec<GenericBound>) {
     // When rustc sees "trait T { type X: U; }",
@@ -319,11 +320,15 @@ pub(crate) fn simplify_assoc_typ_bounds(
     // https://github.com/rust-lang/rust/issues/113195
     // Therefore, we need to convert the bound back to the simpler bare "X: U" syntax.
     // (Also note that "type X: for<'a> U<'a>" becomes "type X where for<'a> <Self as T>::X: U<'a>")
+    let assoc_args: Vec<Typ> =
+        assoc_params.iter().map(|p| Box::new(TypX::TypParam(p.name.clone()))).collect();
     let mut bares: Vec<GenericBound> = Vec::new();
     let mut wheres: Vec<GenericBound> = Vec::new();
     for bound in bounds {
         let is_bare = match &*bound.typ {
-            TypX::Projection { self_typ, trait_as_datatype, name, .. } if name == assoc_name => {
+            TypX::Projection { self_typ, trait_as_datatype, name, assoc_typ_args }
+                if name == assoc_name && assoc_typ_args == &assoc_args =>
+            {
                 match (&**self_typ, &**trait_as_datatype) {
                     (TypX::TraitSelf, TypX::Datatype(id, _, _)) if id == trait_name => true,
                     _ => false,
@@ -402,17 +407,20 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
     // Move the assoc_typs bounds into the top-level generic_bounds,
     // because rustc seems to have overflow issues with bounds directly on associated types.
     // See, for example: https://github.com/rust-lang/rust/issues/87755
+    // (except for generic associated types, whose bounds can mention their own parameters)
     let mut generic_bounds = t.generic_bounds.clone();
-    for (a, _, bounds) in &t.assoc_typs {
-        let (_bares, wheres) = simplify_assoc_typ_bounds(&t.name, a, bounds.clone());
-        generic_bounds.extend(wheres.clone());
+    for (a, params, bounds) in &t.assoc_typs {
+        let (_bares, wheres) = simplify_assoc_typ_bounds(&t.name, a, params, bounds.clone());
+        if params.len() == 0 {
+            generic_bounds.extend(wheres.clone());
+        }
     }
 
     emit_generic_bounds(state, &t.generic_params, &generic_bounds);
     state.write(" {");
     state.push_indent();
     for (a, params, bounds) in &t.assoc_typs {
-        let (bares, _wheres) = simplify_assoc_typ_bounds(&t.name, a, bounds.clone());
+        let (bares, wheres) = simplify_assoc_typ_bounds(&t.name, a, params, bounds.clone());
         state.newline();
         state.write("type ");
         state.write(a.to_string());
@@ -431,6 +439,9 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
             state.write(bounds_strs.join("+"));
             // See comment above about overflow issues
             //emit_generic_bounds(state, &vec![], &wheres);
+        }
+        if params.len() > 0 {
+            emit_generic_bounds(state, params, &wheres);
         }
         state.write(";");
     }
@@ -490,13 +501,16 @@ pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
     emit_generic_bounds(state, &generic_params, &generic_bounds);
     state.write(" {");
     state.push_indent();
-    for (name, params, typ) in assoc_typs {
+    for (name, params, bounds, typ) in assoc_typs {
         state.newline();
         state.write("type ");
         state.write(&name.to_string());
         emit_generic_params(state, params);
         state.write(" = ");
         state.write(&typ.to_string());
+        if params.len() > 0 {
+            emit_generic_bounds(state, params, bounds);
+        }
         state.write(";");
     }
     if *is_clone {

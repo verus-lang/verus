@@ -1,0 +1,14 @@
+[package]
+name = "gat_lib_consumer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { path = "../../../../../vstd" }
+gat_lib = { path = "../gat_lib" }
+
+[package.metadata.verus]
+verify = true
+trusted_crates = ["vstd"]
+
+[workspace]
