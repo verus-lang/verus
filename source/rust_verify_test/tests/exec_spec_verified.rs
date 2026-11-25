@@ -785,7 +785,7 @@ test_verify_one_file! {
         fn insert(m: &HashMap<K, u64>) -> HashMap<K, u64> {
             <&HashMap<K, u64> as ExecSpecMapInsert<HashMap<K, u64>>>::exec_insert(m, K(1), 7u64)
         }
-    } => Err(err) => assert_rust_error_msg(err, "ObeysDeepEq")
+    } => Err(err) => assert_rust_error_msg(err, "ExecSpecKey")
 }
 
 test_verify_one_file! {
@@ -2837,4 +2837,299 @@ test_verify_one_file! {
             assert(x == 0xFFFF_FFFF_FFFF_FFFFu64);
         }
     } => Ok(())
+}
+
+// Regression tests for #3177: hashed keys must be `ExecSpecKey`, which ties `Hash` to `==`.
+
+/// The only error is rustc's, reporting that `ty` is not an `ExecSpecKey`.
+fn assert_not_key(err: TestErr, ty: &str) {
+    assert_eq!(err.errors.len(), 1);
+    assert_eq!(err.errors[0].code.as_ref().map(|c| c.code.as_str()), Some("E0599"));
+    let bound = format!("`{ty}: vstd::contrib::exec_spec::ExecSpecKey`");
+    assert!(err.errors[0].rendered.contains(&bound), "{}", err.errors[0].rendered);
+}
+
+/// Impls for a lawful key `K(pub u64)`; each test declares `K` itself.
+const LAWFUL_KEY_IMPLS: &str = verus_code_str! {
+    impl DeepView for K {
+        type V = u64;
+        open spec fn deep_view(&self) -> u64 { self.0 }
+    }
+
+    impl vstd::std_specs::cmp::PartialEqSpecImpl for K {
+        open spec fn obeys_eq_spec() -> bool { true }
+        open spec fn eq_spec(&self, other: &K) -> bool { self.0 == other.0 }
+    }
+
+    impl ObeysDeepEq for K {
+        proof fn lemma_obeys_deep_eq() { reveal(vstd::laws_eq::obeys_deep_eq); }
+    }
+
+    impl DeepViewClone for K {
+        fn deep_clone(&self) -> (res: Self) { K(self.0) }
+    }
+};
+
+const LAWFUL_KEY_USE: &str = verus_code_str! {
+    fn two_inserts() -> (n: usize)
+        ensures n == 1,
+    {
+        let m0: HashMap<K, u64> = HashMap::new();
+        let m1 = (&m0).exec_insert(K(1), 7u64);
+        let m2 = (&m1).exec_insert(K(1), 7u64);
+        assert(m0.deep_view() =~= Map::<u64, u64>::empty()) by {
+            broadcast use vstd::std_specs::hash::lemma_hashmap_deepview_dom;
+        };
+        assert(m2.deep_view() =~= map![1u64 => 7u64]);
+        (&m2).exec_len()
+    }
+};
+
+test_verify_one_file! {
+    /// The #3177 reproducer: `==` and the deep view ignore `tag`, but the derived `Hash` does not.
+    /// It used to verify `n == 1` while returning 2 at runtime; now `K` is not an `ExecSpecKey`.
+    #[test] test_exec_spec_hash_eq_mismatch_rejected IMPORTS.to_string() + verus_code_str! {
+        #[derive(Hash)]
+        pub struct K {
+            pub id: u8,
+            pub tag: u8,
+        }
+
+        impl DeepView for K {
+            type V = u8;
+            open spec fn deep_view(&self) -> u8 { self.id }
+        }
+
+        impl PartialEq for K {
+            fn eq(&self, other: &K) -> bool { self.id == other.id }
+        }
+        impl Eq for K {}
+
+        impl vstd::std_specs::cmp::PartialEqSpecImpl for K {
+            open spec fn obeys_eq_spec() -> bool { true }
+            open spec fn eq_spec(&self, other: &K) -> bool { self.deep_view() == other.deep_view() }
+        }
+
+        impl ObeysDeepEq for K {
+            proof fn lemma_obeys_deep_eq() { reveal(vstd::laws_eq::obeys_deep_eq); }
+        }
+
+        impl DeepViewClone for K {
+            fn deep_clone(&self) -> (res: Self) { K { id: self.id, tag: self.tag } }
+        }
+
+        fn two_inserts() -> (n: usize)
+            ensures n == 1,
+        {
+            let m0: HashMap<K, u64> = HashMap::new();
+            let m1 = (&m0).exec_insert(K { id: 1, tag: 0 }, 7u64);
+            let m2 = (&m1).exec_insert(K { id: 1, tag: 1 }, 7u64);
+            assert(m0.deep_view() =~= Map::<u8, u64>::empty()) by {
+                broadcast use vstd::std_specs::hash::lemma_hashmap_deepview_dom;
+            };
+            assert(m2.deep_view() =~= map![1u8 => 7u64]);
+            (&m2).exec_len()
+        }
+    } => Err(err) => assert_not_key(err, "K")
+}
+
+test_verify_one_file! {
+    /// A hand-written key can be used once it assumes the key model for its `Hash` impl.
+    #[test] test_exec_spec_handwritten_key_assume IMPORTS.to_string() + LAWFUL_KEY_IMPLS + verus_code_str! {
+        #[derive(PartialEq, Eq, Hash)]
+        pub struct K(pub u64);
+
+        impl ExecSpecKey for K {
+            proof fn lemma_obeys_key_model() {
+                assume(vstd::std_specs::hash::obeys_key_model::<K>());
+            }
+        }
+    } + LAWFUL_KEY_USE => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    /// Under `--no-cheating`, the `assume` in a hand-written key needs `#[verus::trusted]`.
+    #[test] test_exec_spec_handwritten_key_no_cheating ["--no-cheating"] => IMPORTS.to_string() + LAWFUL_KEY_IMPLS + verus_code_str! {
+        #[derive(PartialEq, Eq, Hash)]
+        pub struct K(pub u64);
+
+        impl ExecSpecKey for K {
+            proof fn lemma_obeys_key_model() {
+                assume(vstd::std_specs::hash::obeys_key_model::<K>());
+            }
+        }
+    } + LAWFUL_KEY_USE => Err(err) => assert_vir_error_msg(err, "`assume`/`admit` not allowed with `--no-cheating`")
+}
+
+test_verify_one_file_with_options! {
+    /// ... and marking the impl and the type trusted is accepted.
+    #[test] test_exec_spec_handwritten_key_no_cheating_trusted ["--no-cheating"] => IMPORTS.to_string() + LAWFUL_KEY_IMPLS + verus_code_str! {
+        #[verus::trusted]
+        #[derive(PartialEq, Eq, Hash)]
+        pub struct K(pub u64);
+
+        #[verus::trusted]
+        impl ExecSpecKey for K {
+            proof fn lemma_obeys_key_model() {
+                assume(vstd::std_specs::hash::obeys_key_model::<K>());
+            }
+        }
+    } + LAWFUL_KEY_USE => Ok(())
+}
+
+test_verify_one_file! {
+    /// Generated types are keys when their fields are: nested generated types, tuples, `Option`, `Seq`.
+    /// A field type that is not a key (`Result`) still compiles.
+    #[test] test_exec_spec_nested_keys IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct Inner { i: i64 }
+
+            pub enum E { A(Inner), B { s: Seq<char> }, C }
+
+            pub struct Data { x: u8, y: Seq<u8>, z: (u8, u8, Inner), o: Option<Inner>, e: E, s: SpecString }
+
+            pub struct WithRes { r: Result<u32, bool> }
+
+            spec fn in_set(s: Set<Data>, k: Data) -> bool { s.contains(k) }
+
+            spec fn get(m: Map<Data, u8>, k: Data) -> Option<u8> { m.get(k) }
+
+            spec fn count(m: Multiset<E>, k: E) -> usize { m.count(k) as usize }
+
+            spec fn to_ms(s: Seq<Inner>) -> Multiset<Inner> { s.to_multiset() }
+        }
+
+        fn test(s: &HashSet<ExecData>, k: &ExecData) -> (b: bool)
+            ensures b == s.deep_view().contains(k.deep_view()),
+        {
+            exec_in_set(s, k)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// A generated type with a non-key field cannot be used as a key.
+    #[test] test_exec_spec_non_key_field_rejected IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct WithRes { r: Result<u32, bool> }
+
+            spec fn in_set(s: Set<WithRes>, k: WithRes) -> bool { s.contains(k) }
+        }
+    } => Err(err) => assert_not_key(err, "ExecWithRes")
+}
+
+test_verify_one_file_with_options! {
+    /// Generated key types rely on an assumption about derived `Hash`, so `exec_spec_verified!`
+    /// is rejected under `--no-cheating`.
+    #[test] test_exec_spec_verified_no_cheating ["--no-cheating"] => IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct S { x: u8 }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`assume`/`admit` not allowed with `--no-cheating`")
+}
+
+const LOSSY_FIELD: &str = verus_code_str! {
+    // `Key` has lawful `Hash`/`Eq` (both use `raw`), but its deep view is lossy.
+    pub struct S { pub b: bool }
+
+    #[derive(Hash)]
+    pub struct Key { pub raw: u8 }
+
+    impl PartialEq for Key {
+        fn eq(&self, other: &Self) -> bool { self.raw == other.raw }
+    }
+    impl Eq for Key {}
+
+    impl vstd::std_specs::cmp::PartialEqSpecImpl for Key {
+        open spec fn obeys_eq_spec() -> bool { true }
+        open spec fn eq_spec(&self, other: &Self) -> bool { self.raw == other.raw }
+    }
+
+    impl DeepView for Key {
+        type V = S;
+        open spec fn deep_view(&self) -> S { S { b: self.raw % 2 == 0 } }
+    }
+
+    impl DeepViewClone for Key {
+        fn deep_clone(&self) -> Self { Key { raw: self.raw } }
+    }
+
+    pub struct RefKey { pub b: bool }
+
+    impl PartialEq for RefKey {
+        fn eq(&self, other: &Self) -> bool { self.b == other.b }
+    }
+
+    impl vstd::std_specs::cmp::PartialEqSpecImpl for RefKey {
+        open spec fn obeys_eq_spec() -> bool { true }
+        open spec fn eq_spec(&self, other: &Self) -> bool { self.deep_view() == other.deep_view() }
+    }
+
+    impl DeepView for RefKey {
+        type V = S;
+        open spec fn deep_view(&self) -> S { S { b: self.b } }
+    }
+
+    impl ObeysDeepEq for RefKey {
+        proof fn lemma_obeys_deep_eq() { reveal(vstd::laws_eq::obeys_deep_eq); }
+    }
+
+    impl<'a> ToRef<RefKey> for &'a Key {
+        fn get_ref(self) -> RefKey { RefKey { b: self.raw % 2 == 0 } }
+    }
+
+    impl ToOwned<Key> for RefKey {
+        fn get_owned(self) -> Key { Key { raw: if self.b { 0 } else { 1 } } }
+    }
+
+    impl ExecSpecType for S {
+        type ExecOwnedType = Key;
+        type ExecRefType<'a> = RefKey;
+    }
+
+    // True for `Key`: its equality and hashing both use `raw`.
+    axiom fn lawful_raw_key() ensures vstd::std_specs::hash::obeys_key_model::<Key>();
+};
+
+test_verify_one_file! {
+    /// A field with a lossy deep view does not make the generated type a key ...
+    #[test] test_exec_spec_lossy_field_key_rejected IMPORTS.to_string() + LOSSY_FIELD + verus_code_str! {
+        exec_spec_verified! {
+            pub struct Outer { pub f: S }
+
+            spec fn in_set(s: Set<Outer>, k: Outer) -> bool { s.contains(k) }
+        }
+    } => Err(err) => assert_not_key(err, "ExecOuter")
+}
+
+test_verify_one_file! {
+    /// ... and the generated axiom cannot be used for it either, even if the field's `Hash`/`Eq`
+    /// are lawful: equal `Key`s hash alike, but deep-view-equal ones (`raw` 0 and 2) do not.
+    #[test] test_exec_spec_lossy_field_axiom_rejected IMPORTS.to_string() + LOSSY_FIELD + verus_code_str! {
+        exec_spec_verified! {
+            pub struct Outer { pub f: S }
+        }
+
+        fn bad() -> (b: bool)
+            ensures b,
+        {
+            proof {
+                lawful_raw_key();
+                axiom_ExecOuter_obeys_key_model();
+                ExecOuter::lemma_obeys_deep_eq();
+            }
+            let mut m: HashMap<ExecOuter, u8> = HashMap::new();
+            m.insert(ExecOuter { f: Key { raw: 0 } }, 1);
+            let r = m.insert(ExecOuter { f: Key { raw: 2 } }, 1);
+            proof {
+                broadcast use vstd::std_specs::hash::group_hash_axioms;
+                broadcast use vstd::std_specs::hash::lemma_hash_map_insert_ensures_if_obeys_deep_eq;
+            }
+            r.is_some()
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].spans.iter().any(|s| s.is_primary
+            && s.text.iter().any(|t| t.text.contains("axiom_ExecOuter_obeys_key_model()"))));
+        assert_vir_error_msg(err, "precondition not satisfied");
+    }
 }

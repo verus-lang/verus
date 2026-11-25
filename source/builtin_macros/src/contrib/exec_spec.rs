@@ -307,6 +307,57 @@ fn compile_partial_eq(exec_name: &Ident, eq_body: TokenStream2) -> TokenStream2 
     }
 }
 
+/// Generates the `ExecSpecKey` impl for an exec type, so that it can be used as a
+/// key of the hash tables implementing `Set`, `Map` and `Multiset`.
+///
+/// The exec type derives `Hash` (over every field) and has a generated `==` that
+/// compares every field by deep view. So equal values hash identically whenever
+/// every field type obeys the key model (equal fields hash identically) *and* obeys
+/// deep equality (fields with equal deep views are equal). Both premises are needed:
+/// with only the first, a field type with a lossy deep view gives values that are
+/// `==` but hash differently. Verus can't see this because it doesn't reason about
+/// derived `Hash`, so it is assumed (with `admit`). This is why `--no-cheating`
+/// rejects the output of `exec_spec_verified!`.
+///
+/// The impl only applies when every field type is `ExecSpecKey`.
+/// The bounds are under a dummy binder (`for<'a>`) so that rustc
+/// doesn't reject the impl when one of them is unsatisfiable.
+fn compile_exec_spec_key(exec_name: &Ident, field_types: Vec<TokenStream2>) -> TokenStream2 {
+    let span = exec_name.span();
+    let mut seen = std::collections::HashSet::new();
+    let field_types: Vec<_> =
+        field_types.into_iter().filter(|ty| seen.insert(ty.to_string())).collect();
+    let axiom_name = format_ident!("axiom_{}_obeys_key_model", exec_name);
+    quote_spanned! { span =>
+        // Not marked `#[verus::trusted]`, so `--no-cheating` rejects it.
+        // A `proof fn` with `admit()` rather than an `axiom fn`: a body-less proof fn that
+        // mentions `obeys_deep_eq::<#exec_name>` makes the generated `PartialEq::eq` of
+        // `#exec_name` fail to verify (a Verus issue).
+        #[allow(non_snake_case)]
+        #[doc(hidden)]
+        proof fn #axiom_name()
+            requires
+                #(vstd::std_specs::hash::obeys_key_model::<#field_types>(),)*
+                #(vstd::laws_eq::obeys_deep_eq::<#field_types>(),)*
+            ensures
+                vstd::std_specs::hash::obeys_key_model::<#exec_name>(),
+        {
+            admit();
+        }
+
+        impl vstd::contrib::exec_spec::ExecSpecKey for #exec_name
+        where
+            #(for<'a> #field_types: vstd::contrib::exec_spec::ExecSpecKey,)*
+        {
+            proof fn lemma_obeys_key_model() {
+                #(<#field_types as vstd::contrib::exec_spec::ExecSpecKey>::lemma_obeys_key_model();)*
+                #(<#field_types as vstd::contrib::exec_spec::ObeysDeepEq>::lemma_obeys_deep_eq();)*
+                #axiom_name();
+            }
+        }
+    }
+}
+
 /// Compiles a struct item.
 fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
     // note: types of struct fields are effectively constrained to those whose compiled types impl DeepView, DeepViewClone, and ObeysDeepEq.
@@ -464,6 +515,13 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
 
     let partial_eq = compile_partial_eq(&exec_name, eq_body);
 
+    let field_types = item_struct
+        .fields
+        .iter()
+        .map(|field| compile_type(&field.ty, TypeKind::Owned))
+        .collect::<Result<Vec<_>, Error>>()?;
+    let exec_spec_key = compile_exec_spec_key(&exec_name, field_types);
+
     let span = item_struct.span();
     Ok(quote_spanned! { span =>
         #[verifier::ext_equal]
@@ -505,6 +563,8 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         }
 
         #partial_eq
+
+        #exec_spec_key
     })
 }
 
@@ -849,6 +909,14 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
         },
     );
 
+    let field_types = item_enum
+        .variants
+        .iter()
+        .flat_map(|variant| variant.fields.iter())
+        .map(|field| compile_type(&field.ty, TypeKind::Owned))
+        .collect::<Result<Vec<_>, Error>>()?;
+    let exec_spec_key = compile_exec_spec_key(&exec_name, field_types);
+
     let span = item_enum.span();
     Ok(quote_spanned! { span =>
         #[verifier::ext_equal]
@@ -902,6 +970,8 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
         }
 
         #partial_eq
+
+        #exec_spec_key
     })
 }
 

@@ -37,6 +37,14 @@ impl<T: ObeysDeepEq> ObeysDeepEq for Option<T> {
     }
 }
 
+impl<T: ExecSpecKey> ExecSpecKey for Option<T> {
+    proof fn lemma_obeys_key_model() {
+        broadcast use crate::std_specs::hash::axiom_option_obeys_hash_table_key_model;
+
+        T::lemma_obeys_key_model();
+    }
+}
+
 /// Traits for Option methods
 /// Spec for executable version of [`Option::unwrap`].
 pub trait ExecSpecOptionUnwrap<'a>: Sized + DeepView {

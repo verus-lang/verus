@@ -49,6 +49,13 @@ impl ObeysDeepEq for String {
     }
 }
 
+impl ExecSpecKey for String {
+    proof fn lemma_obeys_key_model() {
+        broadcast use crate::std_specs::hash::axiom_string_obeys_hash_table_key_model;
+
+    }
+}
+
 impl<'a> ExecSpecLen for &'a str {
     #[inline(always)]
     fn exec_len(self) -> (res: usize)

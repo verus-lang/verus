@@ -14,22 +14,18 @@ broadcast use {
 };
 
 /// Impls for shared traits
-impl<
-    'a,
-    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
-    V: DeepView + DeepViewClone,
-> ToRef<&'a HashMap<K, V>> for &'a HashMap<K, V> {
+impl<'a, K: ExecSpecKey + DeepViewClone, V: DeepView + DeepViewClone> ToRef<
+    &'a HashMap<K, V>,
+> for &'a HashMap<K, V> {
     #[inline(always)]
     fn get_ref(self) -> &'a HashMap<K, V> {
         &self
     }
 }
 
-impl<
-    'a,
-    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
-    V: DeepView + DeepViewClone,
-> ToOwned<HashMap<K, V>> for &'a HashMap<K, V> {
+impl<'a, K: ExecSpecKey + DeepViewClone, V: DeepView + DeepViewClone> ToOwned<
+    HashMap<K, V>,
+> for &'a HashMap<K, V> {
     #[verifier::external_body]
     #[inline(always)]
     fn get_owned(self) -> HashMap<K, V> {
@@ -41,10 +37,7 @@ impl<
     }
 }
 
-impl<
-    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
-    V: DeepView + DeepViewClone,
-> DeepViewClone for HashMap<K, V> {
+impl<K: ExecSpecKey + DeepViewClone, V: DeepView + DeepViewClone> DeepViewClone for HashMap<K, V> {
     #[verifier::external_body]
     #[inline(always)]
     fn deep_clone(&self) -> Self {
@@ -60,7 +53,7 @@ impl<
 /// which is deep-view equality when both `K` and `V` obey deep equality.
 #[cfg(verus_keep_ghost)]
 impl<
-    K: ObeysDeepEq + std::hash::Hash + std::cmp::Eq,
+    K: ExecSpecKey,
     V: ObeysDeepEq,
     S: std::hash::BuildHasher,
     A: core::alloc::Allocator,
@@ -74,20 +67,16 @@ impl<
     }
 }
 
-impl<K: ObeysDeepEq + std::hash::Hash + std::cmp::Eq, V: ObeysDeepEq> ObeysDeepEq for HashMap<
-    K,
-    V,
-> {
+impl<K: ExecSpecKey, V: ObeysDeepEq> ObeysDeepEq for HashMap<K, V> {
     proof fn lemma_obeys_deep_eq() {
         reveal(crate::laws_eq::obeys_deep_eq);
     }
 }
 
-impl<
-    'a,
-    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
-    V: DeepView + DeepViewClone,
-> ExecSpecLen for &'a HashMap<K, V> {
+impl<'a, K: ExecSpecKey + DeepViewClone, V: DeepView + DeepViewClone> ExecSpecLen for &'a HashMap<
+    K,
+    V,
+> {
     #[inline(always)]
     #[verifier::external_body]
     fn exec_len(self) -> (res: usize)
@@ -152,10 +141,7 @@ pub trait ExecSpecMapGet<'a>: Sized + DeepView {
 }
 
 /// Impls for executable versions of Map methods
-impl<K: ObeysDeepEq + std::hash::Hash + std::cmp::Eq, V: DeepView> ExecSpecMapEmpty for HashMap<
-    K,
-    V,
-> {
+impl<K: ExecSpecKey, V: DeepView> ExecSpecMapEmpty for HashMap<K, V> {
     #[inline(always)]
     fn exec_empty() -> (res: Self)
         ensures
@@ -165,9 +151,7 @@ impl<K: ObeysDeepEq + std::hash::Hash + std::cmp::Eq, V: DeepView> ExecSpecMapEm
     }
 }
 
-impl<'a, K: ObeysDeepEq + std::hash::Hash + std::cmp::Eq, V: DeepView> ExecSpecMapIndex<
-    'a,
-> for &'a HashMap<K, V> {
+impl<'a, K: ExecSpecKey, V: DeepView> ExecSpecMapIndex<'a> for &'a HashMap<K, V> {
     type Key = K;
 
     type Value = &'a V;
@@ -183,7 +167,7 @@ impl<'a, K: ObeysDeepEq + std::hash::Hash + std::cmp::Eq, V: DeepView> ExecSpecM
 }
 
 impl<'a, K, V> ExecSpecMapInsert<'a, HashMap<K, V>> for &'a HashMap<K, V> where
-    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    K: ExecSpecKey + DeepViewClone,
     V: DeepView + DeepViewClone,
  {
     type Key = K;
@@ -203,7 +187,7 @@ impl<'a, K, V> ExecSpecMapInsert<'a, HashMap<K, V>> for &'a HashMap<K, V> where
 }
 
 impl<'a, K, V> ExecSpecMapRemove<'a, HashMap<K, V>> for &'a HashMap<K, V> where
-    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    K: ExecSpecKey + DeepViewClone,
     V: DeepView + DeepViewClone,
  {
     type Key = K;
@@ -221,7 +205,7 @@ impl<'a, K, V> ExecSpecMapRemove<'a, HashMap<K, V>> for &'a HashMap<K, V> where
 }
 
 impl<'a, K, V> ExecSpecMapDom<'a> for &'a HashMap<K, V> where
-    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    K: ExecSpecKey + DeepViewClone,
     V: DeepView + DeepViewClone,
  {
     type Key = K;
@@ -241,7 +225,7 @@ impl<'a, K, V> ExecSpecMapDom<'a> for &'a HashMap<K, V> where
 }
 
 impl<'a, K, V> ExecSpecMapGet<'a> for &'a HashMap<K, V> where
-    K: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq,
+    K: ExecSpecKey + DeepViewClone,
     V: DeepView + DeepViewClone,
  {
     type Key = K;

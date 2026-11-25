@@ -99,6 +99,24 @@ impl<'a, T: ObeysDeepEq> ObeysDeepEq for &'a T {
     }
 }
 
+/// Types usable as keys of the hash tables that implement [`Set`], [`Map`] and
+/// [`Multiset`] in exec code.
+///
+/// Those hash tables compute with the key's `Hash` and `Eq`, while their
+/// specifications are stated in terms of [`DeepView`]. [`ObeysDeepEq`] ties `==`
+/// to deep-view equality; [`obeys_key_model`](crate::std_specs::hash::obeys_key_model)
+/// additionally ties `Hash` to `==` (equal keys hash identically).
+///
+/// vstd provides impls for primitive types, `String`, `Vec<T>`, `Option<T>` and tuples
+/// (up to arity 4).
+/// For other key types, `obeys_key_model` cannot be proved and must be assumed.
+pub trait ExecSpecKey: ObeysDeepEq + std::hash::Hash + std::cmp::Eq {
+    proof fn lemma_obeys_key_model()
+        ensures
+            crate::std_specs::hash::obeys_key_model::<Self>(),
+    ;
+}
+
 /// Spec for executable version of [`Seq`] and [`str`] indexing.
 pub trait ExecSpecIndex<'a>: Sized + DeepView<V = Seq<<Self::Elem as DeepView>::V>> {
     type Elem: DeepView;
@@ -150,6 +168,12 @@ macro_rules! impl_primitives {
                     reveal(crate::laws_eq::obeys_deep_eq);
                 }
             }
+
+            impl ExecSpecKey for $t {
+                proof fn lemma_obeys_key_model() {
+                    broadcast use crate::std_specs::hash::group_hash_axioms;
+                }
+            }
         }
 
         impl_primitives!($($rest),*);
@@ -196,6 +220,13 @@ macro_rules! impl_exec_spec_tuple {
                 proof fn lemma_obeys_deep_eq() {
                     broadcast use crate::laws_eq::group_laws_eq;
                     $( $T::lemma_obeys_deep_eq(); )*
+                }
+            }
+
+            impl<$($T: ExecSpecKey),*> ExecSpecKey for ($($T,)*) {
+                proof fn lemma_obeys_key_model() {
+                    broadcast use crate::std_specs::hash::group_hash_axioms;
+                    $( $T::lemma_obeys_key_model(); )*
                 }
             }
 

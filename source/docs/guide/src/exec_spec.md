@@ -84,12 +84,12 @@ Currently, `exec_spec_verified!` supports these basic features:
     - equality, `unwrap`
   - `Seq<T>` (compiled to `Vec<T>` or `&[T]` depending on the context), `seq!` literals, and these `Seq` functions:
     - equality\*, `len`, indexing, `subrange`\*, `add`\*, `push`\*, `update`\*, `empty`, `to_multiset`\*, `drop_first`\*, `drop_last`\*, `take`\*, `skip`\*, `first`, `last`, `is_suffix_of`\*, `is_prefix_of`\*, `contains`\*, `index_of`\*, `index_of_first`\*, `index_of_last`\*
-  - `Map<K, V>` (compiled to `HashMap<K, V>`), and these `Map` functions:
+  - `Map<K, V>` (compiled to `HashMap<K, V>`; see [key types](#key-types-of-set-map-and-multiset)), and these `Map` functions:
     - equality\*, `len`\*, indexing\*, `empty`, `dom`\*, `insert`\*, `remove`\*, `get`\*
     - Note: indexing is only supported on `Map<K, V>` where `K` is a primitive type (e.g. `usize`); for other types `K`, use `get` instead.
-  - `Set<T>` (compiled to `HashSet<T>`), and these `Set` functions:
+  - `Set<T>` (compiled to `HashSet<T>`; see [key types](#key-types-of-set-map-and-multiset)), and these `Set` functions:
     - equality\*, `len`\*, `empty`, `contains`\*, `insert`\*, `remove`\*, `union`\*, `intersect`\*, `difference`\*
-  - `Multiset<T>` (compiled to `ExecMultiset<T>`, a type implemented in `vstd::contrib::exec_spec` whose internal representation is a `HashMap`), and these `Multiset` functions: 
+  - `Multiset<T>` (compiled to `ExecMultiset<T>`, a type implemented in `vstd::contrib::exec_spec` whose internal representation is a `HashMap`; see [key types](#key-types-of-set-map-and-multiset)), and these `Multiset` functions: 
     - equality\*, `len`\*, `count`\*, `empty`\*, `singleton`\*, `add`\*, `sub`\*
   - User-defined structs and enums. These types should be defined within the macro using spec-compatible types for the fields (e.g. `Seq`). Such types are then compiled to their `Exec-` versions, which use the exec versions of each field's type (e.g. `Vec`/slice).
   - Primitive integer/boolean types (`i<N>`, `isize`, `u<N>`, `usize`, `char`, etc.). Note that `int`, `nat`, and `real` cannot be used in `exec_spec_verified!` or `exec_spec_unverified!`.
@@ -143,6 +143,63 @@ The `exec_spec_unverified!` macro supports all of the same Verus features as `ex
 ## Naming compiled types with `exec_spec_type!`
 
 `exec_spec_type!(T)` expands to the exec type that the spec type `T` compiles to, and `exec_spec_type!(ref T)` expands to the borrowed form used for parameters. For example, `exec_spec_type!(Seq<u32>)` is `Vec<u32>`, `exec_spec_type!(ref Seq<u32>)` is `&[u32]`, and `exec_spec_type!(Point)` is `ExecPoint`. This is useful when writing exec code that calls the generated functions.
+
+## Key types of `Set`, `Map` and `Multiset`
+
+`Set<T>`, `Map<K, V>` and `Multiset<T>` compile to hash tables, which compute with the
+`Hash` and `Eq` impls of the exec key type, while their specifications are stated in terms of
+`DeepView`. For these specifications to be sound, the exec key type must implement
+`ExecSpecKey` (in `vstd::contrib::exec_spec`), which guarantees that:
+  - `==` agrees with equality of deep views (`ObeysDeepEq`), and
+  - equal keys hash identically (`obeys_key_model`).
+
+This applies to the elements of `Set<T>` and `Multiset<T>` (including the result of
+`Seq::to_multiset`) and to the keys of `Map<K, V>`, but not to the values of a `Map`.
+
+The following key types are supported:
+  - primitive integers, `bool`, `char`, and `SpecString`;
+  - `Seq<T>`, `Option<T>`, and tuples of up to 4 elements, whose components are supported key types;
+  - structs and enums defined within `exec_spec_verified!`, whose field types are all supported key types.
+
+For example, a struct with a `Result` field compiles, but it cannot be used as a key.
+Using a type that is not a key results in a Rust error such as:
+```
+the following trait bounds were not satisfied:
+        `ExecData: vstd::contrib::exec_spec::ExecSpecKey`
+```
+
+### Assumption about derived `Hash`
+
+Verus does not reason about derived `Hash` impls, so for each struct and enum defined within
+`exec_spec_verified!`, the macro generates an _assumption_ (using `admit`) that equal
+values of the exec type hash identically. This holds because the exec type derives `Hash`, and its
+generated `==` compares the variant and then every field. As a consequence, `exec_spec_verified!`
+invocations that define structs or enums are rejected under [`--no-cheating`](./tcb.md#no-cheating-mode).
+The macro doesn't mark this assumption `#[verus::trusted]` itself, because the assumption is about
+the macro's output rather than about code the user wrote.
+
+### Hand-written key types
+
+To use your own exec type as a key (for example, as the exec type of a spec type via an
+`ExecSpecType` impl), implement `ExecSpecKey` for it.
+Because Verus does not reason about `Hash`, `obeys_key_model` can't be proved for such a type,
+so it must be assumed. The assumption is sound only if equal values hash identically under the
+type's `Hash` impl:
+```rust
+#[derive(PartialEq, Eq, Hash)]
+pub struct K(pub u64);
+
+impl ExecSpecKey for K {
+    proof fn lemma_obeys_key_model() {
+        // `==` and the derived `Hash` both use only the `u64` field.
+        assume(vstd::std_specs::hash::obeys_key_model::<K>());
+    }
+}
+```
+`K` must also implement `DeepView`, `DeepViewClone`, `PartialEqSpecImpl`, and `ObeysDeepEq`.
+Under `--no-cheating`, the `assume` must be in [trusted code](./tcb.md#marking-trusted-code):
+mark the `ExecSpecKey` impl `#[verus::trusted]`, and, because of the
+[trusted closure](./tcb.md#trusted-closure) rule, the type `K` as well.
 
 ## Common errors
 

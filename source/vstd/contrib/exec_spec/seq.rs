@@ -45,6 +45,14 @@ impl<T: ObeysDeepEq> ObeysDeepEq for Vec<T> {
     }
 }
 
+impl<T: ExecSpecKey> ExecSpecKey for Vec<T> {
+    proof fn lemma_obeys_key_model() {
+        broadcast use crate::std_specs::hash::axiom_vec_obeys_hash_table_key_model;
+
+        T::lemma_obeys_key_model();
+    }
+}
+
 impl<'a, T: ObeysDeepEq> ObeysDeepEq for &'a [T] {
     proof fn lemma_obeys_deep_eq() {
         T::lemma_obeys_deep_eq();
@@ -131,7 +139,7 @@ pub trait ExecSpecSeqEmpty: Sized {
 
 /// Spec for executable version of [`Seq::to_multiset`].
 pub trait ExecSpecSeqToMultiset<'a>: Sized {
-    type Elem: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq;
+    type Elem: ExecSpecKey + DeepViewClone;
 
     fn exec_to_multiset(self) -> ExecMultiset<Self::Elem>;
 }
@@ -307,9 +315,7 @@ impl<T: DeepView> ExecSpecSeqEmpty for Vec<T> {
     }
 }
 
-impl<'a, T: ObeysDeepEq + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecSeqToMultiset<
-    'a,
-> for &'a [T] {
+impl<'a, T: ExecSpecKey + DeepViewClone> ExecSpecSeqToMultiset<'a> for &'a [T] {
     type Elem = T;
 
     #[verifier::external_body]

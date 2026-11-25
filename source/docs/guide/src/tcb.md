@@ -64,6 +64,12 @@ explicitly allowed:
 
 (`#[verifier::external]` is not affected, since on its own it does not introduce an assumption.)
 
+Some macros provided with Verus generate assumptions. Since generated code is untrusted by
+default, these macros are rejected under `--no-cheating`. Currently, this applies to
+[`exec_spec_verified!`](./exec_spec.md#assumption-about-derived-hash) invocations that define
+structs or enums, which assume that equal values of the generated exec types hash identically
+(Verus does not reason about derived `Hash` impls).
+
 ### Marking trusted code
 
 Code is untrusted by default. Use `#[verus::trusted]` to permit assumptions in a file, module,

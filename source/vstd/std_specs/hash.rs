@@ -118,7 +118,8 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 /// determinism.
 ///
 /// The standard library has axioms that all primitive types, `String`, `str`,
-/// and `Box`es of primitive types obey this model. If you want to use some other key
+/// and `Box`es of primitive types obey this model, as do `Vec`s, `Option`s and
+/// tuples (of arity 1-4) of types that obey it. If you want to use some other key
 /// type `MyKey`, you need to explicitly state your assumption that it
 /// does so with
 /// `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>())`.
@@ -300,6 +301,77 @@ pub broadcast proof fn axiom_box_integer_type_obeys_hash_table_key_model<Key: In
 {
     admit();
 }
+
+pub broadcast axiom fn axiom_char_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<char>(),
+;
+
+// `Vec`'s `Hash` writes the length and then hashes each element in order, and its `==`
+// compares lengths and then elements in order, so equal vectors of a key-model element
+// type hash identically.
+pub broadcast axiom fn axiom_vec_obeys_hash_table_key_model<T: Hash + Eq, A: Allocator>()
+    requires
+        obeys_key_model::<T>(),
+    ensures
+        #[trigger] obeys_key_model::<Vec<T, A>>(),
+;
+
+// `Option`'s derived `Hash` hashes the discriminant and then the payload,
+// and its derived `==` compares discriminants and then payloads.
+pub broadcast axiom fn axiom_option_obeys_hash_table_key_model<T: Hash + Eq>()
+    requires
+        obeys_key_model::<T>(),
+    ensures
+        #[trigger] obeys_key_model::<Option<T>>(),
+;
+
+// A tuple's `Hash` hashes each element in order, and its `==` compares elements in order.
+// (Arities 1-4, matching the tuple impls in `contrib::exec_spec`.)
+// Skipped by verusfmt, which rewrites the 1-tuple type `(T0,)` to `(T0)`.
+#[verusfmt::skip]
+pub broadcast axiom fn axiom_tuple1_obeys_hash_table_key_model<T0: Hash + Eq>()
+    requires
+        obeys_key_model::<T0>(),
+    ensures
+        #[trigger] obeys_key_model::<(T0,)>(),
+;
+
+pub broadcast axiom fn axiom_tuple2_obeys_hash_table_key_model<T0: Hash + Eq, T1: Hash + Eq>()
+    requires
+        obeys_key_model::<T0>(),
+        obeys_key_model::<T1>(),
+    ensures
+        #[trigger] obeys_key_model::<(T0, T1)>(),
+;
+
+pub broadcast axiom fn axiom_tuple3_obeys_hash_table_key_model<
+    T0: Hash + Eq,
+    T1: Hash + Eq,
+    T2: Hash + Eq,
+>()
+    requires
+        obeys_key_model::<T0>(),
+        obeys_key_model::<T1>(),
+        obeys_key_model::<T2>(),
+    ensures
+        #[trigger] obeys_key_model::<(T0, T1, T2)>(),
+;
+
+pub broadcast axiom fn axiom_tuple4_obeys_hash_table_key_model<
+    T0: Hash + Eq,
+    T1: Hash + Eq,
+    T2: Hash + Eq,
+    T3: Hash + Eq,
+>()
+    requires
+        obeys_key_model::<T0>(),
+        obeys_key_model::<T1>(),
+        obeys_key_model::<T2>(),
+        obeys_key_model::<T3>(),
+    ensures
+        #[trigger] obeys_key_model::<(T0, T1, T2, T3)>(),
+;
 
 // Our model for the external trait `BuildHasher` is that for any two
 // `Hasher`s it builds, if they're both given the same write sequence
@@ -2372,6 +2444,13 @@ pub broadcast group group_hash_axioms {
     axiom_isize_obeys_hash_table_key_model,
     axiom_box_bool_obeys_hash_table_key_model,
     axiom_box_integer_type_obeys_hash_table_key_model,
+    axiom_char_obeys_hash_table_key_model,
+    axiom_vec_obeys_hash_table_key_model,
+    axiom_option_obeys_hash_table_key_model,
+    axiom_tuple1_obeys_hash_table_key_model,
+    axiom_tuple2_obeys_hash_table_key_model,
+    axiom_tuple3_obeys_hash_table_key_model,
+    axiom_tuple4_obeys_hash_table_key_model,
     axiom_random_state_builds_valid_hashers,
     axiom_spec_hash_map_len,
     axiom_spec_hash_set_len,
