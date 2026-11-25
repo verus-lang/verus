@@ -57,6 +57,11 @@ the rest are for later.
    Make sure the target width is actually fixed when it's allowed:
    rustlib's `global layout usize is size == ...` (`specs/intrinsics.rs`) and the `target_pointer_width` cfgs on `AlignmentEnum` must agree with the `--target` rustlib is verified for,
    and consider checking against the target's pointer width (as the `isize` case does with `tcx.data_layout`) instead of trusting `--is-core`.
+   Proposed (not yet approved): allow them exactly when the crate declares a 64-bit `usize`
+   (`global size_of usize == 8`, recorded in `ctxt.arch_word_bits` as `ArchWordBits::Exactly(64)`, `rust_verify/src/context.rs`),
+   for any crate, with no `--is-core` special case.
+   To check: that `arch_word_bits` is set before the cast is converted, and that the `global` directive is checked against the real target.
+   Work on it in worktree `.claude/worktrees/pr-is-core` (branch `pr-is-core-fixes`, from `origin/main`), separate from the port's build.
 
 ### Later
 

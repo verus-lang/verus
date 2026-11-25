@@ -213,7 +213,7 @@ Still to open: 2, 7, 8, 9.
    - 1c. `count_ones` (`pr-vstd-count-ones`): `nat_count_ones` moves to `bits.rs` (breaking path change), plus two lemmas.
      Also cfgs out `std_specs::bits` and `group_bits_axioms` under `verus_verify_core`,
      which the move makes possible, so PR 2 doesn't depend on 1c
-     (uncommitted, in worktree `.claude/worktrees/pr-count-ones`).
+     (not committed yet).
    - Delete the superseded `pr-vstd-arithmetic` remote branch.
 2. `verus_verify_core` cfgs: `builtin` crate-level feature cfg rearrangement and the "Add cfg" list,
    `core_special_setup.rs` (its `Option`/`Result`/`unwrap`/`len` specs, not its `Tracked` `Deref` impls).
@@ -234,6 +234,7 @@ Still to open: 2, 7, 8, 9.
    - 6c. `Seq` borrows (`pr-vstd-seq-borrows`): `seq.rs`.
    Callers of 6b's and 6c's renamed and dropped functions are listed under 8 and 9.
 7. `--is-core` compiler fixes (the list above), one commit each. Independent.
+   Branch `pr-is-core-fixes` (from main at 48ed2e8a3), worktree `.claude/worktrees/pr-is-core`.
    Before opening: resolve MERGE_TODO verus item 8 (check the target's pointer width, not just `--is-core`),
    and state why rustlib needs `--no-cheating` with `--is-core` (it loosens #2568's rule;
    could be a separate PR if it should go to #2568's reviewers on its own).
