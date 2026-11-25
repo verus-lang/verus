@@ -3,6 +3,7 @@ pub mod alloc;
 
 pub mod array;
 pub mod atomic;
+#[cfg(not(verus_verify_core))]
 pub mod bits;
 pub mod borrow;
 pub mod char;
