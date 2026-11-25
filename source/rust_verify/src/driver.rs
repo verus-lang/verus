@@ -386,12 +386,16 @@ fn combine_dep_info(
     first_pass_dep_info: Option<&std::path::Path>,
     second_pass_dep_info: Option<&std::path::Path>,
 ) -> Result<(), String> {
-    use crate::verifier::SAVED_DEP_INFO_SUFFIX;
+    use crate::verifier::rename_first_pass_dep_info;
 
     match (first_pass_dep_info, second_pass_dep_info) {
-        (Some(first), Some(second)) => {
-            let info_1 = rustc_dep_info::Contents::read_file(&first).map_err(|err| {
-                format!("failed to read first-pass dep-info from `{}`: {err}", first.display())
+        (Some(original_first), Some(second)) => {
+            let renamed_first = rename_first_pass_dep_info(original_first);
+            let info_1 = rustc_dep_info::Contents::read_file(&renamed_first).map_err(|err| {
+                format!(
+                    "failed to read first-pass dep-info from `{}`: {err}",
+                    renamed_first.display()
+                )
             })?;
             let info_2 = rustc_dep_info::Contents::read_file(&second).map_err(|err| {
                 format!("failed to read second-pass dep-info from `{}`: {err}", second.display())
@@ -417,22 +421,23 @@ fn combine_dep_info(
                 },
             );
             if checksums_changed || env_vars_changed {
-                return Err("dep-info changes were detected between `rustc` passes".into());
+                return Err(format!(
+                    "dep-info changes were detected between `rustc` passes, for details compare {} and {}",
+                    renamed_first.display(),
+                    second.display()
+                ));
             }
             merged.write_file(&second).map_err(|err| {
                 format!("failed to write combined dep-info to `{}`: {err}", second.display())
             })?;
-            std::fs::remove_file(&first).unwrap_or_else(|err| {
-                eprintln!("warning: failed to remove `{}`: {err}", first.display())
+            std::fs::remove_file(&renamed_first).unwrap_or_else(|err| {
+                eprintln!("warning: failed to remove `{}`: {err}", renamed_first.display())
             });
         }
-        (Some(first), None) => {
-            let saved = first.as_os_str();
-            assert!(saved.as_encoded_bytes().ends_with(SAVED_DEP_INFO_SUFFIX.as_bytes()));
-            let original = saved.slice_encoded_bytes(..saved.len() - SAVED_DEP_INFO_SUFFIX.len());
-            let destination = std::path::Path::new(original);
-            std::fs::rename(&first, &destination).map_err(|err| {
-                format!("failed to restore dep-info `{}`: {err}", destination.display())
+        (Some(original_first), None) => {
+            let renamed_first = rename_first_pass_dep_info(original_first);
+            std::fs::rename(renamed_first, original_first).map_err(|err| {
+                format!("failed to restore dep-info `{}`: {err}", original_first.display())
             })?;
         }
         (None, Some(second)) => {

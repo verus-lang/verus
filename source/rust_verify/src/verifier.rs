@@ -52,7 +52,11 @@ use vir::prelude::PreludeConfig;
 const RLIMIT_PER_SECOND_Z3: f32 = 3000000f32;
 const RLIMIT_PER_SECOND_CVC5: f32 = 333333f32; // ~= 5s
 
-pub(crate) const SAVED_DEP_INFO_SUFFIX: &str = "-verus";
+pub(crate) fn rename_first_pass_dep_info(path: &std::path::Path) -> std::path::PathBuf {
+    let mut renamed_path = path.to_path_buf();
+    renamed_path.as_mut_os_string().push("-verus");
+    renamed_path
+}
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub(crate) struct ProgressBarId(String);
@@ -3166,17 +3170,17 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             if let OutFileName::Real(dep_info_path) =
                 tcx.output_filenames(()).path(OutputType::DepInfo)
             {
-                let mut saved_dep_info_path = dep_info_path.clone();
-                saved_dep_info_path.as_mut_os_string().push(SAVED_DEP_INFO_SUFFIX);
+                let saved_dep_info_path = rename_first_pass_dep_info(&dep_info_path);
                 if let Err(err) = std::fs::rename(&dep_info_path, &saved_dep_info_path) {
                     eprintln!(
-                        "error: failed to save dep-info {} with `{SAVED_DEP_INFO_SUFFIX}` suffix due to {err}",
+                        "error: failed to rename dep-info {} to {} due to {err}",
                         dep_info_path.display(),
+                        saved_dep_info_path.display(),
                     );
                     self.verifier.encountered_error = true;
                     return Compilation::Stop;
                 };
-                self.first_pass_dep_info = Some(saved_dep_info_path);
+                self.first_pass_dep_info = Some(dep_info_path);
             }
         }
         self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
