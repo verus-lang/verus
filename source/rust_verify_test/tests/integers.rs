@@ -757,3 +757,79 @@ test_verify_one_file! {
         "discriminants that do not fit in 32 bits when usize is used",
     ])
 }
+
+#[cfg(target_pointer_width = "64")]
+test_verify_one_file_with_options! {
+    #[test] test_enums_with_large_usize_is_core_usize_64 ["--is-core", "no-auto-import-verus_builtin", "--no-external-by-default"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(fn_traits))]
+
+        #[verifier::external]
+        #[path="../../../../builtin/src/lib.rs"]
+        mod verus_builtin;
+
+        #[verus::internal(size_of)]
+        const _: () = {
+            crate::verus_builtin::global_size_of::<usize>(8);
+        };
+
+        #[repr(usize)] enum Eusize { A = 0x1_0000_0000, B = 0 }
+
+        fn test(e: Eusize) -> usize {
+            e as usize
+        }
+    } => Ok(())
+}
+
+#[cfg(target_pointer_width = "64")]
+test_verify_one_file_with_options! {
+    #[test] test_enums_with_large_usize_is_core_usize_unset ["--is-core", "no-auto-import-verus_builtin", "--no-external-by-default"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(fn_traits))]
+
+        #[verifier::external]
+        #[path="../../../../builtin/src/lib.rs"]
+        mod verus_builtin;
+
+        #[repr(usize)] enum Eusize { A = 0x1_0000_0000, B = 0 }
+
+        fn test(e: Eusize) -> usize {
+            e as usize
+        }
+    } => Err(err) => assert_vir_error_msg(err, "discriminants that do not fit in 32 bits when usize is used")
+}
+
+#[cfg(target_pointer_width = "64")]
+test_verify_one_file_with_options! {
+    #[test] test_enums_with_large_usize_is_core_usize_32 ["--is-core", "no-auto-import-verus_builtin", "--no-external-by-default"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(fn_traits))]
+
+        #[verifier::external]
+        #[path="../../../../builtin/src/lib.rs"]
+        mod verus_builtin;
+
+        #[verus::internal(size_of)]
+        const _: () = {
+            crate::verus_builtin::global_size_of::<usize>(4);
+        };
+
+        #[repr(usize)] enum Eusize { A = 0x1_0000_0000, B = 0 }
+
+        fn test(e: Eusize) -> usize {
+            e as usize
+        }
+    } => Err(err) => assert_vir_error_msg(err, "discriminants that do not fit in 32 bits when usize is used")
+}
+
+#[cfg(target_pointer_width = "64")]
+test_verify_one_file_with_options! {
+    #[test] test_enums_with_large_usize_not_core_usize_64 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        global size_of usize == 8;
+
+        #[derive(Copy, Clone)] #[repr(usize)] enum Eusize { A = 0x1_0000_0000, B = 0 }
+
+        fn test() {
+            assert(Eusize::A as int == 0x1_0000_0000);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "discriminants that do not fit in 32 bits when usize is used")
+}

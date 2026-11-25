@@ -2397,7 +2397,14 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
                     vir::ast_util::const_int_from_u128(val)
                 }
                 UintTy::Usize => {
-                    if val > u32::MAX as u128 {
+                    // rustc truncates `val` to the target's usize,
+                    // so a value above u32::MAX means the target is 64-bit.
+                    // Such a value is consistent with Verus's usize only when the crate declares
+                    // a 64-bit usize (`global size_of usize == 8`).
+                    // For now, this is allowed only in core (`--is-core`).
+                    let allow_64_bit = bctx.ctxt.cmd_line_args.vstd == crate::config::Vstd::IsCore
+                        && bctx.ctxt.arch_word_bits == Some(vir::ast::ArchWordBits::Exactly(64));
+                    if val > u32::MAX as u128 && !allow_64_bit {
                         unsupported_err!(
                             expr.span,
                             "discriminants that do not fit in 32 bits when usize is used"
