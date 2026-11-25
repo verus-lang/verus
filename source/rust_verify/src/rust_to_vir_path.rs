@@ -2,7 +2,8 @@ use crate::verus_items::{VerusItem, VerusItems};
 use rustc_hir::QPath;
 use rustc_hir::definitions::DefPath;
 use rustc_middle::ty::{TyCtxt, TyKind};
-use rustc_span::def_id::{CrateNum, DefId};
+use rustc_span::def_id::{CrateNum, DefId, LOCAL_CRATE};
+use rustc_span::sym;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -335,14 +336,22 @@ const VSTD_IDENTIFYING_DIAGNOSTIC_ITEM: &str = "verus::vstd::invariant::open_inv
 /// get a `CrateId::Id` with Rust's stable crate id.
 pub(crate) fn mk_crate_id<'tcx>(tcx: TyCtxt<'tcx>, krate: CrateNum) -> CrateId {
     let s = tcx.crate_name(krate).to_string();
-    let defined_by_krate = |def_id: Option<DefId>| def_id.map(|d| d.krate) == Some(krate);
+    // The AST rewrite needs dependency IDs before local HIR is available.
+    let defines_lang_item = |name| {
+        if krate == LOCAL_CRATE {
+            tcx.lang_items().iter().any(|(item, id)| item.name() == name && id.is_local())
+        } else {
+            tcx.defined_lang_items(krate).iter().any(|&(_, item)| item.name() == name)
+        }
+    };
     match s.as_str() {
-        "core" if defined_by_krate(tcx.lang_items().sized_trait()) => CrateId::Core,
-        "alloc" if defined_by_krate(tcx.lang_items().owned_box()) => CrateId::Alloc,
+        "core" if defines_lang_item(sym::sized) => CrateId::Core,
+        "alloc" if defines_lang_item(sym::owned_box) => CrateId::Alloc,
         "vstd"
-            if defined_by_krate(tcx.get_diagnostic_item(rustc_span::Symbol::intern(
-                VSTD_IDENTIFYING_DIAGNOSTIC_ITEM,
-            ))) =>
+            if tcx
+                .diagnostic_items(krate)
+                .name_to_id
+                .contains_key(&rustc_span::Symbol::intern(VSTD_IDENTIFYING_DIAGNOSTIC_ITEM)) =>
         {
             CrateId::Vstd
         }
