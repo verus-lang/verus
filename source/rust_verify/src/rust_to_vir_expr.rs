@@ -2398,7 +2398,11 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
                     vir::ast_util::const_int_from_u128(val)
                 }
                 UintTy::Usize => {
-                    if val > u32::MAX as u128 {
+                    // core (--is-core) is verified for a fixed target,
+                    // with enums like `AlignmentEnum` cfg'd by `target_pointer_width`,
+                    // so it may use the full `usize` range.
+                    let is_core = bctx.ctxt.cmd_line_args.vstd == crate::config::Vstd::IsCore;
+                    if val > u32::MAX as u128 && !is_core {
                         unsupported_err!(
                             expr.span,
                             "discriminants that do not fit in 32 bits when usize is used"
