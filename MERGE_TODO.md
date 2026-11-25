@@ -61,7 +61,7 @@ the rest are for later.
    (`global size_of usize == 8`, recorded in `ctxt.arch_word_bits` as `ArchWordBits::Exactly(64)`, `rust_verify/src/context.rs`),
    for any crate, with no `--is-core` special case.
    To check: that `arch_word_bits` is set before the cast is converted, and that the `global` directive is checked against the real target.
-   Work on it in worktree `.claude/worktrees/pr-is-core` (branch `pr-is-core-fixes`, from `origin/main`), separate from the port's build.
+   Work on it in worktree `/Users/estang/verus-pr7` (branch `pr-is-core-fixes`, from `origin/main`), separate from the port's build.
 
 ### Later
 
