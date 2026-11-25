@@ -403,6 +403,9 @@ pub fn run_verus_with_crate_args(
     for option in options.iter() {
         if let Some(name) = option.strip_prefix("--crate-name=") {
             crate_name = name;
+        } else if let Some(metadata) = option.strip_prefix("-Cmetadata=") {
+            verus_args.push("-C".to_string());
+            verus_args.push(format!("metadata={metadata}"));
         } else if let Some(module) = option.strip_prefix("--verify-only-module ") {
             verus_args.push("--verify-only-module".to_string());
             verus_args.push(module.to_string());
@@ -432,6 +435,8 @@ pub fn run_verus_with_crate_args(
             // mimic cargo's default for dev builds
             verus_args.push("-C".to_string());
             verus_args.push(format!("incremental={}", test_dir.join("incremental").display()));
+        } else if *option == "--time" {
+            verus_args.push("--time".to_string());
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {

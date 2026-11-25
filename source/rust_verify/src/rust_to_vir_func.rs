@@ -298,6 +298,7 @@ fn handle_autospec<'tcx>(
                     size_of_broadcast_proof: false,
                     is_type_invariant_fn: false,
                     is_external_body: false,
+                    no_cheating_trusted: functionx.attrs.no_cheating_trusted,
                     is_unsafe: false,
                     impls_cannot_extend_spec: false,
                     exec_assume_termination: false,
@@ -469,6 +470,14 @@ fn body_to_vir<'tcx>(
     for (param, vir_param) in body.params.iter().zip(params) {
         let ParamX { name, typ, mode: param_mode, .. } = &vir_param.x;
         let pat = peel_verus_param(param.pat);
+        if *param_mode != Mode::Exec {
+            // Record the binders so erasure knows not to emit drops for them
+            param.pat.walk_always(|p| {
+                if let PatKind::Binding(..) = p.kind {
+                    bctx.erasure_info.borrow_mut().ghost_param_binders.push(p.hir_id);
+                }
+            });
+        }
         let decl = param_pat_to_decl(&bctx, pat, name, typ, *param_mode)?;
         // exec code can only initialize ghost and tracked variables in proof blocks
         if decl.is_some() && mode == Mode::Exec && *param_mode != Mode::Exec {
@@ -1586,6 +1595,8 @@ fn make_attributes<'tcx>(
         size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
         is_type_invariant_fn: vattrs.type_invariant_fn,
         is_external_body: vattrs.external_body,
+        no_cheating_trusted: crate::no_cheating::effective_trust(ctxt.tcx, def_id)?
+            .permits_assumptions(),
         is_unsafe: match safety {
             Safety::Safe => false,
             Safety::Unsafe => true,
@@ -3152,10 +3163,17 @@ fn all_predicates<'tcx>(
     }
     let typing_env = TypingEnv::post_analysis(tcx, id);
     let preds = preds.instantiate(tcx, substs);
+    // `normalize_erasing_regions` ICEs when a clause mentions a projection it cannot
+    // normalize in this environment, which happens for `assume_specification`s whose
+    // bounds carry a projection of the proxy's own type parameter (e.g. `P::Target: Unpin`
+    // on `Pin::new`); keep such clauses as written instead of aborting.
     let mut clauses: Vec<Clause<'tcx>> = preds
         .clauses
         .into_iter()
-        .map(|clause| tcx.normalize_erasing_regions(typing_env, clause))
+        .map(|clause| {
+            tcx.try_normalize_erasing_regions(typing_env, clause.clone())
+                .unwrap_or_else(|_| clause.skip_normalization())
+        })
         .collect();
     if preliminarily_try_to_process_and_eliminate_trait_aliases {
         clauses.retain(|clause| match clause.kind().skip_binder() {

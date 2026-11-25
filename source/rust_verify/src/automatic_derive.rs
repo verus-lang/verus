@@ -503,6 +503,7 @@ fn mk_spec_function_stub(
                 size_of_broadcast_proof: false,
                 is_type_invariant_fn: false,
                 is_external_body: false,
+                no_cheating_trusted: false,
                 is_unsafe: false,
                 exec_assume_termination: false,
                 exec_allows_no_decreases_clause: false,

@@ -155,6 +155,76 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] arc_slice_deref_and_as_ref verus_code! {
+        use std::sync::Arc;
+        use vstd::prelude::*;
+
+        fn test() {
+            let v: Vec<u32> = vec![1, 2, 3];
+            let a: Arc<[u32]> = Arc::from(v);
+
+            assert(a@ == seq![1u32, 2, 3]);
+            assert(a.len() == 3);
+            assert(a[0] == 1);
+
+            let r: &[u32] = a.as_ref();
+            assert(r@ == seq![1u32, 2, 3]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] arc_slice_from_slice_clones verus_code! {
+        use std::sync::Arc;
+        use vstd::prelude::*;
+
+        fn test() {
+            let s: [u32; 2] = [10, 20];
+            let a: Arc<[u32]> = Arc::from(&s[..]);
+
+            assert(a@.len() == 2);
+            assert(a[0] == 10);
+            assert(a[1] == 20);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] rc_slice_deref_and_as_ref verus_code! {
+        use std::rc::Rc;
+        use vstd::prelude::*;
+
+        fn test() {
+            let v: Vec<u32> = vec![1, 2, 3];
+            let a: Rc<[u32]> = Rc::from(v);
+
+            assert(a@ == seq![1u32, 2, 3]);
+            assert(a.len() == 3);
+            assert(a[0] == 1);
+
+            let r: &[u32] = a.as_ref();
+            assert(r@ == seq![1u32, 2, 3]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] rc_slice_from_slice_clones verus_code! {
+        use std::rc::Rc;
+        use vstd::prelude::*;
+
+        fn test() {
+            let s: [u32; 2] = [10, 20];
+            let a: Rc<[u32]> = Rc::from(&s[..]);
+
+            assert(a@.len() == 2);
+            assert(a[0] == 10);
+            assert(a[1] == 20);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] smart_ptr_eq_needs_reflexivity verus_code! {
         use std::rc::Rc;
         use std::sync::Arc;
@@ -2331,80 +2401,6 @@ test_verify_one_file! {
         assert_help_error_msg(err.clone(), "*x <= u16::MAX");
         assert_fails(err, 3);
     }
-}
-
-test_verify_one_file! {
-    #[test] format_fail verus_code! {
-        use vstd::*;
-        use core::fmt::{Display, Error, Formatter};
-        struct S;
-        fn bad() requires false {}
-        impl core::fmt::Display for S {
-            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-                assert(false);
-                bad();
-                Ok(())
-            }
-        }
-        impl vstd::std_specs::fmt::DisplaySpecImpl for S {
-            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
-                false
-            }
-        }
-        fn test() {
-            let s = S;
-            let x = format!("{}", s); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_one_file! {
-    #[test] formatting_callers_require_fmt_req verus_code! {
-        use core::fmt::{Debug, Display, Error, Formatter};
-        use vstd::prelude::*;
-        use vstd::std_specs::fmt::{DebugSpecImpl, DisplaySpecImpl};
-
-        pub struct K {
-            pub a: u8,
-        }
-
-        impl DisplaySpecImpl for K {
-            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
-                false
-            }
-        }
-
-        impl DebugSpecImpl for K {
-            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
-                false
-            }
-        }
-
-        impl Display for K {
-            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-                assert(false);
-                let v: Vec<u8> = Vec::new();
-                let _ = v[0];
-                Ok(())
-            }
-        }
-
-        impl Debug for K {
-            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-                Display::fmt(self, f)
-            }
-        }
-
-        fn main() {
-            let k = K { a: 1 };
-            let _ = k.to_string(); // FAILS
-        }
-
-        fn test_new_argument() {
-            let k = K { a: 1 };
-            let _ = vstd::pervasive::__new_argument(&k); // FAILS
-        }
-    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {

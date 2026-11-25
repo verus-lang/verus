@@ -292,6 +292,10 @@ pub(crate) fn expr_post<'tcx>(
                     hir_expr.span,
                     ty,
                 );
+                // The shadow assignment is ghost code, so it shouldn't drop the old shadow value
+                // (or the new value, if the assignment unwinds)
+                crate::verus::mark_ghost_expr(cx, shadow_assign);
+                crate::verus::mark_ghost_expr(cx, shadow_rhs);
                 sequence_2_unit_exprs(cx, &erasure_ctxt, hir_expr, main_assign, shadow_assign)
             } else {
                 kind
@@ -1228,6 +1232,27 @@ fn is_shadow_var_id(enclosing_def_id: LocalDefId, v: LocalVarId) -> bool {
     let modifier_offset = v_id.checked_sub(main_id).unwrap();
     assert!(modifier_offset <= 3);
     modifier_offset == 1
+}
+
+/// Is this an `x_shadow` or `x_half2` identifier? (i.e., a var for the shadow place)
+pub(crate) fn is_any_shadow_var_id(enclosing_def_id: LocalDefId, v: LocalVarId) -> bool {
+    let v_id = v.0.owner.def_id.local_def_index.as_usize();
+    let main_id = enclosing_def_id.local_def_index.as_usize();
+    matches!(v_id.checked_sub(main_id), Some(1 | 3))
+}
+
+/// Inverse of `modded_local_var_id`: map an `x_shadow`/`x_half1`/`x_half2` identifier
+/// back to `x` (and map any other identifier to itself).
+pub(crate) fn original_local_var_id(enclosing_def_id: LocalDefId, v: LocalVarId) -> LocalVarId {
+    let v_id = v.0.owner.def_id.local_def_index.as_usize();
+    let main_id = enclosing_def_id.local_def_index.as_usize();
+    match v_id.checked_sub(main_id) {
+        Some(1..=3) => LocalVarId(HirId {
+            owner: rustc_hir::OwnerId { def_id: enclosing_def_id },
+            local_id: v.0.local_id,
+        }),
+        _ => v,
+    }
 }
 
 /// Make a fresh LocalVarId

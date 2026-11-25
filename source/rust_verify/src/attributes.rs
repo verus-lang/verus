@@ -235,6 +235,13 @@ pub(crate) enum AttrPublish {
     Uninterp,
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub(crate) enum TrustAttribute {
+    Trusted,
+    TrustedSpec,
+    Untrusted,
+}
+
 #[derive(Debug, PartialEq)]
 pub(crate) enum Attr {
     // specify mode (spec, proof, exec)
@@ -313,7 +320,7 @@ pub(crate) enum Attr {
     // specifies an open atomic update block
     AtomicUpdateBlock,
     // for function calls with an `atomically` block
-    AtomicCall,
+    LogatomFunctionCall,
     // mark that a loop was desugared from a for-loop in the syntax macro
     ForLoop,
     // mark the syntax macro inserted a synthetic decreases into a desugared for-loop
@@ -366,8 +373,8 @@ pub(crate) enum Attr {
     InternalRevealFn,
     // Marks the auxiliary function constructed by spec const
     InternalConstBody,
-    // Marks trusted code
-    Trusted,
+    // Marks code trusted or untrusted for --no-cheating
+    Trust(TrustAttribute, Span),
     // global size_of
     SizeOfGlobal,
     // reveal item
@@ -582,7 +589,6 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "open_au_block" => {
                     v.push(Attr::AtomicUpdateBlock)
                 }
-                AttrTree::Fun(_, arg, None) if arg == "atomic_call" => v.push(Attr::AtomicCall),
                 AttrTree::Fun(_, arg, None) if arg == "bit_vector" => v.push(Attr::BitVector),
                 AttrTree::Fun(_, arg, None) if arg == "decreases_by" || arg == "recommends_by" => {
                     v.push(Attr::DecreasesBy)
@@ -931,12 +937,25 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "loop_isolation_boundary" => {
                         v.push(Attr::LoopIsolationBoundary)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "logatom_function_call" => {
+                        v.push(Attr::LogatomFunctionCall)
+                    }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
                 },
                 VerusPrefix::None => match &attr {
-                    AttrTree::Fun(_, name, None) if name == "trusted" => v.push(Attr::Trusted),
+                    AttrTree::Fun(_, name, None) if name == "trusted" => {
+                        v.push(Attr::Trust(TrustAttribute::Trusted, span))
+                    }
+                    AttrTree::Fun(_, name, Some([AttrTree::Fun(_, arg, None)]))
+                        if name == "trusted" && arg == "spec" =>
+                    {
+                        v.push(Attr::Trust(TrustAttribute::TrustedSpec, span))
+                    }
+                    AttrTree::Fun(_, name, None) if name == "untrusted" => {
+                        v.push(Attr::Trust(TrustAttribute::Untrusted, span))
+                    }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -974,6 +993,43 @@ pub(crate) fn parse_attrs_opt(
         Ok(attrs) => attrs,
         Err(_) => vec![],
     }
+}
+
+pub(crate) fn get_trust_attributes(
+    attrs: &[Attribute],
+) -> Result<Vec<(TrustAttribute, Span)>, VirErr> {
+    let mut trust_attrs = Vec::new();
+    for attr in attrs {
+        let Attribute::Unparsed(item) = attr else {
+            continue;
+        };
+        let [prefix, name] = &item.path.segments[..] else {
+            continue;
+        };
+        if prefix.as_str() != "verus" {
+            continue;
+        }
+        let tree = attr_args_to_tree(attr.span(), name.to_string(), &item.args)
+            .map_err(|_| vir_err_span_str(attr.span(), "invalid verus trust attribute"))?;
+        let trust = match &tree {
+            AttrTree::Fun(_, name, None) if name == "trusted" => TrustAttribute::Trusted,
+            AttrTree::Fun(_, name, Some([AttrTree::Fun(_, arg, None)]))
+                if name == "trusted" && arg == "spec" =>
+            {
+                TrustAttribute::TrustedSpec
+            }
+            AttrTree::Fun(_, name, None) if name == "untrusted" => TrustAttribute::Untrusted,
+            AttrTree::Fun(_, name, _) if name == "trusted" || name == "untrusted" => {
+                return err_span(
+                    attr.span(),
+                    "expected `#[verus::trusted]`, `#[verus::trusted(spec)]`, or `#[verus::untrusted]`",
+                );
+            }
+            _ => continue,
+        };
+        trust_attrs.push((trust, attr.span()));
+    }
+    Ok(trust_attrs)
 }
 
 pub(crate) fn parse_attrs_walk_parents<'tcx>(
@@ -1414,7 +1470,7 @@ pub(crate) fn get_external_attrs(
             Attr::SizeOfGlobal => es.size_of_global = true,
             Attr::ItemBroadcastUse => es.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
-            Attr::Trusted => {}
+            Attr::Trust(..) => {}
             Attr::ExternalAutoDerives(None) => {
                 es.external_auto_derives = AutoDerivesAttr::AllExternal
             }
@@ -1590,7 +1646,10 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
             Attr::InternalConstBody => vs.internal_const_body = true,
             Attr::BroadcastUseReveal => vs.broadcast_use_reveal = true,
-            Attr::Trusted => vs.trusted = true,
+            Attr::Trust(TrustAttribute::Trusted | TrustAttribute::TrustedSpec, _) => {
+                vs.trusted = true
+            }
+            Attr::Trust(TrustAttribute::Untrusted, _) => {}
             Attr::SizeOfGlobal => vs.size_of_global = true,
             Attr::ItemBroadcastUse => vs.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => vs.internal_get_field_many_variants = true,

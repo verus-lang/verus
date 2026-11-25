@@ -331,6 +331,9 @@ pub struct Verifier {
 
     /// Details about each function
     pub func_details: Arc<Mutex<HashMap<Fun, FuncDetails>>>,
+    /// Each local function's path as rustc prints it (`def_path_str`), which, unlike the
+    /// name Verus reports, tells apart e.g. the methods of two impls of one trait for one type
+    pub func_def_paths: HashMap<Fun, String>,
     /// Errors to report after verification has run
     deferred_errors: Arc<Mutex<Vec<VirErr>>>,
 
@@ -414,10 +417,6 @@ pub fn module_name(module: &vir::ast::Path) -> String {
 mod util {
     pub(crate) struct PanicOnDropVec<T>(Option<Vec<T>>);
 
-    // For https://github.com/verus-lang/verus/issues/1044 :
-    pub(crate) static PANIC_ON_DROP_VEC: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(true);
-
     impl<T> PanicOnDropVec<T> {
         pub fn new(v: Vec<T>) -> Self {
             PanicOnDropVec(Some(v))
@@ -434,7 +433,9 @@ mod util {
 
     impl<T> Drop for PanicOnDropVec<T> {
         fn drop(&mut self) {
-            if self.0.is_some() && PANIC_ON_DROP_VEC.load(std::sync::atomic::Ordering::SeqCst) {
+            // Don't panic while unwinding from another panic: that would abort and hide the
+            // original error (https://github.com/verus-lang/verus/issues/1044)
+            if self.0.is_some() && !std::thread::panicking() {
                 panic!("dropped, expected call to `into_inner` instead");
             }
         }
@@ -531,6 +532,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: Arc::new(Mutex::new(HashMap::new())),
+            func_def_paths: HashMap::new(),
             deferred_errors: Arc::new(Mutex::new(Vec::new())),
 
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
@@ -580,6 +582,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: Arc::new(Mutex::new(HashMap::new())),
+            func_def_paths: HashMap::new(),
             deferred_errors: Arc::new(Mutex::new(Vec::new())),
 
             via_cargo_args: self.via_cargo_args.clone(),
@@ -698,7 +701,6 @@ impl Verifier {
         match result {
             ValidityResult::Valid(air::context::UsageInfo::None) => {}
             ValidityResult::TypeError(err) => {
-                util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                 panic!("internal error: ill-typed AIR code: {}", err)
             }
             _ => panic!("internal error: decls should not generate queries ({:?})", result),
@@ -874,7 +876,6 @@ impl Verifier {
                     break;
                 }
                 ValidityResult::TypeError(err) => {
-                    util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
                 ValidityResult::Canceled => {
@@ -986,7 +987,6 @@ impl Verifier {
                     bucket_time.time_air += time1 - time0;
                 }
                 ValidityResult::UnexpectedOutput(err) => {
-                    util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                     panic!("unexpected output from solver: {} {}", context.span.as_string, err);
                 }
             }
@@ -2702,6 +2702,32 @@ impl Verifier {
             crate_ids.insert(id);
         }
 
+        // We identify the actual core and alloc crates by the lang items they define
+        // (see mk_crate_id), so ordinary crates must not define lang items.
+        // Only the standard library crates (verified with --is-core or
+        // --is-stdlib-outside-of-core) may do so.
+        // In fact, defining a lang_item would likely come with a number of assumptions
+        // that we do not currently check.
+        // We may want to add #[panic_handler] as an exception some day;
+        // it's stable and defines the panic_impl lang item.
+        if !matches!(
+            self.args.vstd,
+            crate::config::Vstd::IsCore | crate::config::Vstd::ImportedViaCore
+        ) {
+            for (lang_item, def_id) in tcx.lang_items().iter() {
+                if def_id.is_local() {
+                    let err = vir::messages::error(
+                        &spans.to_air_span(tcx.def_span(def_id)),
+                        format!(
+                            "Verus does not support defining lang items (found `{}`)",
+                            lang_item.name()
+                        ),
+                    );
+                    return Err((vec![err], vec![], None));
+                }
+            }
+        }
+
         if !verus_items.name_to_id.contains_key(&VerusItem::ErasedGhostValue) {
             let err = crate::util::no_builtin_err(self.air_no_span.as_ref().unwrap());
             return Err((vec![err], vec![], None));
@@ -2810,6 +2836,17 @@ impl Verifier {
         }
 
         self.vir_crate = Some(merged_crate.clone());
+        if self.args.output_json {
+            let map = ctxt.name_def_id_map.borrow();
+            for function in merged_crate.functions.iter() {
+                let fun = &function.x.name;
+                if let Some(def_id) = map.get(&fun.path) {
+                    if def_id.is_local() {
+                        self.func_def_paths.insert(fun.clone(), tcx.def_path_str(*def_id));
+                    }
+                }
+            }
+        }
         self.warning_ctx = Some(query.get_updated_warning_ctx().map_err(map_query_err)?);
 
         /*if !self.args.no_lifetime {
