@@ -1936,6 +1936,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             // For `requires[no_panic]`, check the condition unless deny_panic is false.
             // (This makes the unwind path below vacuous.)
+            let mut preemptive_panic_check = false;
             match &callee_unwind_spec {
                 UnwindSpec::NoUnwindWhen(e, NoUnwindWhenKind::NoPanicRequires)
                 | UnwindSpec::NoUnwindWhen(e, NoUnwindWhenKind::NoPanicRequiresExact)
@@ -1943,12 +1944,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 {
                     let error = error_with_label(
                         &stm.span,
-                        "cannot show this call will not panic",
+                        "possible panic",
                         format!("call to {:} might panic", fun_as_friendly_rust_name(fun)),
                     )
-                    .secondary_label(&e.span, "failed this requires[no_panic] condition")
-                    .help("to allow panicking here, use #[verifier::deny_panic(false)]");
+                    .secondary_label(&e.span, "failed this `requires[no_panic]` precondition")
+                    .help("to allow panicking here, use `#[verifier::deny_panic(false)]` or add a panic-specification to the caller function");
                     stmts.push(Arc::new(StmtX::Assert(None, error, None, callee_no_unwind_when())));
+                    preemptive_panic_check = true;
                 }
                 _ => {}
             }
@@ -1976,7 +1978,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 }
 
                 // assert the negation of the caller's no_unwind condition
-                if !matches!(state.unwind, UnwindAir::MayUnwind) {
+                if !matches!(state.unwind, UnwindAir::MayUnwind) && !preemptive_panic_check {
                     nontrivial = true;
                     let e = match &state.unwind {
                         UnwindAir::MayUnwind => unreachable!(),
@@ -1987,35 +1989,38 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         UnwindAir::MayUnwind => unreachable!(),
                         UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
                             &stm.span,
-                            "cannot show this call will not unwind, in function marked `no_unwind`",
-                            format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
+                            "possible panic",
+                            format!("call to `{:}` might panic", fun_as_friendly_rust_name(fun)),
                         ),
                         UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
                             error_with_label(
                                 &stm.span,
-                                "cannot show this call will not unwind",
-                                format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
+                                "possible unwinding exit in invariant block",
+                                format!(
+                                    "call to {:} might unwind due to a panic",
+                                    fun_as_friendly_rust_name(fun)
+                                ),
                             )
                             .secondary_label(
                                 span,
-                                "unwinding is not allowed in this invariant block",
+                                "unwinding exit is not allowed from within this invariant block",
                             )
                         }
                         UnwindAir::NoUnwindWhen(_e) => error_with_label(
                             &stm.span,
-                            "cannot show this call will not unwind, in function marked `no_unwind`",
-                            "this call might unwind",
+                            "possible panic",
+                            format!("call to `{:}` might panic", fun_as_friendly_rust_name(fun)),
                         ),
                     };
                     let error = if let UnwindSpec::NoUnwindWhen(e, _) = &callee_unwind_spec {
                         error.secondary_label(
                             &e.span,
-                            "this condition needs to hold to show that the callee will not unwind",
+                            "failed this `requires[no_panic]` precondition",
                         )
                     } else {
                         error.secondary_label(
                             &func.span,
-                            "perhaps you need to mark this function as `no_unwind`?",
+                            "this function does not specify its panicking behavior; you may need to mark it `no_unwind`",
                         )
                     };
                     unwind_stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
