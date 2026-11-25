@@ -1,5 +1,4 @@
 #![feature(deref_patterns)]
-#![feature(os_str_slice)]
 #![feature(rustc_private)]
 
 // not using this as a dependency, only necessary to make the rlib for the compiler crates
