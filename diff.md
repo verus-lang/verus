@@ -194,20 +194,14 @@ Out of this series:
 - Iterator examples + `Option::into_iter` spec (37cd71da7): a small standalone PR, or drop.
 - Workaround, delete-before-merge files, `Cargo.lock` (probably drop).
 
-1. Proved lemmas, as **three independent PRs** (branched from main at cc615f27c):
-   - 1a. Small proved lemmas (branch `pr-vstd-misc-lemmas`): `div_mod.rs` (`lemma_mul_mod_equiv_zero`,
-     `spinoff_prover` on `lemma_div_denominator`), `power2.rs` (`lemma_is_pow2_pos`), `utf8.rs`,
-     and `map.rs`'s stronger `tracked_map_keys_in_place` ensures
-     (from #2609, "Changes for verifying `LinkedList`", merged only into verify-rustlib).
-   - 1b. Endian (branch `pr-vstd-endian`): `endian.rs`.
-     Includes `digit_to_int`, the workaround for the `CastToInteger` bug (main's #2908);
-     it can be removed once upstream fixes the bug (not urgent).
-   - 1c. `count_ones` (branch `pr-vstd-count-ones`): `nat_count_ones` moved from `std_specs/bits.rs` to `bits.rs`,
-     plus `lemma_nat_count_ones_pos` and `lemma_nat_count_ones_is_pow2`; `std.rs`'s test import updated.
-     **Breaking:** `vstd::std_specs::bits::nat_count_ones` is now `vstd::bits::nat_count_ones`. `wrapping.rs` unchanged.
-     Also applied to verify-rustlib-update-1.100.0, so rustlib can switch over (MERGE_TODO rustlib item 15).
-   - `pr-vstd-arithmetic` is superseded by 1a + 1c; delete its remote branch.
-   - `resource/impls/map.rs`'s two asserts are not in 1: they come from `mut_ref_ptr` (#2518) and are already in 4 (`pr-mut-ref-ptr`).
+**Opened as PRs:** 1a, 1b, 1c, 3, 4, 5, 6a, 6b, 6c (all reviewable except 1b, a draft).
+Still to open: 2, 8, 9.
+
+1. Proved lemmas (three independent PRs):
+   - 1a. Small lemmas (`pr-vstd-misc-lemmas`): `div_mod.rs`, `power2.rs`, `utf8.rs`, `map.rs`.
+   - 1b. Endian (`pr-vstd-endian`, draft): `endian.rs`.
+   - 1c. `count_ones` (`pr-vstd-count-ones`): `nat_count_ones` moves to `bits.rs` (breaking path change), plus two lemmas.
+   - Delete the superseded `pr-vstd-arithmetic` remote branch.
 2. `verus_verify_core` cfgs: `builtin` crate-level feature cfg rearrangement and the "Add cfg" list,
    `core_special_setup.rs` (its `Option`/`Result`/`unwrap`/`len` specs, not its `Tracked` `Deref` impls).
    Also takes `option.rs`'s `#[cfg(not(verus_verify_core))]` on `Option::as_mut` (the other half of #2609; see 1a).
@@ -216,49 +210,15 @@ Out of this series:
    Also resolve `slice_index_get`'s diagnostic item (commented out in #2634, reason unknown; `SliceIndexGet` is registered but unused)
    once rustlib builds: it's uncommented on verify-rustlib-update-1.100.0 (vstd builds);
    if rustlib core builds with it too, PR 2 leaves it as on main, otherwise PR 2 carries the comment-out with a reason.
-3. Shadow data (compiler). Original PR + proof support + soundness fixes as one PR, separate commits.
-   If too big, split into syntax/attributes/`rust_to_vir` and `vir` AST → SST → AIR.
-   Includes `iter.rs`'s `cfg_attr(verus_verify_core, verifier::shadow_data)` on `Iterator::next`.
-4. `mut_ref_ptr` + mut ref permission fix (compiler). Independent of 3; both branch from main, in parallel.
-   - Includes `spec_ptr_addr` in main's `raw_ptr.rs` (the compiler looks it up as `vstd::raw_ptr::spec_ptr_addr`; the new `raw_ptr` keeps that path).
-     The vstd API changes from "mut ref issues" (`cast_mut_ref_to_ptr` returning `Tracked<&mut T>`, etc.) go in 8, not here
-     (they exist only in the new `raw_ptr/ptr_specs.rs`; main has no `cast_mut_ref_to_ptr`).
-   - Whichever of 3/4 lands second rebases: both add a `UnaryOp` variant to the same match arms
-     (`interpreter.rs`, `triggers.rs`, `triggers_auto.rs`), plus possibly adjacent items in `builtin`, `verus_items.rs`, `ast.rs`.
-PRs 1–6 (including 6a–c) can run in parallel.
-
-5. `Tracked`/`Ghost: ?Sized` (`builtin`) + `modes.rs`: `tracked_ref`, `TrivialOwnership` + impls, `tracked_from_spec`
-   (the new axioms take `T: ?Sized`, so they need the `builtin` change).
-   Also all other `Tracked` changes: `builtin`'s `not(verus_verify_core)` cfg on `Tracked`'s `Deref`/`DerefMut` impls,
-   and `core_special_setup.rs`'s replacement `impl<A: ?Sized> Deref`/`DerefMut for Tracked<A>`.
-6. vstd specs and axioms needed by 8, as **three independent PRs** (no shared files; all prerequisites of 8).
-   None depend on raw_ptr. List each PR's new axioms and trusted specs in its description.
-   `pr-vstd-specs-axioms` holds all three combined (reference only).
-   - 6a. Layout axioms (branch `pr-vstd-layout`), `layout.rs` ("Layout axioms" above):
-     `layout_for_val_is_valid` takes `&V` (no users in vstd),
-     `layout_of_sized`, `layout_of_str`'s size, the pointer-metadata axiom ("unstable assumption")
-     (the last two axioms are used by `type_representation.rs`, in 9).
-     `layout_of_str`'s size uses `spec_bytes()`, which exists only under `not(verus_verify_core)`,
-     so this PR also takes `layout_of_str`'s core/non-core split and the cfg'd `StringSliceAdditionalSpecFns` import (not PR 2).
-   - 6b. Miscellaneous specs (branch `pr-vstd-misc-specs`):
-     - `control_flow.rs`: `spec_from_from_spec` (axiom via `admit()`).
-     - `std_specs/core.rs`: `ExThin` (used by `raw_ptr/ptr_specs.rs`, in 8).
-     - `option.rs`: `Option::tracked_borrow_mut` (proved; renamed from `tracked_mut_borrow` to match main).
-     - `slice.rs`: `tracked_borrow_subrange` (axiom; renamed from `tracked_slice_subrange` to match `tracked_borrow(_mut)`).
-       No callers; approved by Travis for other users, as the shared counterpart of raw_ptr's `tracked_mut_ref_slice_subrange`.
-       `tracked_slice_index` dropped (duplicates main's slice `tracked_borrow`).
-     - `slice.rs`: `slice_index_get` made `const` (rustlib's `const fn run_utf8_validation` calls it).
-       Only the `const`; its diagnostic item is left as on main.
-     - Not here: `slice.rs` cfgs and `slice_index_get`'s diagnostic item (→ 2).
-   - 6c. `Seq` borrows (branch `pr-vstd-seq-borrows`), `seq.rs`:
-     - Axioms: `tracked_borrow_subrange`, `tracked_borrow_mut_split` (renamed from `tracked_split_borrow_mut`, as `Map`/`IMap`),
-       `tracked_add_borrow(_mut)` (needed only by 8's `join_ref`/`join_mut`; kept).
-     - Proved: `tracked_borrow_subrange_mut` (from `tracked_borrow_mut_split`); `tracked_add` made `pub`.
-     - `tracked_skip` dropped (duplicates `tracked_split_at`).
-     - The description should explain why these re-add axioms to `Seq` (verified in #2625):
-       they borrow ranges and concatenations that aren't parts of the cons-list,
-       and say which raw_ptr functions need them.
-   Callers of the renamed and dropped functions are listed under 8 and 9.
+3. Shadow data (compiler): original PR + proof support + soundness fixes, plus `Iterator::next`'s `shadow_data` cfg_attr.
+4. `mut_ref_ptr` + mut ref permission fix (compiler), plus `spec_ptr_addr` in main's `raw_ptr.rs`.
+   Whichever of 3/4 lands second rebases (both add a `UnaryOp` variant to the same match arms).
+5. `Tracked`/`Ghost: ?Sized` + `modes.rs` axioms (`tracked_ref`, `TrivialOwnership`, `tracked_from_spec`) + `Tracked`'s `Deref` cfgs.
+6. vstd specs and axioms needed by 8 (three independent PRs):
+   - 6a. Layout axioms (`pr-vstd-layout`): `layout.rs`.
+   - 6b. Miscellaneous specs (`pr-vstd-misc-specs`): `control_flow.rs`, `std_specs/core.rs`, `option.rs`, `slice.rs`.
+   - 6c. `Seq` borrows (`pr-vstd-seq-borrows`): `seq.rs`.
+   Callers of 6b's and 6c's renamed and dropped functions are listed under 8 and 9.
 8. Raw pointer overhaul, as one PR with two commits so tests never break (squash-merged, so commit 1 needn't build alone). After 3, 4, 5, 6a–c.
    - Commit 1 (the one reviewers look at): `raw_ptr/`, `SharedReference` deletion, `group_points_to_lemmas` in `vstd.rs`.
      - Excludes `type_representation_implements_encode_decode` and the two
