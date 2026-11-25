@@ -45,14 +45,13 @@ pub(crate) fn get_preheader<'tcx>(
 ) -> Result<PreHeader, VirErr> {
     let body_expr = if is_async { extract_desugared_async_body(ctxt, body)? } else { &body.value };
     let mut pre_header = empty_preheader();
-    walk_expr(ctxt, vir_params, body.params, body_expr, &mut pre_header)?;
+    walk_expr(ctxt, vir_params, body_expr, &mut pre_header)?;
     Ok(pre_header)
 }
 
 fn walk_expr<'tcx>(
     ctxt: &Context<'tcx>,
     vir_params: &[vir::ast::Param],
-    hir_params: &[rustc_hir::Param<'tcx>],
     expr: &Expr,
     pre_header: &mut PreHeader,
 ) -> Result<(), VirErr> {
@@ -65,8 +64,7 @@ fn walk_expr<'tcx>(
                     crate::attributes::parse_attrs_opt(ctxt.tcx.hir_attrs(stmt.hir_id), None);
                 if let [Attr::UnwrapParameter] = attrs[..] {
                     if let Some(stmt2) = iter.next() {
-                        let u =
-                            unwrap_param_extract_idents(ctxt.tcx, vir_params, hir_params, stmt2)?;
+                        let u = unwrap_param_extract_idents(ctxt.tcx, vir_params, stmt2)?;
                         pre_header.unwrap_parameters.push(u);
                     } else {
                         internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
@@ -93,7 +91,6 @@ fn walk_expr<'tcx>(
 fn unwrap_param_extract_idents<'tcx>(
     tcx: TyCtxt<'tcx>,
     vir_params: &[vir::ast::Param],
-    hir_params: &[rustc_hir::Param<'tcx>],
     stmt: &Stmt,
 ) -> Result<UnwrapParameter, VirErr> {
     let StmtKind::Semi(e) = stmt.kind else {
@@ -137,7 +134,7 @@ fn unwrap_param_extract_idents<'tcx>(
     };
     let rhs_name = crate::rust_to_vir_expr::pat_to_var(rhs_pat)?;
 
-    let idx = hir_params.iter().position(|param| param.pat.hir_id == rhs_pat.hir_id);
+    let idx = vir_params.iter().position(|param| param.x.name == rhs_name);
     let Some(idx) = idx else {
         internal_err!(stmt.span, "ill-formed `unwrap_parameter` header");
     };
