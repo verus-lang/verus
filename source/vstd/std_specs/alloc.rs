@@ -18,6 +18,13 @@ pub unsafe trait ExAllocatorClone: core::alloc::Allocator + Clone {
     type ExternalTraitSpecificationFor: core::alloc::AllocatorClone;
 }
 
+// Likewise for Rc/Arc's `From<Vec<T, A>>` impls.
+#[cfg(feature = "alloc")]
+#[verifier::external_trait_specification]
+pub trait ExAllocatorNightly: core::alloc::Allocator {
+    type ExternalTraitSpecificationFor: alloc::alloc::AllocatorNightly;
+}
+
 #[cfg(feature = "alloc")]
 #[feature(liballoc_internals)]
 pub assume_specification<T, const N: usize>[ alloc::boxed::box_assume_init_into_vec_unsafe ](

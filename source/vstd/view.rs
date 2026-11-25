@@ -58,7 +58,7 @@ impl<A: DeepView + ?Sized> DeepView for alloc::boxed::Box<A> {
 }
 
 #[cfg(feature = "alloc")]
-impl<A: View> View for alloc::rc::Rc<A> {
+impl<A: View + ?Sized> View for alloc::rc::Rc<A> {
     type V = A::V;
 
     #[verifier::inline]
@@ -68,7 +68,7 @@ impl<A: View> View for alloc::rc::Rc<A> {
 }
 
 #[cfg(feature = "alloc")]
-impl<A: DeepView> DeepView for alloc::rc::Rc<A> {
+impl<A: DeepView + ?Sized> DeepView for alloc::rc::Rc<A> {
     type V = A::V;
 
     #[verifier::inline]
@@ -78,7 +78,7 @@ impl<A: DeepView> DeepView for alloc::rc::Rc<A> {
 }
 
 #[cfg(feature = "alloc")]
-impl<A: View> View for alloc::sync::Arc<A> {
+impl<A: View + ?Sized> View for alloc::sync::Arc<A> {
     type V = A::V;
 
     #[verifier::inline]
@@ -88,7 +88,7 @@ impl<A: View> View for alloc::sync::Arc<A> {
 }
 
 #[cfg(feature = "alloc")]
-impl<A: DeepView> DeepView for alloc::sync::Arc<A> {
+impl<A: DeepView + ?Sized> DeepView for alloc::sync::Arc<A> {
     type V = A::V;
 
     #[verifier::inline]
