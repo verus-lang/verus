@@ -158,13 +158,21 @@ Add cfg:
 - `source/vstd/laws_eq.rs`
 - `source/vstd/layout.rs` (only the cfgs; see "Layout axioms")
 - `source/vstd/slice.rs` (cfgs, plus `axiom_slice_ext_equal` using `@.len()`)
+- `source/vstd/seq.rs`, `source/vstd/set.rs` (`#[deprecated]` → `cfg_attr(not(verus_verify_core), deprecated(..))`; Rust 1.100 update)
+- `source/vstd/std_specs/cmp.rs` (`min`, `max`, `min_by`, `max_by`, `min_by_key`, `max_by_key`; Rust 1.100 update)
 - `source/vstd/std_specs/core.rs` (`Deref`, `Index`, `Option`, `Result`)
+- `source/vstd/std_specs/mod.rs` (`char`, `ptr`, `nonzero`; `bits` is in PR 1c; Rust 1.100 update)
 - `source/vstd/std_specs/option.rs`
 - `source/vstd/std_specs/result.rs`
 - `source/vstd/std_specs/slice.rs`
 - `source/vstd/std_specs/vec.rs`
 - `source/vstd/std_specs/vecdeque.rs`
-- `source/vstd/vstd.rs` (`simple_pptr`)
+- `source/vstd/vstd.rs` (`simple_pptr`, `group_nonzero_axioms`; `group_bits_axioms` is in PR 1c)
+
+`--is-core` compiler fixes (Rust 1.100 update, uncommitted):
+- `source/rust_verify/src/rust_to_vir.rs`: allow `extern crate self as core;` in core (main's #3574 reserves `core` as an `extern crate` alias)
+- `source/rust_verify/src/rust_to_vir_expr.rs`: allow `enum as usize` discriminants above `u32::MAX` (MERGE_TODO verus item 11)
+- `source/rust_verify/src/config.rs`: allow `--no-cheating` with `--is-core` / `--is-stdlib-outside-of-core` (disallowed by #2568)
 
 Layout axioms (`source/vstd/layout.rs`, beyond the cfgs):
 - `layout_for_val_is_valid` takes `&V` instead of `Tracked<&V>` (API change)
@@ -195,21 +203,27 @@ Out of this series:
 - Workaround, delete-before-merge files, `Cargo.lock` (probably drop).
 
 **Opened as PRs:** 1a, 1b, 1c, 3, 4, 5, 6a, 6b, 6c (all reviewable except 1b, a draft).
-Still to open: 2, 8, 9.
+Still to open: 2, 7, 8, 9.
+3, 4, 5 and 6a–c stay as they are; differences with verify-rustlib are fixed on verify-rustlib and in rustlib
+(see "Bring verify-rustlib in line with the opened PRs" below).
 
 1. Proved lemmas (three independent PRs):
    - 1a. Small lemmas (`pr-vstd-misc-lemmas`): `div_mod.rs`, `power2.rs`, `utf8.rs`, `map.rs`.
    - 1b. Endian (`pr-vstd-endian`, draft): `endian.rs`.
    - 1c. `count_ones` (`pr-vstd-count-ones`): `nat_count_ones` moves to `bits.rs` (breaking path change), plus two lemmas.
+     Also cfgs out `std_specs::bits` and `group_bits_axioms` under `verus_verify_core`,
+     which the move makes possible, so PR 2 doesn't depend on 1c
+     (uncommitted, in worktree `.claude/worktrees/pr-count-ones`).
    - Delete the superseded `pr-vstd-arithmetic` remote branch.
 2. `verus_verify_core` cfgs: `builtin` crate-level feature cfg rearrangement and the "Add cfg" list,
    `core_special_setup.rs` (its `Option`/`Result`/`unwrap`/`len` specs, not its `Tracked` `Deref` impls).
    Also takes `option.rs`'s `#[cfg(not(verus_verify_core))]` on `Option::as_mut` (the other half of #2609; see 1a).
    Independent. Resolve the "match rustlib defs" TODO first.
    `Tracked`'s `Deref`/`DerefMut` cfgs and the test's matching impls go in 5, so 2 and 5 can merge in either order.
-   Also resolve `slice_index_get`'s diagnostic item (commented out in #2634, reason unknown; `SliceIndexGet` is registered but unused)
-   once rustlib builds: it's uncommented on verify-rustlib-update-1.100.0 (vstd builds);
-   if rustlib core builds with it too, PR 2 leaves it as on main, otherwise PR 2 carries the comment-out with a reason.
+   Includes the Rust 1.100 update's cfgs (marked in the "Add cfg" list).
+   Also resolve `slice_index_get`'s diagnostic item (commented out in #2634, reason unknown; `SliceIndexGet` is registered but unused):
+   it's still commented out on verify-rustlib-update-1.100.0.
+   Uncomment it there; if vstd and rustlib core build, PR 2 leaves it as on main, otherwise PR 2 carries the comment-out with a reason.
 3. Shadow data (compiler): original PR + proof support + soundness fixes, plus `Iterator::next`'s `shadow_data` cfg_attr.
 4. `mut_ref_ptr` + mut ref permission fix (compiler), plus `spec_ptr_addr` in main's `raw_ptr.rs`.
    Whichever of 3/4 lands second rebases (both add a `UnaryOp` variant to the same match arms).
@@ -219,6 +233,10 @@ Still to open: 2, 8, 9.
    - 6b. Miscellaneous specs (`pr-vstd-misc-specs`): `control_flow.rs`, `std_specs/core.rs`, `option.rs`, `slice.rs`.
    - 6c. `Seq` borrows (`pr-vstd-seq-borrows`): `seq.rs`.
    Callers of 6b's and 6c's renamed and dropped functions are listed under 8 and 9.
+7. `--is-core` compiler fixes (the list above), one commit each. Independent.
+   Before opening: resolve MERGE_TODO verus item 11 (check the target's pointer width, not just `--is-core`),
+   and state why rustlib needs `--no-cheating` with `--is-core` (it loosens #2568's rule;
+   could be a separate PR if it should go to #2568's reviewers on its own).
 8. Raw pointer overhaul, as one PR with two commits so tests never break (squash-merged, so commit 1 needn't build alone). After 3, 4, 5, 6a–c.
    - Commit 1 (the one reviewers look at): `raw_ptr/`, `SharedReference` deletion, `group_points_to_lemmas` in `vstd.rs`.
      - Excludes `type_representation_implements_encode_decode` and the two
@@ -242,3 +260,20 @@ Still to open: 2, 8, 9.
    - Callers to update for 6b's renames and removals:
      - `tracked_slice_index` (dropped) → main's `slice::tracked_borrow`: `type_representation.rs` (1 call).
      - rustlib: `Option::tracked_mut_borrow` → `tracked_borrow_mut` in `alloc/src/raw_vec/mod.rs` (1 call).
+
+# Bring verify-rustlib in line with the opened PRs (not done yet)
+
+Checked 2026-11-25 against verify-rustlib-update-1.100.0.
+1a and 1c match; 3, 4 and 5 differ only by each other's hunks, PR 2's and the workaround.
+Take each PR's version of its files, then:
+- 6b, `spec_from_from_spec` is weaker: it now also requires `<S as FromSpec<T>>::obeys_from_spec()`.
+  rustlib's `grow_amortized` (`alloc/src/raw_vec/mod.rs`) uses it,
+  and `obeys_from_spec` for `FromSpecImpl<TryReserveErrorKind> for TryReserveError` (`alloc/src/collections/mod.rs`) is `closed`,
+  so rustlib probably needs it `open` or a lemma (a rustlib spec change: propose it first).
+- 6b, `Option::tracked_borrow_mut` (renamed, now proved), `slice::tracked_borrow_subrange` (renamed, no callers),
+  `tracked_slice_index` dropped: callers under 8 and 9.
+- 6c, `seq.rs`: `tracked_borrow_subrange` becomes an axiom and `tracked_borrow_subrange_mut` is proved
+  (both `external_body` here), plus the renames and removal under 8.
+- 6a, `layout.rs`: the `StringSliceAdditionalSpecFns` import's cfg is `all(verus_keep_ghost, not(verus_verify_core))`,
+  and `layout_of_sized` and some comments moved. No callers affected.
+- Doc comments only: `endian.rs` (1b: `digit_to_int`, `to_big_from_digits_single`), `modes.rs` (5: `tracked_ref`).

@@ -100,6 +100,24 @@ This is the only list of follow-ups; the sections below point here.
    - Check that rustlib's core builds with the new `builtin/src/lib.rs` attributes
      (it includes `builtin/src/lib.rs` as a module, like `test_is_core`).
 
+   Changes made to this branch while building rustlib's core (Rust 1.100 update) **[decisions]**:
+   - `rust_verify/src/config.rs`: `--no-cheating` no longer rejects `--is-core` / `--is-stdlib-outside-of-core`.
+     Main's #3392 (8bf68ee74) disallows them on purpose; rustlib verifies core and alloc with `--no-cheating`.
+   - `rust_verify/src/rust_to_vir.rs` (`check_extern_crate_alias`, from main's #3279):
+     `extern crate self as core;` is allowed under `--is-core` (core's `lib.rs` has it; the macros' `::core::` paths need it).
+   - `rust_verify/src/rust_to_vir_expr.rs` (`expr_cast_enum_int_to_vir`, from main's #2770):
+     `usize` discriminants above `u32::MAX` are allowed under `--is-core` (rustlib's 64-bit `AlignmentEnum`).
+     Checking the target width is `MERGE_TODO.md` verus item 10.
+   - vstd `#[deprecated]` attributes in `seq.rs` / `set.rs` → `#[cfg_attr(not(verus_verify_core), deprecated(...))]`
+     (core's `staged_api` requires a `since`).
+   - `#[cfg(not(verus_verify_core))]` on main-added specs that duplicate rustlib's own:
+     the `std_specs::{nonzero, bits, char, ptr}` modules (and the nonzero / bits groups in `group_vstd_default`),
+     and the `core::cmp::{min, max, min_by, max_by, min_by_key, max_by_key}` assume_specs in `std_specs/cmp.rs`.
+     The goal of gating all of them is rustlib item 5 in `MERGE_TODO.md`.
+   - `std_specs::iter::group_iter_axioms` is not in `group_vstd_default` under `verus_verify_core`:
+     main's `ExIterator::advance_by` spec uses `NonZero`'s view, which in core reaches modules that `broadcast use group_vstd_default`,
+     so the iterator axioms close a cycle; rustlib modules that need them `broadcast use` the group explicitly.
+
 **Upstream reports** (optional; drafts for 6 and 7 in `UPSTREAM_REPORTS.md`, not filed)
 
 6. `CastToInteger` (item 1), with the `s.push(d as int)` repro; once fixed, `digit_to_int` can go.
