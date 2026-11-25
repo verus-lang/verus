@@ -64,16 +64,14 @@ macro_rules! atomic_specs_common {
             no_panic;
 
         pub assume_specification [ <$at>::load ](atomic: &$at, order: Ordering) -> $ty
-            requires
+            requires[no_panic exact]
                 order != Ordering::Release,
-                order != Ordering::AcqRel,
-            no_panic;
+                order != Ordering::AcqRel;
 
         pub assume_specification [ <$at>::store ](atomic: &$at, val: $ty, order: Ordering)
-            requires
+            requires[no_panic exact]
                 order != Ordering::Acquire,
-                order != Ordering::AcqRel,
-            no_panic;
+                order != Ordering::AcqRel;
 
         pub assume_specification [ <$at>::swap ](atomic: &$at, val: $ty, order: Ordering) -> $ty
             no_panic;

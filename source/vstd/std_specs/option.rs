@@ -158,7 +158,7 @@ pub open spec fn spec_unwrap<T>(option: Option<T>) -> T
 
 #[verifier::when_used_as_spec(spec_unwrap)]
 pub assume_specification<T>[ Option::<T>::unwrap ](option: Option<T>) -> (t: T)
-    requires
+    requires[no_panic exact]
         option is Some,
     ensures
         t == spec_unwrap(option),
@@ -191,7 +191,7 @@ pub open spec fn spec_expect<T>(option: Option<T>, msg: &str) -> T
 
 #[verifier::when_used_as_spec(spec_expect)]
 pub assume_specification<T>[ Option::<T>::expect ](option: Option<T>, msg: &str) -> (t: T)
-    requires
+    requires[no_panic exact]
         option is Some,
     ensures
         t == spec_expect(option, msg),

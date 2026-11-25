@@ -177,7 +177,7 @@ pub open spec fn spec_unwrap<T, E: core::fmt::Debug>(result: Result<T, E>) -> T
 pub assume_specification<T, E: core::fmt::Debug>[ Result::<T, E>::unwrap ](
     result: Result<T, E>,
 ) -> (t: T)
-    requires
+    requires[no_panic exact]
         result is Ok,
     ensures
         t == result->Ok_0,
@@ -232,7 +232,7 @@ pub assume_specification<T, E: core::fmt::Debug>[ Result::<T, E>::expect ](
     result: Result<T, E>,
     msg: &str,
 ) -> (t: T)
-    requires
+    requires[no_panic exact]
         result is Ok,
     ensures
         t == result->Ok_0,

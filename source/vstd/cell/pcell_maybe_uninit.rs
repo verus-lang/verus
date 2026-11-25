@@ -108,6 +108,7 @@ impl<V> PCell<V> {
         ensures
             pt.1@.id() == pt.0.id(),
             pt.1@.mem_contents() == MemContents::Uninit,
+        no_panic
     {
         let (pcell, Tracked(pt)) = pc::PCell::new(MaybeUninit::uninit());
         (PCell(pcell), Tracked(PointsTo(pt)))
@@ -118,6 +119,7 @@ impl<V> PCell<V> {
         ensures
             pt.1@.id() == pt.0.id(),
             pt.1@.mem_contents() == MemContents::Init(v),
+        no_panic
     {
         let (pcell, Tracked(pt)) = pc::PCell::new(MaybeUninit::new(v));
         (PCell(pcell), Tracked(PointsTo(pt)))

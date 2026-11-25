@@ -2005,3 +2005,41 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] vstd_no_panic_exact_specs verus_code! {
+        use vstd::prelude::*;
+        use core::sync::atomic::{AtomicU32, Ordering};
+
+        fn test1(o: Option<u8>, v: &Vec<u8>, i: usize) {
+            let x = o.unwrap(); // FAILS
+            let y = v[i]; // FAILS
+        }
+
+        // with deny_panic(false), the calls may panic, and a normal return implies the condition
+        #[verifier::deny_panic(false)]
+        fn test2(o: Option<u8>, r: Result<u8, u8>, v: &Vec<u8>, s: &mut [u8], i: usize) {
+            let x = o.unwrap();
+            assert(o is Some);
+            let x = r.expect("ok");
+            assert(r is Ok);
+            let y = v[i];
+            assert(i < v.len());
+            s.swap(i, 0);
+            assert(i < s.len());
+        }
+
+        #[verifier::deny_panic(false)]
+        fn test3(a: &AtomicU32, o: Ordering) {
+            let _ = a.load(o);
+            assert(o != Ordering::Release);
+        }
+
+        #[verifier::deny_panic(false)]
+        fn test4(v: &Vec<u8>, i: usize)
+            no_panic
+        {
+            let y = v[i]; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}

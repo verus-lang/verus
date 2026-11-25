@@ -51,11 +51,10 @@ pub struct ExTryReserveError(alloc::collections::TryReserveError);
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::vec::vec_index")]
 pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
-    requires
+    requires[no_panic exact]
         i < vec.view().len(),
     ensures
         *element == vec.view().index(i as int),
-    no_panic
 {
     &vec[i]
 }
@@ -65,14 +64,13 @@ pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::vec::vec_index_mut")]
 pub fn vec_index_mut<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element: &mut T)
-    requires
+    requires[no_panic exact]
         i < vec.view().len(),
     ensures
         *element == old(vec)@.index(i as int),
         final(vec)@ == old(vec)@.update(i as int, *final(element)),
 
         *final(element) == final(vec).view().index(i as int),
-    no_panic
 {
     &mut vec[i]
 }

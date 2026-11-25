@@ -36,15 +36,16 @@ only if the existing `requires` excludes it. Functions that allocate (for exampl
 No existing `no_unwind` spec was found to be wrong. vstd verifies with the changes (2354 verified, 0 errors),
 and the full rust_verify_test suite passes.
 
-## Candidates for `requires[no_panic]` (not applied)
+## `requires[no_panic exact]` (applied in a follow-up commit)
 
-For these functions, the Rust docs guarantee a panic, not UB, exactly when the current plain `requires`
-fails. So `requires[no_panic exact]` would be a faithful (and weaker) precondition. They were left as
-plain `requires` (plus `no_panic`), because weakening a vstd precondition is an API decision.
+For these functions, the Rust docs guarantee a panic, not UB, exactly when the old plain `requires`
+fails. Their plain `requires` + `no_panic` has been replaced with `requires[no_panic exact]`.
+The condition is still checked at call sites by default, but with `#[verifier::deny_panic(false)]`
+callers may let them panic, and may assume the condition after a normal return.
 
 - slices: `swap`, `rotate_left`, `rotate_right`, `split_at`, `split_at_mut`
 - `Vec` indexing (`vec_index`, `vec_index_mut`)
-- `Option::unwrap`/`expect`, `Result::unwrap`/`expect` (these have no unwind spec today)
+- `Option::unwrap`/`expect`, `Result::unwrap`/`expect`
 - atomics (std_specs/atomic.rs): `load` (Release/AcqRel) and `store` (Acquire/AcqRel). Not
   `compare_exchange(_weak)`: the docs don't promise a panic for a bad failure ordering.
 
@@ -68,8 +69,8 @@ can't be relied on.
   user's `From`. The `?` operator in a `no_panic` function works through the inherited trait-level
   `ensures[on panic]` (tested in `no_panic_vstd_calls`). The name `may_unwind` was kept, to avoid breaking
   users, but it now means "may panic".
-- **Not marked yet:** constructors with no unwind spec that don't allocate (atomic `new`, `cell::PCell::{empty,new}`,
-  `pcell_maybe_uninit::PCell::{empty,new}`) could be marked `no_panic`.
+- **Constructors:** the non-allocating constructors that had no unwind spec (the `PAtomic*::new` wrappers in atomic.rs,
+  `cell::PCell::{empty,new}`, `pcell_maybe_uninit::PCell::{empty,new}`) are now marked `no_panic` (follow-up commit).
 - The 1.100 toolchain has no local rust-src. Implementations were read from the local 1.98.1 rust-src, and
   the docs were checked online against 1.100.
 

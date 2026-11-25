@@ -168,6 +168,7 @@ impl<V> PCell<V> {
     pub const fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@@ == pcell_points![ pt.0.id() => MemContents::Uninit ],
+        no_panic
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
         (p, Tracked::assume_new())
@@ -178,6 +179,7 @@ impl<V> PCell<V> {
     pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@@ == pcell_points! [ pt.0.id() => MemContents::Init(v) ],
+        no_panic
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::new(v)) };
         (p, Tracked::assume_new())

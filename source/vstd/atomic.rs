@@ -158,6 +158,7 @@ macro_rules! atomic_common_methods {
         pub const fn new(i: $value_ty) -> (res: ($at_ident, Tracked<$p_ident>))
             ensures
                 equal(res.1@.view(), $p_data_ident{ patomic: res.0.id(), value: i }),
+            no_panic
         {
             let p = $at_ident { ato: <$rust_ty>::new(i) };
             (p, Tracked::assume_new())
