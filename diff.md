@@ -167,11 +167,11 @@ Add cfg:
 - `source/vstd/std_specs/slice.rs`
 - `source/vstd/std_specs/vec.rs`
 - `source/vstd/std_specs/vecdeque.rs`
-- `source/vstd/vstd.rs` (`simple_pptr`, `group_nonzero_axioms`; `group_bits_axioms` is in PR 1c)
+- `source/vstd/vstd.rs` (`simple_pptr`, `group_nonzero_axioms`, `group_iter_axioms`; `group_bits_axioms` is in PR 1c)
 
 `--is-core` compiler fixes (Rust 1.100 update, uncommitted):
 - `source/rust_verify/src/rust_to_vir.rs`: allow `extern crate self as core;` in core (main's #3574 reserves `core` as an `extern crate` alias)
-- `source/rust_verify/src/rust_to_vir_expr.rs`: allow `enum as usize` discriminants above `u32::MAX` (MERGE_TODO verus item 11)
+- `source/rust_verify/src/rust_to_vir_expr.rs`: allow `enum as usize` discriminants above `u32::MAX` (MERGE_TODO verus item 8)
 - `source/rust_verify/src/config.rs`: allow `--no-cheating` with `--is-core` / `--is-stdlib-outside-of-core` (disallowed by #2568)
 
 Layout axioms (`source/vstd/layout.rs`, beyond the cfgs):
@@ -234,7 +234,7 @@ Still to open: 2, 7, 8, 9.
    - 6c. `Seq` borrows (`pr-vstd-seq-borrows`): `seq.rs`.
    Callers of 6b's and 6c's renamed and dropped functions are listed under 8 and 9.
 7. `--is-core` compiler fixes (the list above), one commit each. Independent.
-   Before opening: resolve MERGE_TODO verus item 11 (check the target's pointer width, not just `--is-core`),
+   Before opening: resolve MERGE_TODO verus item 8 (check the target's pointer width, not just `--is-core`),
    and state why rustlib needs `--no-cheating` with `--is-core` (it loosens #2568's rule;
    could be a separate PR if it should go to #2568's reviewers on its own).
 8. Raw pointer overhaul, as one PR with two commits so tests never break (squash-merged, so commit 1 needn't build alone). After 3, 4, 5, 6a–c.

@@ -107,13 +107,13 @@ This is the only list of follow-ups; the sections below point here.
      `extern crate self as core;` is allowed under `--is-core` (core's `lib.rs` has it; the macros' `::core::` paths need it).
    - `rust_verify/src/rust_to_vir_expr.rs` (`expr_cast_enum_int_to_vir`, from main's #2770):
      `usize` discriminants above `u32::MAX` are allowed under `--is-core` (rustlib's 64-bit `AlignmentEnum`).
-     Checking the target width is `MERGE_TODO.md` verus item 10.
+     Checking the target width is `MERGE_TODO.md` verus item 8.
    - vstd `#[deprecated]` attributes in `seq.rs` / `set.rs` → `#[cfg_attr(not(verus_verify_core), deprecated(...))]`
      (core's `staged_api` requires a `since`).
    - `#[cfg(not(verus_verify_core))]` on main-added specs that duplicate rustlib's own:
      the `std_specs::{nonzero, bits, char, ptr}` modules (and the nonzero / bits groups in `group_vstd_default`),
      and the `core::cmp::{min, max, min_by, max_by, min_by_key, max_by_key}` assume_specs in `std_specs/cmp.rs`.
-     The goal of gating all of them is rustlib item 5 in `MERGE_TODO.md`.
+     The goal of gating all of them is rustlib item 1 in `MERGE_TODO.md`.
    - `std_specs::iter::group_iter_axioms` is not in `group_vstd_default` under `verus_verify_core`:
      main's `ExIterator::advance_by` spec uses `NonZero`'s view, which in core reaches modules that `broadcast use group_vstd_default`,
      so the iterator axioms close a cycle; rustlib modules that need them `broadcast use` the group explicitly.
