@@ -351,7 +351,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
         autospec: autospec_usage,
         assume_external_allowed,
         const_var,
-        restrict_unwind: get_restrict_unwind(bctx, Some(expr.hir_id))?,
+        deny_panic: get_deny_panic(bctx, Some(expr.hir_id))?,
     };
     let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, call_target_attrs);
     Ok(bctx.spanned_typed_new(
@@ -438,21 +438,20 @@ pub(crate) fn call_index<'tcx>(
 }
 
 /// Determine whether `requires[no_panic]` conditions should be checked for a call,
-/// based on #[verifier::restrict_unwind(...)] on the call expression (if any)
+/// based on #[verifier::deny_panic(...)] on the call expression (if any)
 /// or on the enclosing items.
-pub(crate) fn get_restrict_unwind<'tcx>(
+pub(crate) fn get_deny_panic<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     hir_id: Option<rustc_hir::HirId>,
 ) -> Result<bool, VirErr> {
     if let Some(hir_id) = hir_id {
         let expr_attrs = bctx.ctxt.tcx.hir_attrs(hir_id);
         let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
-        if let Some(b) = expr_vattrs.restrict_unwind {
+        if let Some(b) = expr_vattrs.deny_panic {
             return Ok(b);
         }
     }
-    Ok(crate::attributes::get_restrict_unwind_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
-        .unwrap_or(true))
+    Ok(crate::attributes::get_deny_panic_walk_parents(bctx.ctxt.tcx, bctx.fun_id).unwrap_or(true))
 }
 
 /// Common logic for all the overloaded methods
@@ -522,7 +521,7 @@ pub(crate) fn call_overloaded_method<'tcx>(
         autospec: autospec_usage,
         assume_external_allowed: false,
         const_var: false,
-        restrict_unwind: get_restrict_unwind(bctx, None)?,
+        deny_panic: get_deny_panic(bctx, None)?,
     };
     let call_target =
         CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, call_target_attrs);
@@ -672,8 +671,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     | SpecItem::InvMaskSet
                     | SpecItem::NoUnwind
                     | SpecItem::NoUnwindWhen
-                    | SpecItem::NoUnwindRequires
-                    | SpecItem::NoUnwindRequiresExact
+                    | SpecItem::NoPanicRequires
+                    | SpecItem::NoPanicRequiresExact
                     | SpecItem::UnwindEnsures => (true, false),
 
                     SpecItem::Ensures | SpecItem::Returns => (true, true),
@@ -697,8 +696,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
                 }
                 SpecItem::Requires
-                | SpecItem::NoUnwindRequires
-                | SpecItem::NoUnwindRequiresExact
+                | SpecItem::NoPanicRequires
+                | SpecItem::NoPanicRequiresExact
                 | SpecItem::UnwindEnsures
                 | SpecItem::Recommends
                 | SpecItem::Returns => {
@@ -725,8 +724,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                         let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
                         match spec_item {
                             SpecItem::Requires
-                            | SpecItem::NoUnwindRequires
-                            | SpecItem::NoUnwindRequiresExact
+                            | SpecItem::NoPanicRequires
+                            | SpecItem::NoPanicRequiresExact
                             | SpecItem::UnwindEnsures
                             | SpecItem::Recommends => match &*typ {
                                 TypX::Bool => {}
@@ -746,11 +745,11 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                     let header = match spec_item {
                         SpecItem::Requires => Arc::new(HeaderExprX::Requires(Arc::new(vir_args))),
-                        SpecItem::NoUnwindRequires => {
-                            Arc::new(HeaderExprX::NoUnwindRequires(Arc::new(vir_args)))
+                        SpecItem::NoPanicRequires => {
+                            Arc::new(HeaderExprX::NoPanicRequires(Arc::new(vir_args)))
                         }
-                        SpecItem::NoUnwindRequiresExact => {
-                            Arc::new(HeaderExprX::NoUnwindRequiresExact(Arc::new(vir_args)))
+                        SpecItem::NoPanicRequiresExact => {
+                            Arc::new(HeaderExprX::NoPanicRequiresExact(Arc::new(vir_args)))
                         }
                         SpecItem::UnwindEnsures => {
                             Arc::new(HeaderExprX::UnwindEnsures(Arc::new(vir_args)))

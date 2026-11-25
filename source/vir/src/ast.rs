@@ -859,12 +859,12 @@ pub enum HeaderExprX {
     NoUnwind,
     /// This function will not unwind if the given condition holds (function of arguments)
     NoUnwindWhen(Expr),
-    /// `requires[no_panic]`: the function will not unwind if the conditions hold,
-    /// and the conditions are checked at call sites by default (see restrict_unwind)
-    NoUnwindRequires(Exprs),
-    /// `requires[no_panic exact]`: same as NoUnwindRequires, but additionally
-    /// the function unwinds if the conditions do not hold
-    NoUnwindRequiresExact(Exprs),
+    /// `requires[no_panic]`: the function will not panic if the conditions hold,
+    /// and the conditions are checked at call sites by default (see deny_panic)
+    NoPanicRequires(Exprs),
+    /// `requires[no_panic exact]`: same as NoPanicRequires, but additionally
+    /// the function panics if the conditions do not hold
+    NoPanicRequiresExact(Exprs),
     /// `ensures[on unwind]`: the conditions hold if the function unwinds
     UnwindEnsures(Exprs),
     /// The visibility used in, e.g., `open(crate)`
@@ -1037,8 +1037,8 @@ pub struct CallTargetAttrs {
     /// If the expected Fun is undeclared, enable replacing Fun with AssumeExternal
     pub assume_external_allowed: bool,
     /// If true, check the callee's `requires[no_panic]` conditions at this call site
-    /// even if not needed to prove that the caller does not unwind
-    pub restrict_unwind: bool,
+    /// even if not needed to prove that the caller does not panic
+    pub deny_panic: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -1682,11 +1682,11 @@ pub enum NoUnwindWhenKind {
     /// when needed to prove that the caller doesn't unwind
     When,
     /// `requires[no_panic] e`: the condition is checked at call sites
-    /// (unless restrict_unwind is false for the call)
-    Requires,
-    /// `requires[no_panic exact] e`: same as Requires, but additionally the function
-    /// unwinds if the condition does not hold (so the condition holds if the function returns)
-    RequiresExact,
+    /// (unless deny_panic is false for the call)
+    NoPanicRequires,
+    /// `requires[no_panic exact] e`: same as NoPanicRequires, but additionally the function
+    /// panics if the condition does not hold (so the condition holds if the function returns)
+    NoPanicRequiresExact,
 }
 
 /// Function specification of whether it may unwind

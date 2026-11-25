@@ -181,8 +181,8 @@ pub(crate) fn is_header_verus_item(verus_item: &VerusItem) -> bool {
             | SpecItem::OpensInvariantMask
             | SpecItem::NoUnwind
             | SpecItem::NoUnwindWhen
-            | SpecItem::NoUnwindRequires
-            | SpecItem::NoUnwindRequiresExact
+            | SpecItem::NoPanicRequires
+            | SpecItem::NoPanicRequiresExact
             | SpecItem::UnwindEnsures => true,
         },
         VerusItem::Directive(dir_item) => match dir_item {

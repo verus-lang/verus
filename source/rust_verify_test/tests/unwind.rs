@@ -957,20 +957,20 @@ test_verify_one_file_with_options! {
             f2(10, 3); // FAILS
         }
 
-        #[verifier::restrict_unwind(false)]
+        #[verifier::deny_panic(false)]
         fn caller5() {
             f(3);
             f2(10, 3);
         }
 
-        #[verifier::restrict_unwind(false)]
+        #[verifier::deny_panic(false)]
         fn caller6()
             no_unwind
         {
             f(3); // FAILS
         }
 
-        #[verifier::restrict_unwind(false)]
+        #[verifier::deny_panic(false)]
         fn caller7()
             no_unwind
         {
@@ -978,13 +978,13 @@ test_verify_one_file_with_options! {
         }
 
         fn caller8() {
-            #[verifier::restrict_unwind(false)] f(3);
+            #[verifier::deny_panic(false)] f(3);
             f(3); // FAILS
         }
 
-        #[verifier::restrict_unwind(false)]
+        #[verifier::deny_panic(false)]
         fn caller9() {
-            #[verifier::restrict_unwind(true)] f(3); // FAILS
+            #[verifier::deny_panic(true)] f(3); // FAILS
         }
 
         fn body1(i: u8)
@@ -999,11 +999,11 @@ test_verify_one_file_with_options! {
                 i >= 5,
         {
             // the caller's own requires[no_panic] conditions are not preconditions,
-            // so with restrict_unwind, this must be proven unconditionally
+            // so with deny_panic, this must be proven unconditionally
             f(i); // FAILS
         }
 
-        #[verifier::restrict_unwind(false)]
+        #[verifier::deny_panic(false)]
         fn body3(i: u8)
             requires[no_panic]
                 i >= 5,
@@ -1014,7 +1014,7 @@ test_verify_one_file_with_options! {
             }
         }
 
-        #[verifier::restrict_unwind(false)]
+        #[verifier::deny_panic(false)]
         fn body4(i: u8)
             requires[no_panic]
                 i >= 4,
@@ -1061,13 +1061,13 @@ test_verify_one_file_with_options! {
             do_panic(); // FAILS
         }
 
-        #[verifier::restrict_unwind(false)]
+        #[verifier::deny_panic(false)]
         fn caller1(j: u8) {
             g(j);
             assert(j >= 5);
         }
 
-        #[verifier::restrict_unwind(false)]
+        #[verifier::deny_panic(false)]
         fn caller2(j: u8) {
             g(j);
             assert(j >= 6); // FAILS
@@ -1078,8 +1078,8 @@ test_verify_one_file_with_options! {
         }
 
         fn caller4(j: u8) {
-            #[verifier::restrict_unwind(false)] g(j);
-            #[verifier::restrict_unwind(true)] g(j);
+            #[verifier::deny_panic(false)] g(j);
+            #[verifier::deny_panic(true)] g(j);
         }
     } => Err(err) => assert_fails(err, 4)
 }
@@ -1109,7 +1109,7 @@ test_verify_one_file! {
             let r = ext(0); // FAILS
         }
 
-        #[verifier::restrict_unwind(false)]
+        #[verifier::deny_panic(false)]
         fn test3(i: u8) {
             let r = ext(i);
             assert(i > 0);
@@ -1381,7 +1381,7 @@ test_verify_one_file! {
         }
 
         // unwinding of r implies !(i < 10)
-        #[verifier::restrict_unwind(false)]
+        #[verifier::deny_panic(false)]
         fn f(i: u8)
             ensures[on unwind]
                 i >= 10,
@@ -1389,7 +1389,7 @@ test_verify_one_file! {
             r(i);
         }
 
-        #[verifier::restrict_unwind(false)]
+        #[verifier::deny_panic(false)]
         fn f_fail(i: u8)
             ensures[on unwind]
                 i >= 11,

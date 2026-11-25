@@ -862,7 +862,7 @@ struct ReturnedCall {
     args: Exps,
     obligations: Vec<Obligation>,
     may_unwind: bool,
-    restrict_unwind: bool,
+    deny_panic: bool,
     body: Option<Stm>,
     /// Statements for the unwind path (resolutions inserted by resolution_inference)
     unwind_stms: Vec<Stm>,
@@ -1098,7 +1098,7 @@ fn expr_get_call(
                             function.x.unwind_spec_or_default(),
                             UnwindSpec::NoUnwind
                         ),
-                        restrict_unwind: attrs.restrict_unwind,
+                        deny_panic: attrs.deny_panic,
                         body,
                         unwind_stms,
                     }),
@@ -1491,7 +1491,7 @@ fn stm_call(
     args: Exps,
     dest: Option<Dest>,
     body: Option<Stm>,
-    restrict_unwind: bool,
+    deny_panic: bool,
     unwind_path: Option<Stm>,
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
@@ -1542,7 +1542,7 @@ fn stm_call(
         dest,
         assert_id: state.next_assert_id(),
         body,
-        restrict_unwind,
+        deny_panic,
         unwind_path,
     };
 
@@ -1833,7 +1833,7 @@ pub(crate) fn expr_to_stm_opt(
                         args,
                         obligations,
                         may_unwind,
-                        restrict_unwind,
+                        deny_panic,
                         body,
                         unwind_stms,
                     }),
@@ -1874,7 +1874,7 @@ pub(crate) fn expr_to_stm_opt(
                             args.clone(),
                             Some(dest),
                             body,
-                            restrict_unwind,
+                            deny_panic,
                             unwind_path,
                         )?);
                         // REVIEW: this emits a StmX::Assign to set the value of the destination when,
@@ -1924,7 +1924,7 @@ pub(crate) fn expr_to_stm_opt(
                             args,
                             None,
                             body,
-                            restrict_unwind,
+                            deny_panic,
                             unwind_path,
                         )?);
                         typ_inv_obligations(ctx, state, &mut stms, obligations, TypInv::Call(x))?;
@@ -1974,7 +1974,7 @@ pub(crate) fn expr_to_stm_opt(
                 dest: Some(dest),
                 assert_id: None,
                 body,
-                restrict_unwind: false,
+                deny_panic: false,
                 unwind_path: None,
             };
             stms.push(Spanned::new(expr.span.clone(), call));
@@ -3915,7 +3915,7 @@ pub(crate) fn expr_to_stm_opt(
                 autospec: AutospecUsage::Final,
                 const_var: false,
                 assume_external_allowed: false,
-                restrict_unwind: true,
+                deny_panic: true,
             };
             let call_expr = SpannedTyped::new(
                 &expr.span,
@@ -4799,7 +4799,7 @@ fn stmt_to_stm(
                             args,
                             obligations,
                             may_unwind,
-                            restrict_unwind,
+                            deny_panic,
                             body,
                             unwind_stms,
                         }),
@@ -4830,7 +4830,7 @@ fn stmt_to_stm(
                             args,
                             Some(dest),
                             body,
-                            restrict_unwind,
+                            deny_panic,
                             unwind_path,
                         )?);
                         // REVIEW: for a similar case in `ExprX::Call` we emit a StmX::Assign to set the

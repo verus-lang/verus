@@ -258,7 +258,7 @@ fn async_future_spec_call(
         autospec: AutospecUsage::Final,
         const_var: false,
         assume_external_allowed: false,
-        restrict_unwind: true,
+        deny_panic: true,
     };
     let future_typ = function.x.outer_ret.x.typ.clone();
     let mut trait_typs = vec![future_typ.clone()];
@@ -1021,10 +1021,10 @@ pub fn func_def_to_sst(
         unwind_ens?
     };
 
-    // For `requires[no_panic exact]`, the function must unwind when the condition fails,
+    // For `requires[no_panic exact]`, the function must panic when the condition fails,
     // so a normal return must establish the condition
     if let (
-        UnwindSpec::NoUnwindWhen(_, NoUnwindWhenKind::RequiresExact),
+        UnwindSpec::NoUnwindWhen(_, NoUnwindWhenKind::NoPanicRequiresExact),
         UnwindSst::NoUnwindWhen(e),
     ) = (&unwind_ast, &unwind_sst)
     {

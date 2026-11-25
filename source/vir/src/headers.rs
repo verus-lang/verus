@@ -245,8 +245,8 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                     }
                     HeaderExprX::NoUnwind
                     | HeaderExprX::NoUnwindWhen(_)
-                    | HeaderExprX::NoUnwindRequires(_)
-                    | HeaderExprX::NoUnwindRequiresExact(_) => {
+                    | HeaderExprX::NoPanicRequires(_)
+                    | HeaderExprX::NoPanicRequiresExact(_) => {
                         match unwind_spec {
                             None => {}
                             _ => {
@@ -258,13 +258,12 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                             HeaderExprX::NoUnwindWhen(expr) => {
                                 Some(UnwindSpec::NoUnwindWhen(expr.clone(), NoUnwindWhenKind::When))
                             }
-                            HeaderExprX::NoUnwindRequires(es)
-                            | HeaderExprX::NoUnwindRequiresExact(es) => {
-                                let kind = if matches!(&**header, HeaderExprX::NoUnwindRequires(_))
-                                {
-                                    NoUnwindWhenKind::Requires
+                            HeaderExprX::NoPanicRequires(es)
+                            | HeaderExprX::NoPanicRequiresExact(es) => {
+                                let kind = if matches!(&**header, HeaderExprX::NoPanicRequires(_)) {
+                                    NoUnwindWhenKind::NoPanicRequires
                                 } else {
-                                    NoUnwindWhenKind::RequiresExact
+                                    NoUnwindWhenKind::NoPanicRequiresExact
                                 };
                                 let expr = crate::ast_util::conjoin(&stmt.span, &es);
                                 Some(UnwindSpec::NoUnwindWhen(expr, kind))

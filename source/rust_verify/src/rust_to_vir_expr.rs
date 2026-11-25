@@ -2319,10 +2319,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     autospec: autospec_usage,
                     const_var: false,
                     assume_external_allowed: false,
-                    restrict_unwind: crate::fn_call_to_vir::get_restrict_unwind(
-                        bctx,
-                        Some(expr.hir_id),
-                    )?,
+                    deny_panic: crate::fn_call_to_vir::get_deny_panic(bctx, Some(expr.hir_id))?,
                 };
                 let call_target = CallTarget::Fun(
                     vir::ast::CallTargetKind::Static,
@@ -2741,7 +2738,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             autospec: AutospecUsage::Final,
                             const_var: false,
                             assume_external_allowed: false,
-                            restrict_unwind: crate::fn_call_to_vir::get_restrict_unwind(
+                            deny_panic: crate::fn_call_to_vir::get_deny_panic(
                                 bctx,
                                 Some(expr.hir_id),
                             )?,
@@ -2819,10 +2816,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     autospec: autospec_usage,
                     const_var: false,
                     assume_external_allowed: false,
-                    restrict_unwind: crate::fn_call_to_vir::get_restrict_unwind(
-                        bctx,
-                        Some(expr.hir_id),
-                    )?,
+                    deny_panic: crate::fn_call_to_vir::get_deny_panic(bctx, Some(expr.hir_id))?,
                 };
                 let call_target = CallTarget::Fun(
                     vir::ast::CallTargetKind::Static,
@@ -2941,10 +2935,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         autospec: autospec_usage,
                         const_var: false,
                         assume_external_allowed: false,
-                        restrict_unwind: crate::fn_call_to_vir::get_restrict_unwind(
-                            bctx,
-                            Some(expr.hir_id),
-                        )?,
+                        deny_panic: crate::fn_call_to_vir::get_deny_panic(bctx, Some(expr.hir_id))?,
                     };
                     let call_target = CallTarget::Fun(
                         vir::ast::CallTargetKind::Static,
@@ -3898,10 +3889,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         autospec: AutospecUsage::Final,
                         const_var: false,
                         assume_external_allowed: false,
-                        restrict_unwind: crate::fn_call_to_vir::get_restrict_unwind(
-                            bctx,
-                            Some(expr.hir_id),
-                        )?,
+                        deny_panic: crate::fn_call_to_vir::get_deny_panic(bctx, Some(expr.hir_id))?,
                     };
                     // special fast path
                     let call_target = CallTarget::Fun(
@@ -5000,10 +4988,7 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
                 autospec: autospec_usage,
                 const_var: false,
                 assume_external_allowed: false,
-                restrict_unwind: crate::fn_call_to_vir::get_restrict_unwind(
-                    bctx,
-                    Some(dst_expr.hir_id),
-                )?,
+                deny_panic: crate::fn_call_to_vir::get_deny_panic(bctx, Some(dst_expr.hir_id))?,
             };
             let call_target = CallTarget::Fun(
                 vir::ast::CallTargetKind::Static,

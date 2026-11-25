@@ -49,9 +49,9 @@ if the condition holds.
 and callers may want to rule out both.) The difference is that the condition is checked at every call site
 by default, as if it were a precondition, even if the caller is itself allowed to unwind.
 
-To skip this check, use `#[verifier::restrict_unwind(false)]`. This attribute can be placed
+To skip this check, use `#[verifier::deny_panic(false)]`. This attribute can be placed
 on a call expression, or on a function, impl, module, or crate, in which case it applies to all
-calls inside it. When `restrict_unwind` is false for a call, the condition is only checked
+calls inside it. When `deny_panic` is false for a call, the condition is only checked
 to the extent needed to show that the caller meets its own unwinding signature
 (as with `no_unwind when`).
 
@@ -66,7 +66,7 @@ fn unwrap<T>(o: Option<T>) -> T
     requires[no_panic exact]
         o.is_some(),
 
-#[verifier::restrict_unwind(false)]
+#[verifier::deny_panic(false)]
 fn test(o: Option<u8>) {
     let x = unwrap(o);
     assert(o.is_some());
