@@ -101,20 +101,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] pin_new_unchecked_fails verus_code! {
-        use vstd::prelude::*;
-        use vstd::std_specs::pin::PinAdditionalFns;
-        use core::pin::Pin;
-
-        fn test() {
-            let mut x: u64 = 5;
-            let p: Pin<&mut u64> = unsafe { Pin::new_unchecked(&mut x) };
-            assert(*p.pointer() == 6); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
-}
-
 fn assert_pin_error(err: TestErr, label: &str) {
     assert_eq!(err.errors.len(), 1);
     let e = &err.errors[0];
@@ -235,6 +221,16 @@ test_verify_one_file! {
             let mut s = S { a: A { }, b: 7 };
             let p = unsafe { Pin::new_unchecked(&mut s) };
             s;
+        }
+    } => Err(err) => assert_pin_error(err, "`s` is moved here")
+}
+
+test_verify_one_file! {
+    #[test] pin_new_unchecked_unused_field PIN_STRUCTS.to_string() + verus_code_str! {
+        fn test() {
+            let mut s = S { a: A { }, b: 7 };
+            let p = unsafe { Pin::new_unchecked(&mut s) };
+            s.a;
         }
     } => Err(err) => assert_pin_error(err, "`s` is moved here")
 }
