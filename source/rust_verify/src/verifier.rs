@@ -2701,14 +2701,12 @@ impl Verifier {
         // --is-stdlib-outside-of-core) may do so.
         // In fact, defining a lang_item would likely come with a number of assumptions
         // that we do not currently check.
-        // We may want to add #[panic_handler] as an exception some day;
-        // it's stable and defines the panic_impl lang item.
         if !matches!(
             self.args.vstd,
             crate::config::Vstd::IsCore | crate::config::Vstd::ImportedViaCore
         ) {
             for (lang_item, def_id) in tcx.lang_items().iter() {
-                if def_id.is_local() {
+                if def_id.is_local() && Some(def_id) != tcx.lang_items().panic_impl() {
                     let err = vir::messages::error(
                         &spans.to_air_span(tcx.def_span(def_id)),
                         format!(
