@@ -59,6 +59,12 @@ the rest are for later.
 9. **Merge `verify-rustlib` into `verify-rustlib-refactor`**:
    take `verify-rustlib`'s side at the `TODO(verify-rustlib-transmute-v2)` spots,
    and drop the `SharedReference` parts of `TRUSTED_REVIEW.md` and `TODO.md` (`SharedReference` is deleted).
+10. **Large `usize` enum discriminants under `--is-core`** (`rust_verify/src/rust_to_vir_expr.rs`, `expr_cast_enum_int_to_vir`):
+    main's #2770 rejects `enum as usize` casts with discriminants above `u32::MAX`;
+    for the Rust 1.100 update this is allowed whenever `--is-core` is set (rustlib's 64-bit `AlignmentEnum`, `core/src/mem/alignment.rs`).
+    Make sure the target width is actually fixed when it's allowed:
+    rustlib's `global layout usize is size == ...` (`specs/intrinsics.rs`) and the `target_pointer_width` cfgs on `AlignmentEnum` must agree with the `--target` rustlib is verified for,
+    and consider checking against the target's pointer width (as the `isize` case does with `tcx.data_layout`) instead of trusting `--is-core`.
 
 ## Rust 1.100 update: steps 4-5 (rustlib branch `update-1.100.0`)
 
@@ -117,9 +123,13 @@ Remove each item once it's done.
 4. **Verify `addr`**:
    give rustlib's `addr` a spec and `when_used_as_spec(spec_addr)`,
    or rewrite its spec uses (`NonNull::inv` / `to_nat`, `RawVecInner::ptr_properties` / `extra_properties`) as `ptr@.addr`.
-5. **Audit vstd's `assume_specification`s in the rustlib build**:
-   for each one vstd builds under `verus_verify_core`,
-   gate it with `#[cfg(not(verus_verify_core))]` and verify it in rustlib, or keep trusting it.
+5. **Cfg out all of vstd's `assume_specification`s in the rustlib build**:
+   get rustlib to the point where every `assume_specification` (and external type/trait spec) that vstd builds under `verus_verify_core`
+   can be gated with `#[cfg(not(verus_verify_core))]`,
+   so that rustlib's own specs (verified, or trusted in rustlib) are the only specs for core items.
+   For each one still built, add the spec in rustlib (verify it, or mark it `#[verus::trusted]`) and gate vstd's.
+   Already gated during the Rust 1.100 update: `std_specs::{nonzero, bits, char, ptr}` (whole modules)
+   and the `core::cmp::{min, max, min_by, max_by, min_by_key, max_by_key}` specs in `std_specs/cmp.rs`.
 6. **Verify the axiomatized `Box` functions** (`Box::new_in`, `from_raw_in_untyped_with_typed_value`,
    `into_non_null_with_allocator_untyped_with_typed_value`) down to the allocator and raw-pointer specs.
    Blocked on Verus treating `Box` specially.
