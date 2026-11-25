@@ -3,8 +3,10 @@ pub mod alloc;
 
 pub mod array;
 pub mod atomic;
+#[cfg(not(verus_verify_core))]
 pub mod bits;
 pub mod borrow;
+#[cfg(not(verus_verify_core))]
 pub mod char;
 pub mod clone;
 pub mod cmp;
@@ -18,6 +20,7 @@ pub mod manually_drop;
 pub mod maybe_uninit;
 pub mod ops;
 pub mod pin;
+#[cfg(not(verus_verify_core))]
 pub mod ptr;
 
 #[cfg(feature = "std")]
@@ -45,6 +48,7 @@ pub mod vecdeque;
 #[cfg(feature = "alloc")]
 pub mod smart_ptrs;
 
+#[cfg(not(verus_verify_core))]
 pub mod nonzero;
 
 // This struct is a hack that exists purely to create

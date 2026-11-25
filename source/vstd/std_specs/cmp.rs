@@ -267,11 +267,13 @@ impl<A: PointeeSized + PartialOrd<Rhs>, Rhs: PointeeSized> PartialOrdIs<Rhs> for
 /* min and max */
 
 // `min` and `max` are aliases of `Ord::min` and `Ord::max`.
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T: Ord>[ core::cmp::min ](v1: T, v2: T) -> (r: T)
     ensures
         call_ensures(T::min, (v1, v2), r),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T: Ord>[ core::cmp::max ](v1: T, v2: T) -> (r: T)
     ensures
         call_ensures(T::max, (v1, v2), r),
@@ -279,6 +281,7 @@ pub assume_specification<T: Ord>[ core::cmp::max ](v1: T, v2: T) -> (r: T)
 
 // `min_by` and `max_by` call `compare(&v1, &v2)` once. When it returns `Equal`,
 // `min_by` returns `v1` and `max_by` returns `v2`.
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, F: FnOnce(&T, &T) -> Ordering>[ core::cmp::min_by ](
     v1: T,
     v2: T,
@@ -293,6 +296,7 @@ pub assume_specification<T, F: FnOnce(&T, &T) -> Ordering>[ core::cmp::min_by ](
         },
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, F: FnOnce(&T, &T) -> Ordering>[ core::cmp::max_by ](
     v1: T,
     v2: T,
@@ -310,6 +314,7 @@ pub assume_specification<T, F: FnOnce(&T, &T) -> Ordering>[ core::cmp::max_by ](
 // `min_by_key` and `max_by_key` compute the keys `f(&v1)` and `f(&v2)` and
 // compare them with `<`. When neither key is less than the other, `min_by_key`
 // returns `v1` and `max_by_key` returns `v2`.
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, F: FnMut(&T) -> K, K: Ord>[ core::cmp::min_by_key ](
     v1: T,
     v2: T,
@@ -327,6 +332,7 @@ pub assume_specification<T, F: FnMut(&T) -> K, K: Ord>[ core::cmp::min_by_key ](
         },
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, F: FnMut(&T) -> K, K: Ord>[ core::cmp::max_by_key ](
     v1: T,
     v2: T,

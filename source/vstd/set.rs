@@ -224,7 +224,7 @@ impl<A> Set<A> {
     }
 
     /// Returns `true` if the set is finite.
-    #[deprecated(note = "Every Set is always finite, so this is always true.")]
+    #[cfg_attr(not(verus_verify_core), deprecated(note = "Every Set is always finite, so this is always true."))]
     pub open spec fn finite(self) -> bool {
         true
     }

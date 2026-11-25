@@ -1356,7 +1356,7 @@ impl<A> Seq<A> {
     }
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
     requires
         0 <= i < s.len(),
@@ -1386,7 +1386,7 @@ pub axiom fn axiom_seq_len_decreases<A>(s1: Seq<A>, s2: Seq<A>)
         decreases_to!(s1 => s2),
 ;
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_subrange_decreases<A>(s: Seq<A>, i: int, j: int)
     requires
         0 <= i <= j <= s.len(),
@@ -1414,7 +1414,7 @@ pub broadcast proof fn lemma_seq_subrange_decreases<A>(s: Seq<A>, i: int, j: int
     axiom_seq_len_decreases(s, s2);
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_empty<A>()
     ensures
         #[trigger] Seq::<A>::empty().len() == 0,
@@ -1440,7 +1440,7 @@ pub broadcast proof fn lemma_seq_empty<A>()
     }
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_new_len<A>(len: nat, f: spec_fn(int) -> A)
     ensures
         #[trigger] Seq::new(len, f).len() == len,
@@ -1471,7 +1471,7 @@ pub broadcast proof fn lemma_seq_new_len<A>(len: nat, f: spec_fn(int) -> A)
     }
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_new_index<A>(len: nat, f: spec_fn(int) -> A, i: int)
     requires
         0 <= i < len,
@@ -1509,7 +1509,7 @@ pub broadcast proof fn lemma_seq_new_index<A>(len: nat, f: spec_fn(int) -> A, i:
     }
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_push_len<A>(s: Seq<A>, a: A)
     ensures
         #[trigger] s.push(a).len() == s.len() + 1,
@@ -1524,7 +1524,7 @@ pub broadcast proof fn lemma_seq_push_len<A>(s: Seq<A>, a: A)
     seq_inner::lemma_push_len(s.inner, a)
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
     requires
         i == s.len(),
@@ -1543,7 +1543,7 @@ pub broadcast proof fn lemma_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
     seq_inner::lemma_push_index_same(s.inner, a, i);
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
     requires
         i < s.len(),
@@ -1573,7 +1573,7 @@ pub broadcast proof fn lemma_seq_push_index_different_alt<A>(s: Seq<A>, a: A, i:
 
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
     ensures
         #[trigger] s.update(i, a).len() == s.len(),
@@ -1589,7 +1589,7 @@ pub broadcast proof fn lemma_seq_update_len<A>(s: Seq<A>, i: int, a: A)
     seq_inner::lemma_update_len(s.inner, i, a)
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
@@ -1620,7 +1620,7 @@ pub broadcast proof fn lemma_seq_update_same_alt<A>(s: Seq<A>, i: int, a: A)
 
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
     requires
         i1 != i2,
@@ -1650,7 +1650,7 @@ pub broadcast proof fn lemma_seq_update_different_alt<A>(s: Seq<A>, i1: int, i2:
 
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
         #[trigger] (s1 =~= s2) <==> {
@@ -1712,7 +1712,7 @@ pub broadcast proof fn lemma_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
     }
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
         #[trigger] (s1 =~~= s2) <==> {
@@ -1773,7 +1773,7 @@ pub broadcast proof fn lemma_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
     }
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
     requires
         0 <= j <= k <= s.len(),
@@ -1808,7 +1808,7 @@ pub broadcast proof fn lemma_seq_subrange_composition<A>(
     seq_inner::lemma_subrange_composition(s.inner, i1, j1, i2, j2)
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
     requires
         0 <= j <= k <= s.len(),
@@ -1855,7 +1855,7 @@ pub broadcast proof fn lemma_seq_two_subranges_index<A>(s: Seq<A>, j: int, k1: i
 
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
         #[trigger] s1.add(s2).len() == s1.len() + s2.len(),
@@ -1870,7 +1870,7 @@ pub broadcast proof fn lemma_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
     seq_inner::lemma_add_len(s1.inner, s2.inner);
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         i < s1.len(),
@@ -1889,7 +1889,7 @@ pub broadcast proof fn lemma_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     seq_inner::lemma_add_index1(s1.inner, s2.inner, i)
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Seq axioms have been verified, and are now lemmas"))]
 pub broadcast proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         s1.len() <= i < s1.len() + s2.len(),
@@ -1930,7 +1930,7 @@ pub broadcast proof fn lemma_seq_add_index2_alt<A>(s1: Seq<A>, s2: Seq<A>, i: in
 
 }
 
-#[deprecated(note = "Use `group_seq_lemmas` instead")]
+#[cfg_attr(not(verus_verify_core), deprecated(note = "Use `group_seq_lemmas` instead"))]
 pub broadcast group group_seq_axioms {
     lemma_seq_index_decreases,
     lemma_seq_subrange_decreases,

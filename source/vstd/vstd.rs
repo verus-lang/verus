@@ -146,10 +146,15 @@ pub broadcast group group_vstd_default {
     // core std_specs
     //
     std_specs::range::group_range_axioms,
+    #[cfg(not(verus_verify_core))]
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
     std_specs::manually_drop::group_manually_drop_axioms,
+    // Cfg'd out here due to a cycle in `core` with `NonZero`'s view
+    // Functions that need these axioms in `core` can bring in the group explicitly
+    #[cfg(not(verus_verify_core))]
     std_specs::iter::group_iter_axioms,
+    #[cfg(not(verus_verify_core))]
     std_specs::nonzero::group_nonzero_axioms,
     //
     // std_specs for alloc (with or without std)
