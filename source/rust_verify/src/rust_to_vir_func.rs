@@ -1763,6 +1763,13 @@ pub(crate) fn check_item_fn<'tcx>(
         None
     };
 
+    if Some(id) == ctxt.tcx.lang_items().panic_impl() {
+        return err_span(
+            sig.span,
+            "`#[panic_handler]` must be outside verus! or marked #[verifier::external]",
+        );
+    }
+
     let (
         path,
         proxy,
