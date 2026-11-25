@@ -2384,7 +2384,7 @@ fn check_expr(
             Ok((Mode::Spec, proph))
         }
         ExprX::Unary(UnaryOp::ShadowData, e1) => match &e1.x {
-            ExprX::ReadPlace(place, _) => match &place.x {
+            ExprX::ReadPlace(place, read_kind) => match &place.x {
                 PlaceX::Local(x) => {
                     let (x_mode, proph) = typing.get_inner(x, &place.span, true)?;
                     let proph = proph.to_proph(x, &expr.span);
@@ -2394,6 +2394,9 @@ fn check_expr(
                             "shadow_data expects exec or tracked variable",
                         ));
                     }
+                    // `shadow_data(x)` only reads `x` in spec mode (never moves it);
+                    // resolution inference looks up every read's final kind.
+                    record.read_kind_finals.insert(read_kind.id, ReadKind::Spec);
                     record
                         .erasure_modes
                         .local_modes

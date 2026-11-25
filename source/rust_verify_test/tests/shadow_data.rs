@@ -385,3 +385,35 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_shadow_data_of_non_copy verus_code! {
+        // `shadow_data(b)` reads a non-`Copy` tracked variable in spec mode, so `b` can still be moved
+        // (this used to panic in resolution inference)
+        pub tracked struct S {}
+
+        #[verifier::shadow_data]
+        proof fn test_proof(tracked b: S) -> (tracked out: S)
+            ensures
+                shadow_data(out) == shadow_data(b),
+        {
+            let s = shadow_data(b);
+            assert(s == shadow_data(b));
+            b
+        }
+
+        pub struct E {
+            x: u64,
+        }
+
+        #[verifier::shadow_data]
+        fn test_exec(b: E) -> (out: E)
+            ensures
+                shadow_data(out) == shadow_data(b),
+        {
+            let ghost s = shadow_data(b);
+            assert(s == shadow_data(b));
+            b
+        }
+    } => Ok(())
+}
