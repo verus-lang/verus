@@ -190,7 +190,7 @@ pub assume_specification[ u8::reverse_bits ](i: u8) -> (r: u8)
     ensures
         r == u8_reverse_bits(i),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 pub broadcast axiom fn axiom_u8_reverse_bits(i: u8)
@@ -386,7 +386,7 @@ pub assume_specification[ u16::reverse_bits ](i: u16) -> (r: u16)
     ensures
         r == u16_reverse_bits(i),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 pub broadcast axiom fn axiom_u16_reverse_bits(i: u16)
@@ -582,7 +582,7 @@ pub assume_specification[ u32::reverse_bits ](i: u32) -> (r: u32)
     ensures
         r == u32_reverse_bits(i),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 pub broadcast axiom fn axiom_u32_reverse_bits(i: u32)
@@ -780,7 +780,7 @@ pub assume_specification[ u64::reverse_bits ](i: u64) -> (r: u64)
     ensures
         r == u64_reverse_bits(i),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 pub broadcast axiom fn axiom_u64_reverse_bits(i: u64)
@@ -1049,7 +1049,7 @@ pub assume_specification[ u8::count_ones ](i: u8) -> u32
     returns
         nat_count_ones(i as nat) as u32,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 /// See [`axiom_u16_count_ones`] for useful properties.
@@ -1058,7 +1058,7 @@ pub assume_specification[ u16::count_ones ](i: u16) -> u32
     returns
         nat_count_ones(i as nat) as u32,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 /// See [`axiom_u32_count_ones`] for useful properties.
@@ -1067,7 +1067,7 @@ pub assume_specification[ u32::count_ones ](i: u32) -> u32
     returns
         nat_count_ones(i as nat) as u32,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 /// See [`axiom_u64_count_ones`] for useful properties.
@@ -1076,7 +1076,7 @@ pub assume_specification[ u64::count_ones ](i: u64) -> u32
     returns
         nat_count_ones(i as nat) as u32,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 /// See [`axiom_u128_count_ones`] for useful properties.
@@ -1085,7 +1085,7 @@ pub assume_specification[ u128::count_ones ](i: u128) -> u32
     returns
         nat_count_ones(i as nat) as u32,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 /// See [`axiom_usize_count_ones`] for useful properties.
@@ -1094,7 +1094,7 @@ pub assume_specification[ usize::count_ones ](i: usize) -> u32
     returns
         nat_count_ones(i as nat) as u32,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 pub broadcast proof fn axiom_u8_count_ones(i: u8)

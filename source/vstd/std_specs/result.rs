@@ -135,7 +135,7 @@ pub open spec fn is_ok<T, E>(result: &Result<T, E>) -> bool {
 pub assume_specification<T, E>[ Result::<T, E>::is_ok ](r: &Result<T, E>) -> (b: bool)
     ensures
         b == is_ok(r),
-    no_unwind
+    no_panic
 ;
 
 // is_err
@@ -148,7 +148,7 @@ pub open spec fn is_err<T, E>(result: &Result<T, E>) -> bool {
 pub assume_specification<T, E>[ Result::<T, E>::is_err ](r: &Result<T, E>) -> (b: bool)
     ensures
         b == is_err(r),
-    no_unwind
+    no_panic
 ;
 
 // as_ref
@@ -161,7 +161,7 @@ pub assume_specification<T, E>[ Result::<T, E>::as_ref ](result: &Result<T, E>) 
         r is Ok ==> result->Ok_0 == r->Ok_0,
         r is Err <==> result is Err,
         r is Err ==> result->Err_0 == r->Err_0,
-    no_unwind
+    no_panic
 ;
 
 // unwrap
@@ -457,7 +457,7 @@ pub open spec fn ok<T, E>(result: Result<T, E>) -> Option<T> {
 pub assume_specification<T, E>[ Result::<T, E>::ok ](result: Result<T, E>) -> (opt: Option<T>)
     ensures
         opt == ok(result),
-    no_unwind
+    no_panic
 ;
 
 // err
@@ -473,7 +473,7 @@ pub open spec fn err<T, E>(result: Result<T, E>) -> Option<E> {
 pub assume_specification<T, E>[ Result::<T, E>::err ](result: Result<T, E>) -> (opt: Option<E>)
     ensures
         opt == err(result),
-    no_unwind
+    no_panic
 ;
 
 // clone

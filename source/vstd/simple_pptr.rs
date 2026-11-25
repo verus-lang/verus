@@ -467,7 +467,7 @@ impl<V> PPtr<V> {
             final(perm).pptr() == old(perm).pptr(),
             final(perm).mem_contents() == MemContents::Init(v),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         proof {
             use_type_invariant(&*perm);
@@ -493,7 +493,7 @@ impl<V> PPtr<V> {
             final(perm).mem_contents() == MemContents::Uninit::<V>,
             v == old(perm).value(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         proof {
             use_type_invariant(&*perm);
@@ -514,7 +514,7 @@ impl<V> PPtr<V> {
             final(perm).mem_contents() == MemContents::Init(in_v),
             out_v == old(perm).value(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         proof {
             use_type_invariant(&*perm);
@@ -534,7 +534,7 @@ impl<V> PPtr<V> {
         ensures
             *v == perm.value(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         proof {
             use_type_invariant(&*perm);
@@ -555,7 +555,7 @@ impl<V> PPtr<V> {
             *v == old(perm).value(),
             final(perm).value() == *final(v),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         proof {
             use_type_invariant(&*perm);
@@ -572,7 +572,7 @@ impl<V> PPtr<V> {
             final(perm).pptr() == old(perm).pptr(),
             final(perm).mem_contents() == MemContents::Init(in_v),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         proof {
             use_type_invariant(&*perm);
@@ -589,7 +589,7 @@ impl<V> PPtr<V> {
         ensures
             out_v == perm.value(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         *self.borrow(Tracked(&*perm))
     }

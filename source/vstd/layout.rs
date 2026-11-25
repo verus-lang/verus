@@ -78,7 +78,7 @@ pub assume_specification<V>[ core::mem::size_of::<V> ]() -> (u: usize)
     ensures
         u as nat == size_of::<V>(),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 #[verifier::when_used_as_spec(align_of_as_usize)]
@@ -86,7 +86,7 @@ pub assume_specification<V>[ core::mem::align_of::<V> ]() -> (u: usize)
     ensures
         u as nat == align_of::<V>(),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 #[verifier::when_used_as_spec(size_of_val_as_usize)]
@@ -94,7 +94,7 @@ pub assume_specification<V: ?Sized>[ core::mem::size_of_val::<V> ](val: &V) -> (
     ensures
         u as nat == spec_size_of_val::<V>(val),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 #[verifier::when_used_as_spec(align_of_val_as_usize)]
@@ -102,7 +102,7 @@ pub assume_specification<V: ?Sized>[ core::mem::align_of_val::<V> ](val: &V) -> 
     ensures
         u as nat == spec_align_of_val::<V>(val),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 /// Lemma to learn that the (size, alignment) of a type is a valid "layout".
@@ -123,7 +123,7 @@ pub const exec fn layout_for_type_is_valid<V>()
         align_of::<V>() != 0,
         size_of::<V>() % align_of::<V>() == 0,
     opens_invariants none
-    no_unwind
+    no_panic
 {
 }
 
@@ -146,7 +146,7 @@ pub const exec fn layout_for_val_is_valid<V: ?Sized>(val: Tracked<&V>)
         spec_align_of_val::<V>(val@) != 0,
         spec_size_of_val::<V>(val@) % spec_align_of_val::<V>(val@) == 0,
     opens_invariants none
-    no_unwind
+    no_panic
 {
 }
 

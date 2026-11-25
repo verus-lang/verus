@@ -128,7 +128,7 @@ pub fn float_cast<From: Copy + IeeeFloatCast<To>, To>(from: From) -> (to: To)
     ensures
         float_cast_spec(from, to),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     unimplemented!{}
 }

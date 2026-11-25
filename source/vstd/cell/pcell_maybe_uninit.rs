@@ -132,7 +132,7 @@ impl<V> PCell<V> {
             final(perm).id() == self.id(),
             final(perm).mem_contents() == MemContents::Init(in_v),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         self.0.replace(Tracked(&mut perm.0), MaybeUninit::new(in_v));
     }
@@ -147,7 +147,7 @@ impl<V> PCell<V> {
             final(perm).mem_contents() == MemContents::Uninit,
             out_v == old(perm).value(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         unsafe {
             self.0.replace(Tracked(&mut perm.0), MaybeUninit::uninit()).assume_init()
@@ -164,7 +164,7 @@ impl<V> PCell<V> {
             final(perm).mem_contents() == MemContents::Init(in_v),
             out_v == old(perm).value(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         unsafe {
             self.0.replace(Tracked(&mut perm.0), MaybeUninit::new(in_v)).assume_init()
@@ -179,7 +179,7 @@ impl<V> PCell<V> {
         ensures
             *v == perm.value(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         unsafe {
             self.0.borrow(Tracked(&perm.0)).assume_init_ref()
@@ -197,7 +197,7 @@ impl<V> PCell<V> {
             final(perm).value() == *final(v),
             final(perm).id() == self.id(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         unsafe {
             self.0.borrow_mut(Tracked(&mut perm.0)).assume_init_mut()
@@ -212,7 +212,7 @@ impl<V> PCell<V> {
         ensures
             v == perm.value(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         let tracked mut perm = perm;
         self.take(Tracked(&mut perm))
@@ -226,7 +226,7 @@ impl<V> PCell<V> {
             final(perm).id() == old(perm).id(),
             final(perm).mem_contents() == MemContents::Init(in_v),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         self.0.replace(Tracked(&mut perm.0), MaybeUninit::new(in_v));
     }
@@ -240,7 +240,7 @@ impl<V> PCell<V> {
         returns
             perm.value()
         opens_invariants none
-        no_unwind
+        no_panic
     {
         *self.borrow(Tracked(perm))
     }

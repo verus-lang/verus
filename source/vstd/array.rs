@@ -124,7 +124,7 @@ pub assume_specification<T, const N: usize>[ <[T; N]>::as_slice ](ar: &[T; N]) -
     ensures
         ar@ == out@,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 pub uninterp spec fn spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T) -> (res: [T; N]);
@@ -179,7 +179,7 @@ pub fn ref_mut_array_unsizing_coercion<T, const N: usize>(r: &mut [T; N]) -> (ou
         out.view() == old(r).view(),
         final(out).view() == final(r).view(),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     r
 }

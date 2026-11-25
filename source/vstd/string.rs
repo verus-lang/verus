@@ -128,7 +128,7 @@ pub assume_specification[ str::as_bytes ](s: &str) -> (b: &[u8])
     ensures
         b@ == s.spec_bytes(),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 #[cfg(not(verus_verify_core))]
@@ -137,7 +137,7 @@ pub assume_specification[ str::len ](s: &str) -> usize
     returns
         s.spec_bytes().len() as usize,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 #[cfg(not(verus_verify_core))]
@@ -146,7 +146,7 @@ pub assume_specification[ str::is_empty ](s: &str) -> bool
     returns
         s@.len() == 0,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 #[cfg(not(verus_verify_core))]
@@ -389,7 +389,7 @@ pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 // same as above
@@ -441,7 +441,7 @@ pub assume_specification[ String::is_empty ](s: &String) -> (res: bool)
     ensures
         res == (s@.len() == 0),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]

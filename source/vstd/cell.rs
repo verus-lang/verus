@@ -191,7 +191,7 @@ impl<V> PCell<V> {
         ensures
             final(perm)@ == pcell_points![ self.id() => MemContents::Init(v) ],
         opens_invariants none
-        no_unwind
+        no_panic
     {
         unsafe {
             *(self.ucell.get()) = MaybeUninit::new(v);
@@ -209,7 +209,7 @@ impl<V> PCell<V> {
             final(perm).mem_contents() == MemContents::Uninit,
             v == old(perm).value(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         unsafe {
             let mut m = MaybeUninit::uninit();
@@ -229,7 +229,7 @@ impl<V> PCell<V> {
             final(perm).mem_contents() == MemContents::Init(in_v),
             out_v == old(perm).value(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         unsafe {
             let mut m = MaybeUninit::new(in_v);
@@ -250,7 +250,7 @@ impl<V> PCell<V> {
         ensures
             *v == perm.value(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         unsafe { (*self.ucell.get()).assume_init_ref() }
     }
@@ -265,7 +265,7 @@ impl<V> PCell<V> {
         ensures
             v == perm.value(),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         let tracked mut perm = perm;
         self.take(Tracked(&mut perm))
@@ -284,7 +284,7 @@ impl<V> PCell<V> {
             final(perm).is_init(),
             final(perm).value() == *final(v),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         unsafe { (*self.ucell.get()).assume_init_mut() }
     }
@@ -301,7 +301,7 @@ impl<V: Copy> PCell<V> {
             final(perm).id() == old(perm)@.pcell,
             final(perm).mem_contents() == MemContents::Init(in_v),
         opens_invariants none
-        no_unwind
+        no_panic
     {
         let _out = self.replace(Tracked(&mut *perm), in_v);
     }

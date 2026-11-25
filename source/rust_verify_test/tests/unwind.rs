@@ -1975,3 +1975,33 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] no_panic_vstd_calls verus_code! {
+        use vstd::prelude::*;
+
+        // `?` on Option relies on the inherited `ensures[on panic]` of `branch`/`from_residual`
+        fn try_op(o: Option<u8>) -> (r: Option<u8>)
+            no_panic
+        {
+            let x = o?;
+            Some(x / 2)
+        }
+
+        fn vec_ops(v: &Vec<u8>) -> (r: usize)
+            no_panic
+        {
+            if v.len() > 0 {
+                let _ = v[0];
+            }
+            v.len()
+        }
+
+        // allocation might panic
+        fn vec_push(v: &mut Vec<u8>)
+            no_panic
+        {
+            v.push(3); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
