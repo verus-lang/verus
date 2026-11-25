@@ -397,23 +397,28 @@ fn combine_dep_info(
                 format!("failed to read second-pass dep-info from `{}`: {err}", second.display())
             })?;
             // Shared dependencies must not change between verification and compilation.
+            let mut checksums_changed = false;
+            let mut env_vars_changed = false;
             let merged = info_1.merge(
                 info_2,
-                |meta_1, meta_2| {
-                    assert_eq!(
-                        meta_1, meta_2,
-                        "dep-info checksum changed between compilation passes"
-                    );
+                |source, meta_1, meta_2| {
+                    if meta_1 != meta_2 {
+                        checksums_changed = true;
+                        eprintln!("dep-info checksum changed between `rustc` passes: {source}");
+                    }
                     meta_1
                 },
-                |env_1, env_2| {
-                    assert_eq!(
-                        env_1, env_2,
-                        "dep-info environment dependency changed between compilation passes"
-                    );
-                    env_1
+                |key, val_1, val_2| {
+                    if val_1 != val_2 {
+                        env_vars_changed = true;
+                        eprintln!("dep-info env var changed between `rustc` passes: {key}");
+                    }
+                    val_1
                 },
             );
+            if checksums_changed || env_vars_changed {
+                return Err("dep-info changes were detected between `rustc` passes".into());
+            }
             merged.write_file(&second).map_err(|err| {
                 format!("failed to write combined dep-info to `{}`: {err}", second.display())
             })?;

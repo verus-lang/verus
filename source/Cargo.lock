@@ -2377,9 +2377,9 @@ dependencies = [
 
 [[package]]
 name = "rustc-dep-info"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a412ae3f291b450fc070b8f35e95b01d3823ca42804877fa97e105c173628df"
+checksum = "ce0ec3182a008d7f87cb6a5dd0bb55cd5fa179cc18041feafe3d3adbdcbf8fba"
 dependencies = [
  "hex",
  "indexmap 2.14.0",
