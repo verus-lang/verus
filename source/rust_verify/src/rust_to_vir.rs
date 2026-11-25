@@ -519,7 +519,8 @@ pub(crate) fn get_root_module_path<'tcx>(ctxt: &ContextX<'tcx>) -> Path {
 /// The code emitted by the Verus macros refers to these crates by absolute paths
 /// (e.g., `::core::cfg!`, `::vstd::prelude`), so an `extern crate` item must not
 /// make these names refer to a different crate.
-/// The exception is `extern crate self as core;` in core itself (`--is-core`),
+/// The exception is `extern crate self as core;` in the actual core crate
+/// (identified by its lang items, see `mk_crate_id`),
 /// where `core` still refers to core.
 const RESERVED_EXTERN_CRATE_NAMES: &[&str] =
     &["core", "vstd", "verus_builtin", "verus_builtin_macros"];
@@ -530,7 +531,7 @@ fn check_extern_crate_alias<'tcx>(
 ) -> Result<(), VirErr> {
     if let ItemKind::ExternCrate(Some(orig_name), ident) = &item.kind {
         let alias = ident.name.as_str();
-        let is_core_self = ctxt.cmd_line_args.vstd == crate::config::Vstd::IsCore
+        let is_core_self = ctxt.crate_name == vir::ast::CrateId::Core
             && alias == "core"
             && orig_name.as_str() == "self";
         if RESERVED_EXTERN_CRATE_NAMES.contains(&alias)
