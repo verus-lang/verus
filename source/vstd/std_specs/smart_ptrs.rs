@@ -1,5 +1,6 @@
 use super::super::prelude::*;
 
+use alloc::alloc::AllocatorNightly;
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::sync::Arc;
@@ -72,7 +73,7 @@ pub assume_specification<'a, T: Clone>[ <Arc<[T]> as core::convert::From<&'a [T]
 ;
 
 // `Arc<[T]>` from a `Vec` moves the elements, in order.
-pub assume_specification<T, A: Allocator + Clone>[ <Arc<[T], A> as core::convert::From<
+pub assume_specification<T, A: AllocatorNightly>[ <Arc<[T], A> as core::convert::From<
     Vec<T, A>,
 >>::from ](v: Vec<T, A>) -> (r: Arc<[T], A>)
     ensures
@@ -111,11 +112,10 @@ pub assume_specification<'a, T: Clone>[ <Rc<[T]> as core::convert::From<&'a [T]>
         forall|i: int| 0 <= i < s@.len() ==> cloned::<T>(s@[i], #[trigger] r@[i]),
 ;
 
-// `Rc<[T]>` from a `Vec` moves the elements, in order. Unlike `Arc`'s
-// equivalent, std does not require `A: Clone` here.
-pub assume_specification<T, A: Allocator>[ <Rc<[T], A> as core::convert::From<Vec<T, A>>>::from ](
-    v: Vec<T, A>,
-) -> (r: Rc<[T], A>)
+// `Rc<[T]>` from a `Vec` moves the elements, in order.
+pub assume_specification<T, A: AllocatorNightly>[ <Rc<[T], A> as core::convert::From<
+    Vec<T, A>,
+>>::from ](v: Vec<T, A>) -> (r: Rc<[T], A>)
     ensures
         (*r)@ == v@,
 ;
