@@ -2254,8 +2254,37 @@ fn check_reveal_groups(
         }
     }
 
+    // A member less visible than its group is silently dropped wherever the
+    // group is used but the member isn't visible
+    let group_spans_and_vis: HashMap<&Fun, (&Span, &Visibility)> =
+        krate.reveal_groups.iter().map(|g| (&g.x.name, (&g.span, &g.x.visibility))).collect();
     for reveal_group in krate.reveal_groups.iter() {
         for member in reveal_group.x.members.iter() {
+            // (members from other crates are necessarily public)
+            let member_span_and_vis = match all_funs.get(member) {
+                Some(f) => Some((&f.span, &f.x.visibility)),
+                None => group_spans_and_vis.get(member).copied(),
+            };
+            if let Some((member_span, member_vis)) = member_span_and_vis {
+                let covered =
+                    match (&reveal_group.x.visibility.restricted_to, &member_vis.restricted_to) {
+                        (_, None) => true,
+                        (None, Some(_)) => false,
+                        (Some(group_scope), Some(member_scope)) => {
+                            group_scope.matches_prefix(member_scope)
+                        }
+                    };
+                if !covered {
+                    let name = fun_as_friendly_rust_name(member);
+                    return Err(error(
+                        &reveal_group.span,
+                        format!(
+                            "broadcast group member `{name}` is less visible than the group; make it at least as visible as the group"
+                        ),
+                    )
+                    .secondary_label(member_span, format!("`{name}` is declared here")));
+                }
+            }
             if let Some(function) = all_funs.get(member) {
                 if !function.x.attrs.broadcast_forall {
                     return Err(error(
