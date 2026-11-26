@@ -438,6 +438,16 @@ pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
     strictly_cloned(a, b) || a == b
 }
 
+/// Whether `T::clone` returns a value equal to the original.
+///
+/// Integers, `bool`, `char` and the `Clone` impls Verus derives satisfy this. A collection
+/// relies on it when it clones its keys: a key that clones to an unequal value can leave the
+/// copy holding keys in the wrong order or bucket.
+#[verifier::prophetic]
+pub open spec fn obeys_clone_eq<T: Clone>() -> bool {
+    forall|a: T, b: T| #[trigger] cloned(a, b) ==> a == b
+}
+
 } // verus!
 verus! {
 
@@ -462,10 +472,7 @@ pub fn __call_panic(out: &[&str]) -> !
 #[cfg(feature = "alloc")]
 #[doc(hidden)]
 #[verifier(external_body)]
-pub fn __new_argument<T: core::fmt::Debug>(v: &T) -> alloc::string::String
-    requires
-        forall|f: &core::fmt::Formatter<'_>| v.fmt_req(f),
-{
+pub fn __new_argument<T: core::fmt::Debug>(v: &T) -> alloc::string::String {
     alloc::format!("{:?}", v)
 }
 

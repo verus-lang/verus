@@ -242,13 +242,37 @@ pub(crate) fn def_path_to_segments_without_disambiguation<'tcx>(
     Some(segments)
 }
 
+/// A diagnostic item that is always defined by vstd (and only by vstd),
+/// used to identify the actual vstd crate.
+const VSTD_IDENTIFYING_DIAGNOSTIC_ITEM: &str = "verus::vstd::invariant::open_invariant_end";
+
+/// Map a crate to its CrateId.
+///
+/// The actual `core`, `alloc`, and `vstd` crates get the special ids
+/// `CrateId::Core`, `CrateId::Alloc`, and `CrateId::Vstd`.
+/// We cannot identify these crates by name alone,
+/// since any crate can be compiled with `--crate-name core`, `--crate-name alloc`, etc.
+/// Instead, we identify each of them by an item that it defines.
+/// Rust guarantees that each lang item and each diagnostic item is defined by at most one crate
+/// in the crate graph, and defining either requires internal rustc features:
+/// - `core` defines the `sized` lang item
+/// - `alloc` defines the `owned_box` lang item
+/// - `vstd` defines the `VSTD_IDENTIFYING_DIAGNOSTIC_ITEM` diagnostic item
+/// All other crates (including crates that merely share one of these names)
+/// get a `CrateId::Id` with Rust's stable crate id.
 pub(crate) fn mk_crate_id<'tcx>(tcx: TyCtxt<'tcx>, krate: CrateNum) -> CrateId {
-    let stable_id = tcx.stable_crate_id(krate).as_u64();
     let s = tcx.crate_name(krate).to_string();
+    let defined_by_krate = |def_id: Option<DefId>| def_id.map(|d| d.krate) == Some(krate);
     match s.as_str() {
-        "vstd" => CrateId::Vstd,
-        "core" => CrateId::Core,
-        "alloc" => CrateId::Alloc,
-        _ => CrateId::Id(Arc::new(s), stable_id),
+        "core" if defined_by_krate(tcx.lang_items().sized_trait()) => CrateId::Core,
+        "alloc" if defined_by_krate(tcx.lang_items().owned_box()) => CrateId::Alloc,
+        "vstd"
+            if defined_by_krate(tcx.get_diagnostic_item(rustc_span::Symbol::intern(
+                VSTD_IDENTIFYING_DIAGNOSTIC_ITEM,
+            ))) =>
+        {
+            CrateId::Vstd
+        }
+        _ => CrateId::Id(Arc::new(s), tcx.stable_crate_id(krate).as_u64()),
     }
 }

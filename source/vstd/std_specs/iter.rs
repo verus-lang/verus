@@ -610,12 +610,12 @@ pub trait ExExactSizeIterator: Iterator {
     type ExternalTraitSpecificationFor: ExactSizeIterator;
 
     // An `ExactSizeIterator` can specify its length non-prophetically,
-    // i.e., without using `self.remaining().len()`.
+    // i.e., without using `self.remaining().len()`.  This is a hint used by `peek_back`.
     spec fn exact_len(&self) -> usize;
 
     fn len(&self) -> (len: usize)
         ensures
-            self.obeys_prophetic_iter_laws() ==> len == self.exact_len() == self.remaining().len() == self.produces().len(),
+            self.obeys_prophetic_iter_laws() ==> len == self.remaining().len() == self.produces().len(),
     ;
 }
 

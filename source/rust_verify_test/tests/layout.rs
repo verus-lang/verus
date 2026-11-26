@@ -567,3 +567,11 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_global_in_fn_body ["vstd"] => verus_code! {
+        proof fn p() {
+            verus!(global size_of usize == 4;);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`global` must be a module-level item")
+}

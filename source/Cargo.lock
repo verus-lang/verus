@@ -44,7 +44,7 @@ dependencies = [
 name = "air"
 version = "0.1.0"
 dependencies = [
- "getopts",
+ "clap",
  "indexmap 2.14.0",
  "petgraph 0.6.5",
  "serde",
@@ -422,6 +422,7 @@ dependencies = [
  "anstyle",
  "clap_lex",
  "strsim",
+ "terminal_size",
 ]
 
 [[package]]
@@ -2328,8 +2329,8 @@ dependencies = [
  "air",
  "bincode-next",
  "cargo-verus-toolchains",
+ "clap",
  "console",
- "getopts",
  "hex",
  "indexmap 2.14.0",
  "indicatif",
@@ -2886,6 +2887,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_size"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
+dependencies = [
+ "rustix",
+ "windows-sys",
+]
+
+[[package]]
 name = "testing_table"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3243,7 +3254,6 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "verus"
 version = "0.1.0"
 dependencies = [
- "cargo-verus-toolchains",
  "chrono",
  "git2",
  "is-terminal",
@@ -3258,11 +3268,11 @@ dependencies = [
 
 [[package]]
 name = "verus_builtin"
-version = "0.0.0-2026-11-15-0327"
+version = "0.0.0-2026-11-22-0344"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-11-15-0327"
+version = "0.0.0-2026-11-22-0344"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -3283,7 +3293,7 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-11-15-0327"
+version = "0.0.0-2026-11-22-0344"
 dependencies = [
  "indexmap 2.14.0",
  "proc-macro2",

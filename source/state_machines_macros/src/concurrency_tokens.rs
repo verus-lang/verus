@@ -220,7 +220,7 @@ fn trusted_copy(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
 /// is basically a Map<V, nat>. So the V is treated as a 'key' here
 /// and if you have multiple elements of the same value, that's represented
 /// by having a higher counter.
-fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
+fn token_struct_stream(sm: &SM, field: &Field, struct_decls: &mut TokenStream) -> TokenStream {
     let tokenname = field_token_type_name(field);
     let insttype = inst_type(sm);
     let gen = &sm.generics;
@@ -297,7 +297,7 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
         _ => TokenStream::new(),
     };
 
-    return quote! {
+    struct_decls.extend(quote! {
         #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
         #(#attrs)*
@@ -310,7 +310,9 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
             #[cfg_attr(verus_keep_ghost, verifier::proof)] dummy_instance: #insttype,
             #no_copy_impl
         }
+    });
 
+    return quote! {
         #impldecl {
             #impl_token_stream
         }
@@ -353,7 +355,8 @@ pub fn output_token_types_and_fns(
 ) -> parse::Result<()> {
     let mut inst_impl_token_stream = TokenStream::new();
 
-    token_stream.extend(instance_struct_stream(&bundle.sm));
+    let mut struct_decls = instance_struct_stream(&bundle.sm);
+    let mut struct_names = vec![inst_type_name(&bundle.sm.name)];
     inst_impl_token_stream.extend(trusted_clone());
     inst_impl_token_stream.extend(quote_vstd! { vstd =>
         #[cfg_attr(verus_keep_ghost, verifier::spec)]
@@ -391,7 +394,8 @@ pub fn output_token_types_and_fns(
             | ShardableType::PersistentCount
             | ShardableType::Bool
             | ShardableType::PersistentBool => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field));
+                token_stream.extend(token_struct_stream(&bundle.sm, field, &mut struct_decls));
+                struct_names.push(field_token_type_name(field));
             }
         }
     }
@@ -418,6 +422,12 @@ pub fn output_token_types_and_fns(
     let copy_impl = trusted_copy(&insttype, &bundle.sm.generics);
 
     token_stream.extend(quote! {
+        mod __verus_sm_private_structs {
+            use super::*;
+            #struct_decls
+        }
+        pub use self::__verus_sm_private_structs::{#(#struct_names),*};
+
         #impldecl {
             #inst_impl_token_stream
         }

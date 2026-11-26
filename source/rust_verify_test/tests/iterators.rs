@@ -767,6 +767,7 @@ test_verify_one_file! {
                 self.inner.next()
             }
 
+            #[verifier::assume_compatibility_with_trait_spec]
             fn fold<B, F>(self, init: B, f: F) -> B
                 where F: FnMut(B, Self::Item) -> B,
             {
@@ -1599,7 +1600,7 @@ test_verify_one_file! {
             let _ = v.into_iter().enumerate();
         }
 
-        // ... and for the iterators over other collections, `str`, and slice chunks
+        // ... and for the iterators over other (well-formed) collections, `str`, and slice chunks
         fn other_sources(
             hm: &HashMap<u32, u32>,
             hs: &HashSet<u32>,
@@ -1608,7 +1609,13 @@ test_verify_one_file! {
             vd: &VecDeque<u32>,
             st: &str,
             s: &[u32],
-        ) {
+        )
+            requires
+                vstd::std_specs::hash::hash_map_wf(hm),
+                vstd::std_specs::hash::hash_set_wf(hs),
+                vstd::std_specs::btree::btree_map_wf(bm),
+                vstd::std_specs::btree::btree_set_wf(bs),
+        {
             let _ = hm.iter().enumerate();
             let _ = hm.keys().enumerate();
             let _ = hm.values().enumerate();
@@ -1721,6 +1728,100 @@ test_verify_one_file! {
             it.position(|x: u8| x > 1) // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] range_iterator_impl_with_destruct_bound verus_code! {
+        // Since Rust 1.100, `impl Iterator for Range<A>` requires `A: [const] Destruct`
+        use vstd::prelude::*;
+
+        fn first<I: Iterator<Item = u8>>(mut i: I) -> Option<u8> {
+            i.next()
+        }
+
+        fn test() {
+            let x = first(0u8..3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3587
+    // An impl that uses std's default `len` must not let callers learn `len() == exact_len()`,
+    // since the default `len` never sees `exact_len`.
+    #[test] exact_size_default_len_ignores_exact_len verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::{ExactSizeIteratorSpecImpl, IteratorSpecImpl};
+
+        pub struct One {
+            pub done: bool,
+        }
+
+        impl IteratorSpecImpl for One {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+                true
+            }
+
+            open spec fn remaining(&self) -> Seq<u8> {
+                if self.done { Seq::empty() } else { seq![1u8] }
+            }
+
+            open spec fn produces(&self) -> Seq<bool> {
+                if self.done { Seq::empty() } else { seq![true] }
+            }
+
+            open spec fn decrease(&self) -> Option<nat> {
+                Some(if self.done { 0 } else { 1 })
+            }
+
+            open spec fn peek(&self, index: int) -> Option<u8> {
+                None
+            }
+        }
+
+        impl Iterator for One {
+            type Item = u8;
+
+            fn next(&mut self) -> (ret: Option<u8>) {
+                if self.done {
+                    None
+                } else {
+                    self.done = true;
+                    Some(1)
+                }
+            }
+
+            fn size_hint(&self) -> (r: (usize, Option<usize>)) {
+                if self.done { (0, Some(0)) } else { (1, Some(1)) }
+            }
+        }
+
+        impl ExactSizeIteratorSpecImpl for One {
+            // Wrong: a fresh `One` has one item left.
+            open spec fn exact_len(&self) -> usize {
+                0
+            }
+        }
+
+        // No `len` here, so std's default `len` is used.
+        impl ExactSizeIterator for One {}
+
+        fn fresh_len_good() -> (n: usize)
+            ensures
+                n == 1,
+        {
+            let it = One { done: false };
+            it.len()
+        }
+
+        fn fresh_len_bad() -> (n: usize)
+            ensures
+                false, // FAILS
+        {
+            let it = One { done: false };
+            it.len()
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
