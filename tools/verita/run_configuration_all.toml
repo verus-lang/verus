@@ -142,7 +142,10 @@ extra_verus_args = [
 
 [[project]]
 name = "verismo"
-git_url = "https://github.com/microsoft/verismo.git"
-refspec = "main"
+#TODO: restore this when updates are merged into it:
+#git_url = "https://github.com/microsoft/verismo.git"
+#refspec = "origin/main"
+git_url = "https://github.com/Chris-Hawblitzel/verismo.git"
+refspec = "origin/verita-fix1"
 cargo_verus = true
 crate_roots = ["source/bitflags_verus/src", "source/verismo_tspec/src", "source/verismo/src"]
