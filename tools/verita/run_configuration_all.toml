@@ -54,7 +54,7 @@ pushd test_libc
 cargo clean
 cargo +1.100.0 build --release
 popd
-LIBC_RLIB_NAME=$(find ./test_libc/target/release/deps/ -name 'liblibc-*.rlib')
+LIBC_RLIB_NAME=$(find ./test_libc/target/release/build/ -name 'liblibc-*.rlib')
 mkdir -p build
 cp $LIBC_RLIB_NAME build/liblibc.rlib
 """
@@ -64,7 +64,7 @@ Push-Location test_libc
 cargo clean
 cargo +1.100.0 build --release
 Pop-Location
-$libcRlib = Get-ChildItem -Path "./test_libc/target/release/deps/" -Filter "liblibc-*.rlib" | Select-Object -First 1
+$libcRlib = Get-ChildItem -Path "./test_libc/target/release/build/" -Filter "liblibc-*.rlib" | Select-Object -First 1
 New-Item -ItemType Directory -Path "build" -Force | Out-Null
 Copy-Item -Path $libcRlib.FullName -Destination "build/liblibc.rlib"
 """
