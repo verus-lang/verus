@@ -45,6 +45,9 @@ pub struct ErasureInfo {
     /// mode-checking.
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
     pub(crate) local_invariant_bodies: Vec<rustc_mir_build_verus::verus::LocalInvariantBody>,
+    /// Binders (PatKind::Binding HirIds) of function parameters (including the inner binders
+    /// of unwrapped `Tracked(x)`/`Ghost(x)` parameters) that are not exec-mode
+    pub(crate) ghost_param_binders: Vec<HirId>,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
@@ -233,7 +236,7 @@ impl<'tcx> ContextX<'tcx> {
     }
 
     pub(crate) fn def_id_to_vir_path(&self, def_id: DefId) -> Path {
-        crate::rust_to_vir_base::def_id_to_vir_path(
+        crate::rust_to_vir_path::def_id_to_vir_path(
             self.tcx,
             &self.verus_items,
             def_id,
@@ -364,6 +367,7 @@ impl ErasureInfo {
             shadow_check: vec![],
             extra_erase_ast_ids: vec![],
             local_invariant_bodies: vec![],
+            ghost_param_binders: vec![],
         }
     }
 }

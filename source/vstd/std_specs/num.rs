@@ -137,6 +137,20 @@ macro_rules! num_specs {
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
+            pub assume_specification[<$uN>::rotate_left](x: $uN, n: u32) -> $uN
+                returns $mod_u::rotate_left(x, n)
+                opens_invariants none
+                no_unwind;
+
+            #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
+            pub assume_specification[<$uN>::rotate_right](x: $uN, n: u32) -> $uN
+                returns $mod_u::rotate_right(x, n)
+                opens_invariants none
+                no_unwind;
+
+            #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_add](x: $uN, y: $uN) -> Option<$uN>
                 returns (
                     if x + y > <$uN>::MAX {
@@ -396,6 +410,20 @@ macro_rules! num_specs {
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::wrapping_shr](x: $iN, rhs: u32) -> $iN
                 returns $mod_i::wrapping_shr(x, rhs)
+                opens_invariants none
+                no_unwind;
+
+            #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
+            pub assume_specification[<$iN>::rotate_left](x: $iN, n: u32) -> $iN
+                returns $mod_i::rotate_left(x, n)
+                opens_invariants none
+                no_unwind;
+
+            #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
+            pub assume_specification[<$iN>::rotate_right](x: $iN, n: u32) -> $iN
+                returns $mod_i::rotate_right(x, n)
                 opens_invariants none
                 no_unwind;
 

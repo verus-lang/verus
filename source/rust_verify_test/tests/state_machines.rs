@@ -9331,3 +9331,485 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] pre_reserved_raw_ident_issue3173 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields { #[sharding(variable)] pub v: int, }
+            init!{ initialize() { init v = 1; } }
+            property!{ p() {
+                let r#pre = State { v: 0 };
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "'pre' is a reserved identifier in state machine definitions")
+}
+
+test_verify_one_file! {
+    #[test] pre_reserved_item_issue3173 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields { #[sharding(variable)] pub v: u8, }
+            init!{ initialize() { init v = 1; } }
+            property!{ p() {
+                assert({ const pre: State = State { v: 0u8 }; pre.v == 0u8 });
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "'pre' is a reserved identifier in state machine definitions")
+}
+
+test_verify_one_file! {
+    #[test] label_reserved_param_issue3173 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X {
+            fields { pub v: int, }
+            pub enum Label { A, B }
+            init!{ initialize() { init v = 0; } }
+            transition!{ tr(lbl: Label, label: Label) {
+                require(lbl is A && label is B);
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "'label' cannot be used as a param name since it would shadow the label")
+}
+
+test_verify_one_file! {
+    #[test] inherent_token_method_issue3173 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields { #[sharding(variable)] pub v: u8, }
+            init!{ initialize() { init v = 1; } }
+        }}
+        impl X::v {
+            pub open spec fn value(&self) -> u8 { 0 }
+        }
+        proof fn bad() {
+            let tracked (Tracked(inst), Tracked(tok)) = X::Instance::initialize();
+            assert(vstd::tokens::ValueToken::value(&tok) == 0); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] trait_instance_method_issue3173 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields { #[sharding(constant)] pub k: u8, #[sharding(variable)] pub v: u8, }
+            init!{ initialize(x: u8) { init k = x; init v = x; } }
+            property!{ p() { } }
+        }}
+        pub uninterp spec fn the_id() -> vstd::tokens::InstanceId;
+        pub trait FakeId { spec fn id(self) -> vstd::tokens::InstanceId; }
+        impl FakeId for X::Instance {
+            open spec fn id(self) -> vstd::tokens::InstanceId { the_id() }
+        }
+        proof fn bad() {
+            let tracked (Tracked(inst1), Tracked(tok1)) = X::Instance::initialize(1);
+            let tracked (Tracked(inst2), Tracked(tok2)) = X::Instance::initialize(2);
+            inst1.p(&tok2); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] remove_map_general_expr_precedence_ok IMPORTS.to_string() + verus_code_str! {
+        // In spec code `x + y` desugars to `x.spec_add(y)`, so these impls give `+` meaning on Map
+        pub trait MyAdd<R, O> {
+            spec fn spec_add(self, r: R) -> O;
+        }
+
+        impl MyAdd<Map<int, int>, Map<int, int>> for Map<int, int> {
+            open spec fn spec_add(self, r: Map<int, int>) -> Map<int, int> {
+                self.union_prefer_right(r)
+            }
+        }
+
+        impl MyAdd<Set<int>, Set<int>> for Map<int, int> {
+            open spec fn spec_add(self, r: Set<int>) -> Set<int> {
+                self.dom().union(r).insert(2)
+            }
+        }
+
+        tokenized_state_machine!{
+            X {
+                fields {
+                    #[sharding(variable)]
+                    pub phase: int,
+
+                    #[sharding(map)]
+                    pub m: Map<int, int>,
+                }
+
+                init!{
+                    initialize() {
+                        init phase = 0;
+                        init m = Map::<int, int>::empty().insert(1, 1).insert(2, 2);
+                    }
+                }
+
+                transition!{
+                    tr(a: Map<int, int>, b: Map<int, int>) {
+                        require(pre.phase == 0);
+                        require(a == Map::<int, int>::empty().insert(1, 1));
+                        require(b == Map::<int, int>::empty());
+                        remove m -= (a + b);
+                        update phase = 1;
+                    }
+                }
+
+                #[invariant]
+                pub fn the_inv(&self) -> bool {
+                    &&& (self.phase == 0 ==> self.m == Map::<int, int>::empty().insert(1, 1).insert(2, 2))
+                    &&& (self.phase == 1 ==> self.m.dom().contains(2))
+                }
+
+                #[inductive(initialize)]
+                fn initialize_inductive(post: Self) {
+                }
+
+                #[inductive(tr)]
+                fn tr_inductive(pre: Self, post: Self, a: Map<int, int>, b: Map<int, int>) {
+                    assert(a.union_prefer_right(b) =~= Map::<int, int>::empty().insert(1, 1));
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_ok IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn p(x: u8) -> bool;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(variable)] pub v: u8,
+            }
+
+            init!{
+                initialize(x: u8) {
+                    require p(x);
+                    init v = x;
+                }
+            }
+
+            transition!{
+                tr(x: u8) {
+                    require p(x);
+                    update v = x;
+                }
+            }
+
+            #[invariant]
+            #[verifier::prophetic]
+            pub fn inv(&self) -> bool {
+                p(self.v)
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, x: u8) { }
+
+            #[inductive(tr)]
+            fn tr_inductive(pre: Self, post: Self, x: u8) { }
+        }}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_missing IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn p(x: u8) -> bool;
+
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub v: u8,
+            }
+
+            init!{
+                initialize(x: u8) {
+                    require p(x);
+                    init v = x;
+                }
+            }
+
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_missing2 IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn p(x: u8) -> bool;
+
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub v: u8,
+            }
+
+            init!{
+                initialize(x: u8) {
+                    init v = x;
+                }
+            }
+
+            #[invariant]
+            #[verifier::prophetic]
+            pub fn inv(&self) -> bool {
+                p(self.v)
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, x: u8) { }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_bad_proph IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn q(x: u8) -> u8;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(variable)] pub v: u8,
+            }
+
+            init!{
+                initialize(x: u8) {
+                    init v = x;
+                }
+            }
+
+            transition!{
+                tr(x: u8) {
+                    update v = q(x);
+                }
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, x: u8) { }
+
+            #[inductive(tr)]
+            fn tr_inductive(pre: Self, post: Self, x: u8) { }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic expression not allowed in `update` statement")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_require_assert_ok IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn q(x: u8) -> bool;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(variable)] pub v: u8,
+                #[sharding(multiset)] pub m: Multiset<u8>,
+            }
+
+            init!{
+                initialize(x: u8) {
+                    init v = x;
+                    init m = Multiset::empty();
+                }
+            }
+
+            transition!{
+                tr(x: u8) {
+                    require(q(x));
+                    let y = x;
+                    update v = y;
+                    add m += {y};
+                    assert(q(x)) by { assume(false); };
+                }
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, x: u8) { }
+
+            #[inductive(tr)]
+            fn tr_inductive(pre: Self, post: Self, x: u8) { }
+        }}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_bad_proph_remove IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn q(x: u8) -> u8;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(multiset)] pub m: Multiset<u8>,
+            }
+
+            transition!{
+                tr(x: u8) {
+                    remove m -= {q(x)};
+                }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic expression not allowed in `remove` statement")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_bad_proph_have IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn q(x: u8) -> u8;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(multiset)] pub m: Multiset<u8>,
+            }
+
+            transition!{
+                tr(x: u8) {
+                    have m >= {q(x)};
+                }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic expression not allowed in `have` statement")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_bad_proph_if IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn q(x: u8) -> bool;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(variable)] pub v: u8,
+            }
+
+            transition!{
+                tr(x: u8) {
+                    if q(x) {
+                        update v = 0;
+                    }
+                }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic expression not allowed in `if` condition")
+}
+
+test_verify_one_file! {
+    #[test] prophetic_attr_bad_proph_guard IMPORTS.to_string() + verus_code_str! {
+        #[verifier::prophetic]
+        pub uninterp spec fn q(x: u8) -> u8;
+
+        tokenized_state_machine!{ X {
+            #![verifier::prophetic]
+
+            fields {
+                #[sharding(storage_option)] pub m: Option<u8>,
+            }
+
+            property!{
+                tr(x: u8) {
+                    guard m >= Some(q(x));
+                }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "prophetic expression not allowed in `guard` statement")
+}
+
+test_verify_one_file! {
+    #[test] mut_let_in_transition IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X {
+            fields { pub x: int }
+            transition!{ tr() {
+                let mut a: int = 1;
+                if true {
+                    let b: int = { a = 2; 0 };
+                }
+                assert(a == 2);
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "mutable bindings are not allowed in transition definitions")
+}
+
+test_verify_one_file! {
+    #[test] assign_to_immutable_binding_in_transition IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X {
+            fields { pub x: int }
+            transition!{ tr() {
+                let a: int = 1;
+                if true {
+                    let b: int = { a = 2; 0 };
+                }
+                assert(a == 2);
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "assignment is not allowed inside pure context")
+}
+
+test_verify_one_file! {
+    #[test] forge_instance_in_normal_fn IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub v: int,
+            }
+
+            #[invariant]
+            pub spec fn inv(&self) -> bool { false }
+
+            property!{ boom() { assert(false); } }
+
+            pub proof fn forge() -> (tracked i: Instance) {
+                Instance { send_sync: arbitrary(), state: None, location: 0 }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: constructor for an opaque datatype")
+}
+
+test_verify_one_file! {
+    #[test] forge_token_in_normal_fn IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(persistent_option)] pub p: Option<int>,
+            }
+
+            #[invariant]
+            pub spec fn inv(&self) -> bool { true }
+
+            pub proof fn forge(tracked i: Instance) -> (tracked t: p) {
+                p { dummy_instance: i }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: constructor for an opaque datatype")
+}
+
+test_verify_one_file! {
+    #[test] use_in_transition_expr IMPORTS.to_string() + verus_code_str! {
+        pub mod sh {
+            #[allow(non_upper_case_globals)]
+            pub const pre: u64 = 5;
+        }
+        tokenized_state_machine!{ M {
+            fields { #[sharding(variable)] pub y: u64 }
+            transition!{ tr() {
+                update y = { use crate::sh::*; pre };
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "this kind of item is not allowed in a transition expression")
+}
+
+test_verify_one_file! {
+    #[test] stmt_macro_in_transition_expr IMPORTS.to_string() + verus_code_str! {
+        macro_rules! mk_pre { () => {
+            #[allow(non_upper_case_globals)]
+            const pre: u64 = 5;
+        } }
+        tokenized_state_machine!{ M {
+            fields { #[sharding(variable)] pub y: u64 }
+            transition!{ tr() {
+                update y = { mk_pre!(); pre };
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "macro not allowed in transition expression")
+}

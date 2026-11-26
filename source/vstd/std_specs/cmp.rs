@@ -1,5 +1,11 @@
 use super::super::prelude::*;
+use super::borrow::BorrowSpec;
 
+#[cfg(feature = "alloc")]
+use alloc::{boxed::Box, rc::Rc, sync::Arc};
+#[cfg(feature = "alloc")]
+use core::alloc::Allocator;
+use core::borrow::Borrow;
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 use core::marker::PointeeSized;
 
@@ -197,6 +203,17 @@ pub trait ExOrd: Eq + PartialOrd + PointeeSized {
     ;
 }
 
+/// Whether borrowing preserves the ordering of values.
+///
+/// This compares the `cmp_spec` results; faithfulness of the comparison and
+/// borrowing specifications is expressed separately by their `obeys_*_spec` predicates.
+pub open spec fn borrowed_key_ordering_matches<T: Borrow<U> + Ord, U: Ord + ?Sized>() -> bool {
+    forall|x: T, y: T| #[trigger]
+        x.cmp_spec(&y) == <T as BorrowSpec<U>>::borrow_spec(&x).cmp_spec(
+            <T as BorrowSpec<U>>::borrow_spec(&y),
+        )
+}
+
 pub trait PartialEqIs<Rhs: PointeeSized = Self>: PartialEq<Rhs> + PointeeSized {
     spec fn is_eq(&self, other: &Rhs) -> bool;
 
@@ -354,6 +371,52 @@ impl PartialEqSpecImpl for char {
         *self == *other
     }
 }
+
+impl PartialOrdSpecImpl for char {
+    open spec fn obeys_partial_cmp_spec() -> bool {
+        true
+    }
+
+    open spec fn partial_cmp_spec(&self, other: &char) -> Option<Ordering> {
+        if *self < *other {
+            Some(Ordering::Less)
+        } else if *self > *other {
+            Some(Ordering::Greater)
+        } else {
+            Some(Ordering::Equal)
+        }
+    }
+}
+
+impl OrdSpecImpl for char {
+    open spec fn obeys_cmp_spec() -> bool {
+        true
+    }
+
+    open spec fn cmp_spec(&self, other: &char) -> Ordering {
+        if *self < *other {
+            Ordering::Less
+        } else if *self > *other {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+    }
+}
+
+pub assume_specification[ <char as Ord>::cmp ](x: &char, y: &char) -> Ordering;
+
+pub assume_specification[ <char as PartialOrd<char>>::partial_cmp ](x: &char, y: &char) -> Option<
+    Ordering,
+>;
+
+pub assume_specification[ <char as PartialOrd<char>>::lt ](x: &char, y: &char) -> bool;
+
+pub assume_specification[ <char as PartialOrd<char>>::le ](x: &char, y: &char) -> bool;
+
+pub assume_specification[ <char as PartialOrd<char>>::gt ](x: &char, y: &char) -> bool;
+
+pub assume_specification[ <char as PartialOrd<char>>::ge ](x: &char, y: &char) -> bool;
 
 /* floating point */
 
@@ -554,6 +617,105 @@ pub assume_specification<'a, A: PointeeSized + Ord>[ <&'a A as Ord>::cmp ](
 ;
 
 } // verus!
+
+/* smart pointers: Box, Rc, Arc */
+
+// Each pointer compares its pointee. Every comparison method it overrides forwards to
+// the same method on `T`, except Rc and Arc's `eq` and `ne` (see below).
+#[cfg(feature = "alloc")]
+macro_rules! smart_ptr_cmp_impl {
+    ($ptr:ident, obeys_eq_spec: { $($obeys_eq:tt)+ }) => {
+        verus! {
+        impl<T: PartialEq + ?Sized, A: Allocator> PartialEqSpecImpl for $ptr<T, A> {
+            open spec fn obeys_eq_spec() -> bool {
+                $($obeys_eq)+
+            }
+
+            open spec fn eq_spec(&self, other: &Self) -> bool {
+                <T as PartialEqSpec>::eq_spec(&**self, &**other)
+            }
+        }
+
+        pub assume_specification<T: PartialEq + ?Sized, A: Allocator>[ <$ptr<T, A> as PartialEq>::eq ](
+            x: &$ptr<T, A>,
+            y: &$ptr<T, A>,
+        ) -> bool;
+
+        pub assume_specification<T: PartialEq + ?Sized, A: Allocator>[ <$ptr<T, A> as PartialEq>::ne ](
+            x: &$ptr<T, A>,
+            y: &$ptr<T, A>,
+        ) -> bool;
+
+        impl<T: PartialOrd + ?Sized, A: Allocator> PartialOrdSpecImpl for $ptr<T, A> {
+            open spec fn obeys_partial_cmp_spec() -> bool {
+                T::obeys_partial_cmp_spec()
+            }
+
+            open spec fn partial_cmp_spec(&self, other: &Self) -> Option<Ordering> {
+                <T as PartialOrdSpec>::partial_cmp_spec(&**self, &**other)
+            }
+        }
+
+        pub assume_specification<T: PartialOrd + ?Sized, A: Allocator>[ <$ptr<T, A> as PartialOrd>::partial_cmp ](
+            x: &$ptr<T, A>,
+            y: &$ptr<T, A>,
+        ) -> Option<Ordering>;
+
+        pub assume_specification<T: PartialOrd + ?Sized, A: Allocator>[ <$ptr<T, A> as PartialOrd>::lt ](
+            x: &$ptr<T, A>,
+            y: &$ptr<T, A>,
+        ) -> bool;
+
+        pub assume_specification<T: PartialOrd + ?Sized, A: Allocator>[ <$ptr<T, A> as PartialOrd>::le ](
+            x: &$ptr<T, A>,
+            y: &$ptr<T, A>,
+        ) -> bool;
+
+        pub assume_specification<T: PartialOrd + ?Sized, A: Allocator>[ <$ptr<T, A> as PartialOrd>::gt ](
+            x: &$ptr<T, A>,
+            y: &$ptr<T, A>,
+        ) -> bool;
+
+        pub assume_specification<T: PartialOrd + ?Sized, A: Allocator>[ <$ptr<T, A> as PartialOrd>::ge ](
+            x: &$ptr<T, A>,
+            y: &$ptr<T, A>,
+        ) -> bool;
+
+        impl<T: Ord + ?Sized, A: Allocator> OrdSpecImpl for $ptr<T, A> {
+            open spec fn obeys_cmp_spec() -> bool {
+                T::obeys_cmp_spec()
+            }
+
+            open spec fn cmp_spec(&self, other: &Self) -> Ordering {
+                <T as OrdSpec>::cmp_spec(&**self, &**other)
+            }
+        }
+
+        pub assume_specification<T: Ord + ?Sized, A: Allocator>[ <$ptr<T, A> as Ord>::cmp ](
+            x: &$ptr<T, A>,
+            y: &$ptr<T, A>,
+        ) -> Ordering;
+        } // verus!
+    };
+}
+
+#[cfg(feature = "alloc")]
+smart_ptr_cmp_impl!(Box, obeys_eq_spec: { T::obeys_eq_spec() });
+
+// With `T: Eq`, std specializes `Rc::eq` and `Arc::eq` to return true for two
+// pointers that share an allocation without calling `T::eq` (and `ne` to return
+// false), so delegating to `T::eq_spec` requires it to be reflexive.
+#[cfg(feature = "alloc")]
+smart_ptr_cmp_impl!(Rc, obeys_eq_spec: {
+    &&& T::obeys_eq_spec()
+    &&& forall|x: &T| #[trigger] x.eq_spec(x)
+});
+
+#[cfg(feature = "alloc")]
+smart_ptr_cmp_impl!(Arc, obeys_eq_spec: {
+    &&& T::obeys_eq_spec()
+    &&& forall|x: &T| #[trigger] x.eq_spec(x)
+});
 
 macro_rules! tuple_cmp_impl {
     ($($idx:tt $T:ident, )+) => {

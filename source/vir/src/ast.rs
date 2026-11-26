@@ -37,12 +37,30 @@ pub enum CrateId {
     Id(Ident, u64),
 }
 
+/// Should mirror [`DefPathData`](https://doc.rust-lang.org/beta/nightly-rustc/rustc_hir/definitions/enum.DefPathData.html), plus kinds specific to Verus.
+/// The kinds have no semantic meaning in VIR, they might as well just be random names.
+///
+/// I use `T` and `V` for the type namespace and value namespace, partially for brevity,
+/// and partially because I think the actual names 'type' and 'value' would sometimes be confusing.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Segment {
+    V(Ident, u32),
+    T(Ident, u32),
+    Ctor(u32),
+    Impl(u32),
+    ForeignMod(u32),
+    OpaqueTy(u32),
+    Closure(u32),
+    AnonConst(u32),
+}
+pub type Segments = Arc<Vec<Segment>>;
+
 /// A fully-qualified name, such as a module name, function name, or datatype name
 pub type Path = Arc<PathX>;
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PathX {
     pub krate: CrateId,
-    pub segments: Idents,
+    pub segments: Segments,
 }
 
 #[derive(
@@ -755,6 +773,8 @@ pub enum BinaryOp {
     Eq(Mode),
     /// not Eq
     Ne,
+    /// inequality on bools (ordered false < true)
+    BoolInequality(InequalityOp),
     /// arithmetic inequality
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
@@ -891,6 +911,7 @@ pub struct PatternBinding {
     /// True if the type of this variable is copy.
     /// This is used by resolution analysis; it is meaningless post-simplification.
     pub copy: bool,
+    pub move_exec_to_proof_okay: MoveExecToProofOkay,
 }
 
 /// Patterns for match expressions
@@ -949,7 +970,7 @@ pub enum PatternX {
 /// Arms of match expressions
 pub type Arm = Arc<Spanned<ArmX>>;
 pub type Arms = Arc<Vec<Arm>>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode)]
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub struct ArmX {
     /// pattern
     pub pattern: Pattern,
@@ -1104,6 +1125,14 @@ pub enum AtomicallyKind {
     Loop,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, Copy, ToDebugSNode)]
+pub enum LoopSource {
+    /// loop, while, or for
+    Loop,
+    /// breakable block
+    BreakableBlock,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -1220,6 +1249,7 @@ pub enum ExprX {
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
+    /// bool param = assert_irrefutable
     Match(Place, Arms, bool),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
@@ -1233,9 +1263,11 @@ pub enum ExprX {
         invs: LoopInvariants,
         decrease: Exprs,
         atomic_call: bool,
+        known_no_back_edge: bool,
+        source: LoopSource,
     },
     /// Open invariant
-    OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
+    OpenInvariant(Expr, Expr, VarBinder<Typ>, Expr, InvAtomicity),
     /// Open Atomic Update
     TryOpenAtomicUpdate(Expr, VarBinder<Typ>, Expr),
     /// Placeholder expression for the atomic update argument in the atomic function call
@@ -1297,6 +1329,10 @@ pub enum ExprX {
     /// and well-formedness checks, but otherwise has no meaning. The `Old` node is
     /// ignored after these checks are complete.
     Old(Expr),
+    /// Marks an expression that is not allowed to be prophetic.
+    /// The string is a description of the context, used in the error message.
+    /// Like `Old`, this is only used for checks (in modes.rs) and otherwise has no meaning.
+    ForcePureAndNonProphetic(Arc<String>, Expr),
     /// Async await
     Await(Expr),
     /// Used to check that match guards don't mutate the scrutinee, these are used between
@@ -1321,8 +1357,8 @@ pub struct UnfinalizedReadKind {
 /// Spec until mode-checking, whereas the other kinds are distinguished in rust_to_vir.
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
 pub enum ReadKind {
-    /// A move.
-    Move,
+    /// A move. bool = is an exec-to-proof move okay
+    Move(MoveExecToProofOkay),
     /// A copy. (Not a move.)
     Copy,
     /// Take a shared borrow (&). (Not a move.)
@@ -1335,6 +1371,12 @@ pub enum ReadKind {
     Spec,
     /// Prophetic spec snapshot. (Not a move.)
     SpecAfterBorrow,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
+pub enum MoveExecToProofOkay {
+    Yes,
+    No,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
@@ -1536,8 +1578,6 @@ pub struct AutoExtEqual {
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]
 pub struct FunctionAttrsX {
-    /// Erasure and lifetime checking based on ghost blocks
-    pub uses_ghost_blocks: bool,
     /// Inline spec function for SMT
     pub inline: bool,
     /// Create a global axiom saying forall params, require ==> ensure
@@ -1581,6 +1621,8 @@ pub struct FunctionAttrsX {
     /// Marked with external_body or external_fn_specification
     /// TODO: might be duplicate with https://github.com/verus-lang/verus/pull/1473
     pub is_external_body: bool,
+    /// This function may introduce assumptions when `--no-cheating` is enabled.
+    pub no_cheating_trusted: bool,
     /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
     pub is_unsafe: bool,
     /// Does the exec trait function disallow impls from extending the ensures clause
@@ -1590,16 +1632,25 @@ pub struct FunctionAttrsX {
     pub impls_cannot_extend_spec: bool,
     /// Whether to assume that this function terminates
     pub exec_assume_termination: bool,
+    /// For a trait method impl whose method isn't declared in the trait's Verus spec
+    /// (e.g., an incomplete `external_trait_specification`), assume compatibility
+    /// and treat the impl as a static function rather than erroring
+    pub assume_compatibility_with_trait_spec: bool,
     /// Whether to allow this function to not terminate
     pub exec_allows_no_decreases_clause: bool,
     /// Is this function `tracked_swap`, which requires special handling
     pub tracked_swap: bool,
     /// Is this function `Option::tracked_take`, which requires special handling
     pub tracked_take_option: bool,
+    /// Is this function `create_open_invariant_credit`, which requires special handling
+    pub create_open_invariant_credit: bool,
     /// Whether the function is an async function
     pub is_async: bool,
     /// Is this a types's drop implementation
     pub is_drop: bool,
+    /// Is this the `clone` method of a `Clone` impl for a type that also implements
+    /// `TrivialClone`? If so, we add the postcondition `ensures ret == self`.
+    pub has_trivial_clone: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1959,6 +2010,7 @@ pub struct TraitImplX {
     pub auto_imported: bool,
     // Is a blanket implementation declared by external_trait_extension:
     pub external_trait_blanket: bool,
+    pub is_unsafe: bool,
 }
 
 pub type ModuleReveals = Arc<Spanned<Vec<Fun>>>;

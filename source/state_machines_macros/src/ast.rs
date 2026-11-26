@@ -16,6 +16,9 @@ pub struct SM {
     pub concurrent: bool,
     pub transition_label: Option<Item>,
     pub init_label: Option<Item>,
+    /// Set by the inner attribute `#![verifier::prophetic]`; if true, the generated
+    /// spec fns (invariant, init, next, etc.) are marked `#[verifier::prophetic]`.
+    pub prophetic: bool,
 }
 
 #[derive(Clone, Debug)]

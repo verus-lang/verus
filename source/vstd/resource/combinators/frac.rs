@@ -105,21 +105,21 @@ type FractionalCarrier<T> = ProductRA<FractionRA, AgreementRA<T>>;
 ///     let tracked r2 = r.split();
 ///     assert(r@ == 123);
 ///     assert(r2@ == 123);
-///     assert(r.frac() == (0.5 as real));
-///     assert(r2.frac() == (0.5 as real));
+///     assert(r.frac() == 0.5real);
+///     assert(r2.frac() == 0.5real);
 ///     proof {
 ///         r.combine(r2);
 ///         r.update(456);
 ///     }
 ///     assert(r@ == 456);
-///     assert(r.frac() == 3 as real);
+///     assert(r.frac() == 1 as real);
 ///
 ///     let tracked mut a = FracGhost::<u32>::new(5);
 ///     assert(a@ == 5);
 ///     assert(a.frac() == 1real);
 ///     let tracked mut b = a.split();
-///     assert(a.frac() == (0.5 as real));
-///     assert(b.frac() == (0.5 as real));
+///     assert(a.frac() == 0.5real);
+///     assert(b.frac() == 0.5real);
 ///     proof {
 ///         a.update_with(&mut b, 123);
 ///     }
@@ -199,8 +199,8 @@ impl<T> FracGhost<T> {
         mself
     }
 
-    /// Split one resource into two. Both the returned resource and self have half of the original
-    /// fraction.
+    /// Split one resource into two. The returned resource has fraction `result_frac`,
+    /// and `self` keeps the remaining `old(self).frac() - result_frac`.
     pub proof fn split_to(tracked &mut self, result_frac: real) -> (tracked result: Self)
         requires
             (0 as real) < result_frac < old(self).frac(),

@@ -4,6 +4,10 @@
 use super::prelude::*;
 use super::std_specs::cmp::PartialEqSpec;
 use super::view::*;
+#[cfg(feature = "alloc")]
+use alloc::{boxed::Box, rc::Rc, sync::Arc};
+#[cfg(feature = "alloc")]
+use core::alloc::Allocator;
 
 verus! {
 
@@ -373,6 +377,74 @@ pub broadcast proof fn lemma_option_obeys_deep_eq<T: PartialEq + DeepView>()
     reveal(obeys_deep_eq);
 }
 
+/* Box, Rc, Arc */
+
+// `extra_eq_requires` is for Rc and Arc, whose `obeys_eq_spec` also requires
+// `T::eq_spec` to be reflexive (see their `PartialEqSpecImpl`).
+#[cfg(feature = "alloc")]
+macro_rules! smart_ptr_laws_eq {
+    ($modname:ident, $ptr:ident $(, extra_eq_requires: { $($req:tt)+ })?) => {
+        verus! {
+        mod $modname {
+            use super::*;
+
+            pub broadcast proof fn lemma_obeys_eq_spec<T: PartialEq, A: Allocator>()
+                requires
+                    obeys_eq::<T>(),
+                    $($($req)+)?
+                ensures
+                    #[trigger] obeys_eq::<$ptr<T, A>>(),
+            {
+                reveal(obeys_eq_spec_properties);
+            }
+
+            pub broadcast proof fn lemma_obeys_concrete_eq<T: PartialEq, A: Allocator>()
+                requires
+                    obeys_concrete_eq::<T>(),
+                ensures
+                    #[trigger] obeys_concrete_eq::<$ptr<T, A>>(),
+            {
+                reveal(obeys_concrete_eq);
+            }
+
+            pub broadcast proof fn lemma_obeys_view_eq<T: PartialEq + View>()
+                requires
+                    obeys_view_eq::<T>(),
+                ensures
+                    #[trigger] obeys_view_eq::<$ptr<T>>(),
+            {
+                reveal(obeys_view_eq);
+            }
+
+            pub broadcast proof fn lemma_obeys_deep_eq<T: PartialEq + DeepView>()
+                requires
+                    obeys_deep_eq::<T>(),
+                ensures
+                    #[trigger] obeys_deep_eq::<$ptr<T>>(),
+            {
+                reveal(obeys_deep_eq);
+            }
+
+            pub broadcast group group_laws_eq {
+                lemma_obeys_eq_spec,
+                lemma_obeys_concrete_eq,
+                lemma_obeys_view_eq,
+                lemma_obeys_deep_eq,
+            }
+        }
+        }
+    };
+}
+
+#[cfg(feature = "alloc")]
+smart_ptr_laws_eq!(box_laws, Box);
+
+#[cfg(feature = "alloc")]
+smart_ptr_laws_eq!(rc_laws, Rc, extra_eq_requires: { forall|x: T| #[trigger] x.eq_spec(&x), });
+
+#[cfg(feature = "alloc")]
+smart_ptr_laws_eq!(arc_laws, Arc, extra_eq_requires: { forall|x: T| #[trigger] x.eq_spec(&x), });
+
 pub broadcast group group_laws_eq {
     axiom_structural_obeys_concrete_eq,
     bool_laws::group_laws_eq,
@@ -408,6 +480,12 @@ pub broadcast group group_laws_eq {
     lemma_option_obeys_concrete_eq,
     lemma_option_obeys_view_eq,
     lemma_option_obeys_deep_eq,
+    #[cfg(feature = "alloc")]
+    box_laws::group_laws_eq,
+    #[cfg(feature = "alloc")]
+    rc_laws::group_laws_eq,
+    #[cfg(feature = "alloc")]
+    arc_laws::group_laws_eq,
 }
 
 } // verus!

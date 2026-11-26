@@ -381,6 +381,7 @@ impl<'tcx> Query<'tcx> {
             let mut state = crate::rust_to_vir::State {
                 external_info: crate::rust_to_vir_impl::ExternalInfo::new(),
                 fun_warn_configs: HashMap::new(),
+                trivial_clone_impls: Vec::new(),
             };
             let mut infos: Vec<FunctionOrConstInfo<'tcx>> = Vec::new();
             let name = crate::rust_to_vir_func::check_item_const_or_static(
@@ -580,7 +581,9 @@ impl<'tcx> Query<'tcx> {
         }
 
         let other_vir_crates = self.get_other_vir_crates()?;
-        vir::traits::set_krate_dyn_compatibility(&other_vir_crates, &mut cratex);
+        let merged_traits = self.get_merged_traits()?;
+        vir::traits::set_krate_dyn_compatibility(&other_vir_crates, &merged_traits, &mut cratex)
+            .map_err(|e| self.emit_error(e))?;
         let krate = Arc::new(cratex);
 
         let mut krate = vir::ast_sort::sort_krate(&krate);
@@ -633,18 +636,14 @@ impl<'tcx> Query<'tcx> {
         );
 
         // Demote external traits
-        let krate = vir::traits::demote_external_traits(
-            &*self.reporter,
-            &pre_crate.warning_ctx,
-            &krate,
-            &demote_trait_lookup,
-        )
-        .map_err(|e| self.emit_error(e))?;
+        let krate = vir::traits::demote_external_traits(&krate, &demote_trait_lookup)
+            .map_err(|e| self.emit_error(e))?;
 
         // Inherit default bodies
         let mut new_warning_ctx = (*pre_crate.warning_ctx).clone();
-        let krate = vir::traits::inherit_default_bodies(&krate, &mut new_warning_ctx)
-            .map_err(|e| self.emit_error(e))?;
+        let krate =
+            vir::traits::inherit_default_bodies(&krate, &unpruned_crate, &mut new_warning_ctx)
+                .map_err(|e| self.emit_error(e))?;
 
         // Resolution inference
         // Make sure to do this before the res_info goes stale
@@ -714,4 +713,10 @@ pub fn get_global_query<'tcx>(_tcx: TyCtxt<'tcx>) -> Option<Rc<Query<'tcx>>> {
         }
         None => None,
     })
+}
+
+/// Drops the global Query once it is no longer needed (after the lifetime checks).
+pub fn clear_global_query() {
+    let query = QUERY.with_borrow_mut(|q| q.take());
+    drop(query);
 }

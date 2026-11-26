@@ -68,7 +68,7 @@
     - [Hiding local proofs with `assert (...) by { ... }`](assert_by.md)
     - [Structured proofs by calculation](calc.md)
     - [Proof by computation](assert_by_compute.md)
-    - [Spinning off separate SMT queries]()
+    - [Spinning off separate SMT solver instances](spinoff_prover.md)
     - [Breaking proofs into smaller pieces](breaking_proofs_into_pieces.md)
 - [Using LLM assistants](llms.md)
     - [Using LLMs to develop proofs](llmforverusproof.md)
@@ -116,6 +116,7 @@
   - [Calling verified code from unverified code](./calling-verified-from-unverified.md)
 
 - [Understanding the guarantees of a verified program](./guarantees.md)
+  - [What Verus guarantees](./verus-guarantees.md)
   - [Assumptions and trusted components](./tcb.md)
   - [Memory safety is conditional on verification](./memory-safety.md)
   - [Calling verified code from unverified code](./call-from-unverified-code.md)

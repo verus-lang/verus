@@ -315,7 +315,7 @@ impl<T> Empty<T> {
         self.r.loc()
     }
 
-    pub proof fn new(tracked v: T) -> (tracked result: Self) {
+    pub proof fn new() -> (tracked result: Self) {
         let f = FractionalCarrierOpt::<T>::Value { v: None, frac: (1 as real) };
         let tracked mut m = IMap::<(), T>::tracked_empty();
         let tracked r = StorageResource::alloc(f, m);

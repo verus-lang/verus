@@ -33,7 +33,7 @@ bincode-next = { version = "3.1", features = ["serde"] }
 cargo_metadata = "0.23.1"
 chrono = "0.4.41"
 clap-cargo = { version = "0.18.3", features = ["clap", "cargo_metadata"] }
-clap = { version = "4.6.1", features = ["derive"] }
+clap = { version = "4.6.1", features = ["derive", "wrap_help"] }
 colored = "3.1"
 console = { version = "0.16", default-features = false, features = ["ansi-parsing"] }
 convert_case = "0.4"
@@ -89,9 +89,10 @@ cargo-verus-toolchains = { path = "cargo-verus-toolchains" }
 internals_interface = { path = "tools/internals_interface" }
 rustc_mir_build_verus = { path = "rustc_mir_build", package = "rustc_mir_build" }
 rustc_hir_analysis_verus = { path = "rustc_hir_analysis", package = "rustc_hir_analysis" }
+rustc_const_eval_verus = { path = "rustc_const_eval", package = "rustc_const_eval" }
 rust_verify_test_macros = { path = "rust_verify_test_macros" }
-verus_prettyplease = { version = "=0.0.0-2026-09-06-0133", path = "../dependencies/prettyplease" }
-verus_syn = { version = "=0.0.0-2026-09-06-0133", path = "../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
+verus_prettyplease = { version = "=0.0.0-2026-11-01-0251", path = "../dependencies/prettyplease" }
+verus_syn = { version = "=0.0.0-2026-11-01-0251", path = "../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
 vir-macros = { path = "vir_macros" }
 vir = { path = "vir" }
 

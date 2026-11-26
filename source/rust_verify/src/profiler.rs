@@ -26,7 +26,15 @@ pub fn write_instantiation_graph(
             let bnd_info = qid_map.get(n);
             let kind = if n.starts_with(air::profiler::USER_QUANT_PREFIX) {
                 QuantifierKind::User(UserQuantifier {
-                    span: bnd_info.as_ref().unwrap().user.as_ref().unwrap().span.as_string.clone(),
+                    span: bnd_info
+                        .as_ref()
+                        .unwrap()
+                        .user
+                        .as_ref()
+                        .unwrap()
+                        .span
+                        .as_string
+                        .to_string(),
                 })
             } else {
                 QuantifierKind::Internal

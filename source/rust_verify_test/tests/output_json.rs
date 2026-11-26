@@ -296,3 +296,57 @@ pub struct FuncDetails {
     pub obligation_proof_notes: HashSet<String>,
     pub failed_proof_notes: HashSet<String>,
 }
+
+test_verify_one_file_with_options! {
+    // Two impls of one trait for one type have the same `function` name; `def-path` tells
+    // their entries (and verdicts) apart
+    #[test] test_json_function_breakdown_def_path ["--output-json", "--time"] => verus_code! {
+        use vstd::std_specs::convert::FromSpecImpl;
+        pub enum E { A, B }
+        impl FromSpecImpl<u8> for E {
+            open spec fn obeys_from_spec() -> bool { true }
+            open spec fn from_spec(x: u8) -> E { E::A }
+        }
+        impl From<u8> for E {
+            fn from(x: u8) -> (r: E) { E::A }
+        }
+        impl FromSpecImpl<bool> for E {
+            open spec fn obeys_from_spec() -> bool { true }
+            open spec fn from_spec(x: bool) -> E { E::A }
+        }
+        impl From<bool> for E {
+            fn from(x: bool) -> (r: E) { E::B } // FAILS
+        }
+    } => Err(res) => {
+        let json = res.json_output.unwrap();
+        let modules = json["times-ms"]["smt"]["smt-run-module-times"].as_array().unwrap();
+        let entries: Vec<(String, String, bool)> = modules
+            .iter()
+            .flat_map(|m| m["function-breakdown"].as_array().unwrap().iter())
+            .filter(|e| e["function"] == "test_crate::E::from")
+            .map(|e| {
+                (
+                    e["function"].as_str().unwrap().to_string(),
+                    e["def-path"].as_str().unwrap().to_string(),
+                    e["success"].as_bool().unwrap(),
+                )
+            })
+            .collect();
+        let entries: HashSet<_> = HashSet::from_iter(entries);
+        assert_eq!(
+            entries,
+            HashSet::from_iter([
+                (
+                    "test_crate::E::from".to_string(),
+                    "<E as std::convert::From<u8>>::from".to_string(),
+                    true
+                ),
+                (
+                    "test_crate::E::from".to_string(),
+                    "<E as std::convert::From<bool>>::from".to_string(),
+                    false
+                ),
+            ])
+        );
+    }
+}

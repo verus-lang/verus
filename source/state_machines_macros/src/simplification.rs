@@ -863,7 +863,7 @@ fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             | ShardableType::StorageMap(_, _)
             | ShardableType::IMap(_, _)
             | ShardableType::StorageIMap(_, _) => Expr::Verbatim(quote! {
-                (#cur).remove_keys(#e.dom())
+                (#cur).remove_keys((#e).dom())
             }),
 
             ShardableType::Multiset(_) => Expr::Verbatim(quote! {

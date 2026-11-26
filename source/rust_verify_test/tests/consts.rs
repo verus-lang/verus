@@ -58,7 +58,7 @@ test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
         const C: u64 = S;
         const S: u64 = C;
-    } => Err(err) => assert_rust_error_msg(err, "cycle detected when checking if `C` is a trivial const")
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when simplifying constant for the type system `C`")
 }
 
 test_verify_one_file! {
@@ -127,6 +127,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] dual_mode_const_branch_on_spec_const_issue3211 verus_code! {
+        pub spec const S: bool = true;
+        const C: u8 = if S { 1 } else { 2 };
+    } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] exec_static_branch_on_spec_const_issue3211 verus_code! {
+        pub spec const S: bool = true;
+        exec static X: u8 = if S { 1 } else { 2 };
+    } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
     #[test] test_used_as_spec verus_code! {
         spec const SPEC_E: u64 = 7;
         #[verifier::when_used_as_spec(SPEC_E)]
@@ -164,7 +178,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] static_mut_unsupported verus_code! {
         static mut x: u64 = 0;
-    } => Err(e) => assert_vir_error_msg(e, "Verus does not support 'static mut'")
+    } => Err(e) => assert_vir_error_msg(e, "Verus does not currently support static mut")
 }
 
 test_verify_one_file! {
@@ -568,10 +582,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] const_with_ensures_issue2175 verus_code! {
+    #[test] const_with_ensures_issue2175 code! {
         #[verus_spec(ensures true)]
         pub const C: char = 'x';
-    } => Err(err) => assert_vir_error_msg(err, "a constant item cannot have `ensures` unless it is `exec const`")
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] const_with_ensures_in_verus_macro_issue2175 verus_code! {
+        #[verus_spec(ensures true)]
+        pub const C: char = 'x';
+    } => Err(err) => {
+        assert!(err.warnings.len() == 1);
+        assert!(err.errors.len() == 1);
+        assert!(err.warnings[0].message.contains("#[verus_spec] is likely used inside a verus! block"));
+        assert_vir_error_msg(err, "const is marked `exec` mode but also has an internal `open` attribute (note: this can happen if `#[verus_spec(...)]` is used inside the `verus!` macro)");
+    }
 }
 
 test_verify_one_file! {
@@ -695,7 +721,7 @@ test_verify_one_file! {
             let a = [0u8; core::mem::size_of_val(&N)];
             a.len()
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -704,7 +730,7 @@ test_verify_one_file! {
         spec const N: usize = 5;
         struct S<const K: usize> { a: [u8; K] }
         fn f() { let s = S::<{ core::mem::size_of_val(&N) }> { a: [0; 8] }; }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -712,7 +738,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         spec const N: usize = 5;
         struct S<const K: usize = { core::mem::size_of_val(&N) }> { a: [u8; K] }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -721,7 +747,7 @@ test_verify_one_file! {
         spec const N: usize = 5;
         #[repr(usize)]
         enum E { A = core::mem::size_of_val(&N) }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -729,7 +755,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         const proof fn p() {}
         fn f() { let a = [0u8; { p(); 8 }]; }
-    } => Err(err) => assert_rust_error_msg(err, "cannot call non-const function")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::p` with mode proof")
 }
 
 test_verify_one_file! {
@@ -743,7 +769,7 @@ test_verify_one_file! {
             let a = [0u8; S::N];
             a.len()
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 test_verify_one_file! {
@@ -771,7 +797,7 @@ test_verify_one_file! {
             let a = [0u8; core::mem::size_of_val(&N)];
             a.len()
         };
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
 
 // Rust's const evaluator checks arithmetic in anonymous constants; Verus does not verify it.
@@ -797,5 +823,5 @@ test_verify_one_file! {
         fn make() -> [u8; core::mem::size_of_val(&N)] {
             Default::default()
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }

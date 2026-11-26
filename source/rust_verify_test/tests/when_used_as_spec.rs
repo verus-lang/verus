@@ -114,7 +114,7 @@ test_verify_one_file! {
             #[verifier::when_used_as_spec(f)]
             fn g(&self, k: u64) -> bool { true }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot find function referred to in when_used_as_spec")
+    } => Err(err) => assert_vir_error_msg(err, "unable to find sibling impl item of name `f`")
 }
 
 test_verify_one_file! {
@@ -125,7 +125,7 @@ test_verify_one_file! {
             #[verifier::when_used_as_spec(f)]
             fn g() -> bool { false }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot find function referred to in when_used_as_spec")
+    } => Err(err) => assert_vir_error_msg(err, "unable to find sibling trait item of name `f` (should be in the same trait declaration)")
 }
 
 test_verify_one_file! {
@@ -284,4 +284,20 @@ test_verify_one_file_with_options! {
             *a
         }
     } => Err(err) => assert_vir_error_msg(err, "`when_used_as_spec` not supported for function with a mutable reference parameter")
+}
+
+test_verify_one_file_with_options! {
+    #[test] ignore_nested_with_same_name [] => verus_code! {
+        fn helper() {
+            spec fn is_pos(x: u8) -> bool { false }
+        }
+        spec fn is_pos(x: u8) -> bool { x > 0 } // this is the one we want to refer to
+
+        #[verifier::when_used_as_spec(is_pos)]
+        fn is_pos_exec(x: u8) -> (b: bool)
+            ensures b == is_pos(x),
+        { x > 0 }
+
+        proof fn test() { assert(is_pos_exec(1)); }
+    } => Ok(())
 }
