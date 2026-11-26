@@ -14,10 +14,11 @@ use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, SmtSolver, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
+use rustc_driver::Compilation;
 use rustc_errors::Diag;
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
-use rustc_session::config::ErrorOutputType;
+use rustc_session::config::{ErrorOutputType, OutFileName, OutputType};
 use std::sync::Mutex;
 
 use vir::messages::{
@@ -50,6 +51,12 @@ use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND_Z3: f32 = 3000000f32;
 const RLIMIT_PER_SECOND_CVC5: f32 = 333333f32; // ~= 5s
+
+pub(crate) fn rename_first_pass_dep_info(path: &std::path::Path) -> std::path::PathBuf {
+    let mut renamed_path = path.to_path_buf();
+    renamed_path.as_mut_os_string().push("-verus");
+    renamed_path
+}
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub(crate) struct ProgressBarId(String);
@@ -496,6 +503,11 @@ impl CommandBatch {
 }
 
 impl Verifier {
+    /// Whether a second invocation of `rustc_driver::run_compiler` is necessary to generate code.
+    pub fn has_second_compile_pass(&self) -> bool {
+        self.compile || (!self.args.no_erasure_check && !self.args.no_lifetime)
+    }
+
     pub fn new(
         args: Args,
         via_cargo_args: Option<CargoVerusArgs>,
@@ -3000,6 +3012,7 @@ fn check_no_opaque_types_in_trait<'tcx>(
 
 // TODO: move the callbacks into a different file, like driver.rs
 pub(crate) struct VerifierCallbacksEraseMacro {
+    pub first_pass_dep_info: Option<std::path::PathBuf>,
     pub(crate) verifier: Verifier,
     /// start time of the rustc compilation
     pub(crate) rust_start_time: Instant,
@@ -3152,6 +3165,24 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         }
 
         rustc_interface::passes::write_dep_info(tcx);
+        if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
+            // Save the first pass's dep-info for the merge after the second pass.
+            if let OutFileName::Real(dep_info_path) =
+                tcx.output_filenames(()).path(OutputType::DepInfo)
+            {
+                let saved_dep_info_path = rename_first_pass_dep_info(&dep_info_path);
+                if let Err(err) = std::fs::rename(&dep_info_path, &saved_dep_info_path) {
+                    eprintln!(
+                        "error: failed to rename dep-info {} to {} due to {err}",
+                        dep_info_path.display(),
+                        saved_dep_info_path.display(),
+                    );
+                    self.verifier.encountered_error = true;
+                    return Compilation::Stop;
+                };
+                self.first_pass_dep_info = Some(dep_info_path);
+            }
+        }
         self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
 
         let time_import0 = Instant::now();
