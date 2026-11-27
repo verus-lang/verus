@@ -779,6 +779,17 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+test_verify_one_file! {
+    #[test] dyn_cycle_supertrait verus_code! {
+        use vstd::prelude::*;
+        trait U {
+            spec fn f(&self, s: S) -> bool;
+        }
+        trait T: U {}
+        struct S(Box<dyn T>);
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
 // Upstream crate for the cross-crate dyn-compatibility tests below.
 // T is sealed, so A1 and A2 (unit structs) are its only possible implementors.
 const DYN_UPSTREAM_A: &str = verus_code_str! {

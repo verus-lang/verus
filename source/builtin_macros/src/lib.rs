@@ -120,12 +120,16 @@ pub fn verus_proof_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 
 #[proc_macro]
 pub fn verus_exec_expr_keep_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_expr(EraseGhost::Keep, false, input)
+    let erase = match cfg_erase() {
+        EraseGhost::Keep => EraseGhost::Keep,
+        EraseGhost::Erase | EraseGhost::EraseAll => EraseGhost::Erase,
+    };
+    syntax::rewrite_expr(erase, false, input)
 }
 
 #[proc_macro]
 pub fn verus_exec_expr_erase_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_expr(EraseGhost::Keep, false, input)
+    syntax::rewrite_expr(EraseGhost::Erase, false, input)
 }
 
 #[proc_macro]

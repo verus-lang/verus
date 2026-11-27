@@ -876,6 +876,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] option_from_residual_infallible_no_false verus_code! {
+        // Since Rust 1.100, `Infallible` is an alias for `!`
+        use vstd::prelude::*;
+        use core::convert::Infallible;
+        use core::ops::FromResidual;
+
+        fn test(residual: Option<Infallible>) -> Option<u8> {
+            let r = Option::from_residual(residual);
+            assert(false); // FAILS
+            r
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] header_after_statements_in_block verus_code! {
         fn f(x: u8) -> (r: u8)
             ensures

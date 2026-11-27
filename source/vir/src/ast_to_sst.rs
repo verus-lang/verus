@@ -1015,6 +1015,30 @@ fn expr_get_call(
                     return Ok(None);
                 }
 
+                let func_is_atomic = function.x.atomic_update.is_some();
+                let call_is_atomic = args.last().is_some_and(|expr| {
+                    // atomically block was replaced by init dummy
+                    matches!(expr.x, ExprX::AtomicUpdateInitDummy)
+                });
+
+                match (func_is_atomic, call_is_atomic) {
+                    (true, false) => {
+                        return Err(error_with_label(
+                            &expr.span,
+                            "invalid call to logically atomic function",
+                            "expected atomic function call here",
+                        ));
+                    }
+                    (false, true) => {
+                        return Err(error_with_label(
+                            &expr.span,
+                            "invalid atomic function call",
+                            "unexpected atomic function call here",
+                        ));
+                    }
+                    _ => {}
+                }
+
                 let (stms, all_obligations, exps, body) = get_call_args(
                     ctx,
                     state,
@@ -3897,7 +3921,7 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, Maybe::Some(Value::Exp(exp1))))
         }
         ExprX::Old(e) => expr_to_stm_opt(ctx, state, e),
-        ExprX::ProphecyDisallowed(_, e) => expr_to_stm_opt(ctx, state, e),
+        ExprX::ForcePureAndNonProphetic(_, e) => expr_to_stm_opt(ctx, state, e),
         ExprX::MatchGuardFreeze(scrutinee, body) => {
             let (stms, e) = expr_to_stm_opt(ctx, state, body)?;
             let (stms0, scrutinee) = place_to_exp_pair(ctx, state, scrutinee)?;
