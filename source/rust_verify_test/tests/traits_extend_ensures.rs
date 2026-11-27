@@ -934,8 +934,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_impls_cannot_extend_spec_cycle1 verus_code! {
+        #[verifier::prophetic]
         spec fn r() -> bool { f::<u8>() }
         trait T { fn e() requires r(); }
+        #[verifier::prophetic]
         spec fn f<A: T>() -> bool { call_requires(A::e, ()) }
         impl T for u8 { fn e() {} }
     } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
@@ -943,17 +945,21 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_impls_cannot_extend_spec_cycle2 verus_code! {
+        #[verifier::prophetic]
         spec fn r() -> bool { f() }
         trait T { fn e() requires r(); }
         impl T for u8 { fn e() {} }
+        #[verifier::prophetic]
         spec fn f() -> bool { call_requires(u8::e, ()) }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
 }
 
 test_verify_one_file! {
     #[test] test_impls_cannot_extend_spec_cycle3 verus_code! {
+        #[verifier::prophetic]
         spec fn r() -> bool { f::<u8>() }
         trait T { fn e() ensures r(); }
+        #[verifier::prophetic]
         spec fn f<A: T>() -> bool { call_ensures(A::e, (), ()) }
         impl T for u8 { fn e() {} }
     } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
@@ -961,17 +967,21 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_impls_cannot_extend_spec_cycle4 verus_code! {
+        #[verifier::prophetic]
         spec fn r() -> bool { f() }
         trait T { fn e() ensures r(); }
         impl T for u8 { fn e() {} }
+        #[verifier::prophetic]
         spec fn f() -> bool { call_ensures(u8::e, (), ()) }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
 }
 
 test_verify_one_file! {
     #[test] test_impls_cannot_extend_spec_cycle1b verus_code! {
+        #[verifier::prophetic]
         spec fn r() -> bool { f::<u8>() }
         trait T { #[verifier::impls_cannot_extend_spec]fn e() requires r(); }
+        #[verifier::prophetic]
         spec fn f<A: T>() -> bool { call_requires(A::e, ()) }
         impl T for u8 { fn e() {} }
     } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
@@ -979,17 +989,21 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_impls_cannot_extend_spec_cycle2b verus_code! {
+        #[verifier::prophetic]
         spec fn r() -> bool { f() }
         trait T { #[verifier::impls_cannot_extend_spec]fn e() requires r(); }
         impl T for u8 { fn e() {} }
+        #[verifier::prophetic]
         spec fn f() -> bool { call_requires(u8::e, ()) }
     } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
 }
 
 test_verify_one_file! {
     #[test] test_impls_cannot_extend_spec_cycle3b verus_code! {
+        #[verifier::prophetic]
         spec fn r() -> bool { f::<u8>() }
         trait T { #[verifier::impls_cannot_extend_spec]fn e() ensures r(); }
+        #[verifier::prophetic]
         spec fn f<A: T>() -> bool { call_ensures(A::e, (), ()) }
         impl T for u8 { fn e() {} }
     } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
@@ -997,9 +1011,11 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_impls_cannot_extend_spec_cycle4b verus_code! {
+        #[verifier::prophetic]
         spec fn r() -> bool { f() }
         trait T { #[verifier::impls_cannot_extend_spec] fn e() ensures r(); }
         impl T for u8 { fn e() {} }
+        #[verifier::prophetic]
         spec fn f() -> bool { call_ensures(u8::e, (), ()) }
     } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
 }

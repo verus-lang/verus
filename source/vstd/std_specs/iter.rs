@@ -104,6 +104,7 @@ pub trait ExIterator {
 
     // If we can make a useful guess as to what the i-th value will be, return it.
     // Otherwise, return None.
+    #[verifier::prophetic]
     spec fn peek(&self, index: int) -> Option<Self::Item>;
 
     /******* Provided methods (in alphabetical order) *********/
@@ -494,6 +495,7 @@ pub trait ExDoubleEndedIterator : Iterator {
 
     // If we can make a useful guess as to what the i-th value from the back will be, return it.
     // Otherwise, return None.
+    #[verifier::prophetic]
     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
 
     /******* Provided methods (in alphabetical order) *********/
@@ -687,6 +689,7 @@ impl <I> IteratorSpecImpl for &mut I
         <I as IteratorSpec>::decrease(*self)
     }
 
+    #[verifier::prophetic]
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         <I as IteratorSpec>::peek(*self, index)
     }
@@ -737,6 +740,7 @@ impl <I> IteratorSpecImpl for Enumerate<I>
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
+    #[verifier::prophetic]
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         match enumerate_iter(*self).peek(index) {
             Some(x) => Some((index as usize, x)),
@@ -836,6 +840,7 @@ impl <I, P> IteratorSpecImpl for core::iter::Filter<I, P>
  * Definitions for fold and try_fold
  ********************************************************************************/
 
+#[verifier::prophetic]
 pub open spec fn fold_prefix<A, B, F: FnMut(B, A) -> B>(
     items: Seq<A>, produces: Seq<bool>, init: B, f: F, bs: Seq<B>,
 ) -> bool {
@@ -847,6 +852,7 @@ pub open spec fn fold_prefix<A, B, F: FnMut(B, A) -> B>(
         && f.ensures((bs[j], items[j]), bs[j + 1])
 }
 
+#[verifier::prophetic]
 pub open spec fn fold_requires<A, B, F: FnMut(B, A) -> B>(
     items: Seq<A>, produces: Seq<bool>, init: B, f: F,
 ) -> bool {
@@ -860,6 +866,7 @@ pub open spec fn fold_requires<A, B, F: FnMut(B, A) -> B>(
             f.requires((bs.last(), items[bs.len() - 1]))
 }
 
+#[verifier::prophetic]
 pub open spec fn fold_post<A, B, F: FnMut(B, A) -> B>(
     items: Seq<A>, produces: Seq<bool>, init: B, f: F, result: B,
 ) -> bool {
@@ -869,6 +876,7 @@ pub open spec fn fold_post<A, B, F: FnMut(B, A) -> B>(
         && bs.len() == items.len() + 1 && result == bs.last()
 }
 
+#[verifier::prophetic]
 pub open spec fn try_fold_prefix<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
     items: Seq<A>, produces: Seq<bool>, init: B, f: F, bs: Seq<B>, results: Seq<R>,
 ) -> bool {
@@ -882,6 +890,7 @@ pub open spec fn try_fold_prefix<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
         && results[j].branch_model() == ControlFlow::Continue(bs[j + 1])
 }
 
+#[verifier::prophetic]
 pub open spec fn try_fold_requires<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
     items: Seq<A>, produces: Seq<bool>, init: B, f: F,
 ) -> bool {
@@ -896,6 +905,7 @@ pub open spec fn try_fold_requires<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R
 }
 
 /// `consumed` counts items up to and including the failing item
+#[verifier::prophetic]
 pub open spec fn try_fold_post<A, B, R: Try<Output = B>, F: FnMut(B, A) -> R>(
     items: Seq<A>, produces: Seq<bool>, init: B, f: F, result: R, consumed: int,
     remaining_produces: Seq<bool>,
@@ -978,6 +988,7 @@ impl <B, I, F> IteratorSpecImpl for core::iter::Map<I, F>
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
+    #[verifier::prophetic]
     open spec fn peek(&self, index: int) -> Option<B> {
         match map_iter(*self).peek(index) {
             Some(v) => {
@@ -993,6 +1004,7 @@ impl <B, I, F> DoubleEndedIteratorSpecImpl for core::iter::Map<I, F>
     where I: DoubleEndedIterator + IteratorSpec,
           F: FnMut(I::Item) -> B,
 {
+    #[verifier::prophetic]
     open spec fn peek_back(&self, index: int) -> Option<B> {
         match map_iter(*self).peek_back(index) {
             Some(v) => {
@@ -1047,6 +1059,7 @@ impl <I> IteratorSpecImpl for Rev<I>
         rev_iter(*self).decrease()
     }
 
+    #[verifier::prophetic]
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         rev_iter(*self).peek_back(index)
     }
@@ -1055,6 +1068,7 @@ impl <I> IteratorSpecImpl for Rev<I>
 impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
     where I: DoubleEndedIterator + IteratorSpec {
 
+    #[verifier::prophetic]
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         rev_iter(*self).peek(index)
     }
@@ -1103,6 +1117,7 @@ impl <I> IteratorSpecImpl for Skip<I>
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
+    #[verifier::prophetic]
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         skip_iter(*self).peek(skip_init_n(*self) + index)
     }
@@ -1111,6 +1126,7 @@ impl <I> IteratorSpecImpl for Skip<I>
 impl <I> DoubleEndedIteratorSpecImpl for Skip<I>
     where I: DoubleEndedIteratorSpec + ExactSizeIteratorSpec
 {
+    #[verifier::prophetic]
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         // Skip only drops elements from the front, so the back of the skipped
         // sequence coincides with the back of the inner iterator, as long as
@@ -1169,6 +1185,7 @@ impl <I> IteratorSpecImpl for Take<I>
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
+    #[verifier::prophetic]
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         take_iter(*self).peek(index)
     }
@@ -1177,6 +1194,7 @@ impl <I> IteratorSpecImpl for Take<I>
 impl <I> DoubleEndedIteratorSpecImpl for Take<I>
     where I: DoubleEndedIteratorSpec + ExactSizeIteratorSpec
 {
+    #[verifier::prophetic]
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         let len = take_iter(*self).exact_len();
         if len < take_count(*self) {
@@ -1229,6 +1247,7 @@ impl<A, B> IteratorSpecImpl for Zip<A, B>
         }
     }
 
+    #[verifier::prophetic]
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         match (zip_iter_fst(*self).peek(index), zip_iter_snd(*self).peek(index)) {
             (Some(a), Some(b)) => Some((a, b)),

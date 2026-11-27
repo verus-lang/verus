@@ -77,6 +77,7 @@ enum ProphReasonKind {
     MutRefFuture(MutRefFutureSourceName),
     AfterBorrow,
     HasResolved,
+    ClosureSpecFun(&'static str),
     SpecFunction(Span),
     Var(VarIdent, ProphVarReason),
 }
@@ -356,6 +357,10 @@ impl ProphReason {
             }
             ProphReasonKind::HasResolved => {
                 err = err.secondary_label(&root.span, "the `has_resolved` builtin is prophetic");
+            }
+            ProphReasonKind::ClosureSpecFun(name) => {
+                err = err
+                    .secondary_label(&root.span, format!("the `{:}` builtin is prophetic", name));
             }
             ProphReasonKind::SpecFunction(decl_span) => {
                 err = err.secondary_label(&root.span, "the result of this call is prophetic");
@@ -2127,7 +2132,7 @@ fn check_expr(
             Ok((Mode::Spec, proph))
         }
         ExprX::Call {
-            target: CallTarget::BuiltinSpecFun(_f, _typs, _impl_paths),
+            target: CallTarget::BuiltinSpecFun(f, _typs, _impl_paths),
             args: es,
             post_args: None,
             body,
@@ -2136,7 +2141,10 @@ fn check_expr(
             if typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot call spec function from exec mode"));
             }
-            let mut proph = Proph::No;
+            let mut proph = Proph::Yes(ProphReason {
+                span: expr.span.clone(),
+                kind: ProphReasonKind::ClosureSpecFun(crate::ast_util::builtin_spec_fun_name(f)),
+            });
             for arg in es.iter() {
                 let p = check_expr_has_mode(
                     ctxt,
@@ -3247,6 +3255,14 @@ fn check_expr(
             } else {
                 inner_mode
             };
+            if is_unit(&e1.typ) {
+                // A unit-valued Ghost/Tracked block (e.g. a proof block) carries no information
+                // in its value, so it can't leak a prophetic value.
+                // (Any effects that depend on prophetic values, such as assignments
+                // or calls to proof functions with tracked parameters, are checked
+                // separately via outer_proph.)
+                return Ok((mode.0, Proph::No));
+            }
             if mode.0 != Mode::Spec {
                 mode.1.check(
                     &expr.span,

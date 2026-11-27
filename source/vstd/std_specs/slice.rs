@@ -821,11 +821,13 @@ pub open spec fn sorted_by_le<T>(s: Seq<T>, le: spec_fn(T, T) -> bool) -> bool {
 }
 
 /// `a` is not after `b` in `compare`'s order (for an element pair `compare` was called on)
+#[verifier::prophetic]
 pub open spec fn compare_le<T, F: FnMut(&T, &T) -> Ordering>(compare: F, a: T, b: T) -> bool {
     forall|o: Ordering| #[trigger] call_ensures(compare, (&a, &b), o) ==> o != Ordering::Greater
 }
 
 /// `a`'s key is not after `b`'s in `K`'s order
+#[verifier::prophetic]
 pub open spec fn key_le<T, K: Ord, F: FnMut(&T) -> K>(f: F, a: T, b: T) -> bool {
     forall|ka: K, kb: K|
         #[trigger] call_ensures(f, (&a,), ka) && #[trigger] call_ensures(f, (&b,), kb)
@@ -835,6 +837,7 @@ pub open spec fn key_le<T, K: Ord, F: FnMut(&T) -> K>(f: F, a: T, b: T) -> bool 
 /// `compare` is a total order on the elements of `s` (antisymmetric, transitive, and
 /// deterministic), which std's sorts require: since Rust 1.81 they may panic otherwise
 /// ("user-provided comparison function does not correctly implement a total order").
+#[verifier::prophetic]
 pub open spec fn cmp_fn_total_on<T, F: FnMut(&T, &T) -> Ordering>(compare: F, s: Seq<T>) -> bool {
     &&& forall |i: int, j: int, o1: Ordering, o2: Ordering|
         #![trigger call_ensures(compare, (&s[i], &s[j]), o1), call_ensures(compare, (&s[j], &s[i]), o2)]
@@ -856,6 +859,7 @@ pub open spec fn cmp_fn_total_on<T, F: FnMut(&T, &T) -> Ordering>(compare: F, s:
 }
 
 /// `f` returns the same key for the same element (std's `sort_by_key` calls it more than once)
+#[verifier::prophetic]
 pub open spec fn key_fn_deterministic_on<T, K, F: FnMut(&T) -> K>(f: F, s: Seq<T>) -> bool {
     forall |i: int, k1: K, k2: K| #![trigger call_ensures(f, (&s[i],), k1), call_ensures(f, (&s[i],), k2)]
         0 <= i < s.len() && call_ensures(f, (&s[i],), k1) && call_ensures(f, (&s[i],), k2) ==> k1 == k2

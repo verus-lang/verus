@@ -100,6 +100,7 @@ impl<I: Iterator> vstd::std_specs::iter::IteratorSpecImpl for MySkip<I> {
         self.iter().decrease()
     }
 
+    #[verifier::prophetic]
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         self.iter().peek(self.init_n() + index)
     }
@@ -118,6 +119,7 @@ impl<I: DoubleEndedIterator + ExactSizeIterator> DoubleEndedIterator for MySkip<
 impl<I: DoubleEndedIterator + ExactSizeIterator>
     vstd::std_specs::iter::DoubleEndedIteratorSpecImpl for MySkip<I>
 {
+    #[verifier::prophetic]
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         self.iter().peek_back(index)
     }

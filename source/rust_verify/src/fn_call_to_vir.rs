@@ -186,6 +186,8 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
     } else {
         let typing_env = TypingEnv::non_body_analysis(tcx, bctx.fun_id);
         let res = resolve_trait_item(expr.span, tcx, typing_env, f, node_substs)?;
+        let res =
+            resolve_through_extension_blanket(bctx, typing_env, f, node_substs, res, expr.span);
         match res {
             ResolutionResult::Resolved {
                 impl_def_id: _,
@@ -2542,6 +2544,63 @@ fn is_place_ok_for_spec_after_borrow(place: &Place) -> bool {
         PlaceX::Index(..) => false,
         PlaceX::UserDefinedTypInvariantObligation(..) => false,
     }
+}
+
+/// For `verifier::external_trait_extension(TSpec via TSpecImpl)`, rustc resolves every call
+/// to a TSpec method to the (external) blanket impl `impl<A: T> TSpec for A`.
+/// If the call's types implement TSpecImpl and the impl provides the method,
+/// redirect the resolution to that impl's method instead,
+/// so that the call is resolved to the method that actually defines it.
+fn resolve_through_extension_blanket<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    typing_env: TypingEnv<'tcx>,
+    f: DefId,
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    res: ResolutionResult<'tcx>,
+    span: Span,
+) -> ResolutionResult<'tcx> {
+    let tcx = bctx.ctxt.tcx;
+    let ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(..), .. } = &res else {
+        return res;
+    };
+    let Some(spec_trait) = tcx.trait_of_assoc(f) else {
+        return res;
+    };
+    let Some(impl_trait) = extension_impl_trait(bctx, spec_trait) else {
+        return res;
+    };
+    let name = tcx.item_name(f);
+    let Some(impl_trait_item) = tcx
+        .associated_items(impl_trait)
+        .filter_by_name_unhygienic(name)
+        .find(|item| matches!(item.kind, rustc_middle::ty::AssocKind::Fn { .. }))
+    else {
+        return res;
+    };
+    match resolve_trait_item(span, tcx, typing_env, impl_trait_item.def_id, node_substs) {
+        Ok(r @ ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(..), .. }) => r,
+        _ => res,
+    }
+}
+
+/// If spec_trait is TSpec for some `verifier::external_trait_extension(TSpec via TSpecImpl)`,
+/// return TSpecImpl
+fn extension_impl_trait<'tcx>(bctx: &BodyCtxt<'tcx>, spec_trait: DefId) -> Option<DefId> {
+    let ctxt = &bctx.ctxt;
+    if let Some(r) = ctxt.external_trait_extension_impl_def_ids.borrow().get(&spec_trait) {
+        return *r;
+    }
+    let spec_path = ctxt.def_id_to_vir_path(spec_trait);
+    let impl_path = ctxt.external_trait_extension_spec_to_impl.borrow().get(&spec_path).cloned();
+    let r = impl_path.and_then(|impl_path| {
+        ctxt.tcx
+            .traits(spec_trait.krate)
+            .iter()
+            .find(|t| ctxt.def_id_to_vir_path(**t) == impl_path)
+            .copied()
+    });
+    ctxt.external_trait_extension_impl_def_ids.borrow_mut().insert(spec_trait, r);
+    r
 }
 
 fn get_impl_paths<'tcx>(

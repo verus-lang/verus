@@ -373,6 +373,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion2 verus_code! {
+        #[verifier::prophetic]
         spec fn s(x: u8) -> bool {
             call_requires(test, (x,))
         }
@@ -386,6 +387,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion3 verus_code! {
+        #[verifier::prophetic]
         spec fn s(x: u8) -> bool {
             call_requires(test, (x,))
         }
@@ -399,6 +401,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion4 verus_code! {
+        #[verifier::prophetic]
         spec fn s(x: u8) -> bool {
             call_ensures(test, (x,), ())
         }
@@ -425,6 +428,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] recursion6_via_fn_once verus_code! {
         use vstd::prelude::*;
+        #[verifier::prophetic]
         spec fn foo<F: FnOnce(u8) -> bool>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -440,6 +444,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] recursion7_via_fn_once verus_code! {
         use vstd::prelude::*;
+        #[verifier::prophetic]
         spec fn foo<F: FnOnce<(u8,)>>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -481,6 +486,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] recursion10_via_fn verus_code! {
         use vstd::prelude::*;
+        #[verifier::prophetic]
         spec fn foo<F: Fn(u8)>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -495,6 +501,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] recursion11_via_fn_mut verus_code! {
         use vstd::prelude::*;
+        #[verifier::prophetic]
         spec fn foo<F: FnMut(u8)>(f: F) -> bool {
             call_requires(f, (0,))
         }
@@ -509,6 +516,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] recursion12_via_trait_impl_in_function_generics verus_code! {
         trait Tr {
+            #[verifier::prophetic]
             spec fn stuff(&self) -> bool;
         }
 
@@ -519,11 +527,13 @@ test_verify_one_file! {
           where T: Qr
         {
             // cyclic dependency with alpaca
+            #[verifier::prophetic]
             spec fn stuff(&self) -> bool {
                 alpaca(*self)
             }
         }
 
+        #[verifier::prophetic]
         spec fn alpaca<T: Qr>(qr: T) -> bool {
             // depends on the bound `T: Tr`
             // which depends on the implementation `T: Qr --> T: Tr`
@@ -541,6 +551,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] recursion13_via_trait_impl_in_function_generics verus_code! {
         trait Tr {
+            #[verifier::prophetic]
             spec fn stuff(&self) -> bool;
         }
 
@@ -549,11 +560,13 @@ test_verify_one_file! {
         impl Tr for X
         {
             // cyclic dependency with alpaca
+            #[verifier::prophetic]
             spec fn stuff(&self) -> bool {
                 alpaca()
             }
         }
 
+        #[verifier::prophetic]
         spec fn alpaca() -> bool {
             // depends on the bound `X: Tr`
             // which depends on the above trait impl
@@ -572,6 +585,7 @@ test_verify_one_file! {
     #[test] recursion14_via_fn_with_requires_ensures verus_code! {
         use vstd::prelude::*;
 
+        #[verifier::prophetic]
         spec fn foo<F: FnWithRequiresEnsures<(u8,), ()>>(f: F) -> bool {
             f.requires((0,))
         }
@@ -587,6 +601,7 @@ test_verify_one_file! {
     #[test] recursion15_via_fn_with_requires_ensures verus_code! {
         use vstd::prelude::*;
 
+        #[verifier::prophetic]
         spec fn foo<F: FnWithRequiresEnsures<(u8,), ()>>(f: F) -> bool {
             f.requires((0,))
         }
@@ -603,6 +618,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         trait Tr {
+            #[verifier::prophetic]
             spec fn stuff(&self) -> bool;
         }
 
@@ -611,11 +627,13 @@ test_verify_one_file! {
         impl Tr for X
         {
             // cyclic dependency with alpaca
+            #[verifier::prophetic]
             spec fn stuff(&self) -> bool {
                 alpaca()
             }
         }
 
+        #[verifier::prophetic]
         spec fn alpaca() -> bool {
             // depends on the bound `X: Tr`
             // which depends on the above trait impl
@@ -632,6 +650,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] recursion17_via_const verus_code! {
+        #[verifier::prophetic]
         spec const x: bool = call_requires(f, (0,));
 
         fn f(y: u8)
@@ -2227,6 +2246,77 @@ test_verify_one_file! {
             assert(r1 == 1);
             assert(r2 == 2);
             assert(r2 == 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] call_requires_ensures_iff verus_code! {
+        uninterp spec fn r(x: u8) -> bool;
+        uninterp spec fn e(x: u8, y: u8) -> bool;
+
+        fn f(x: u8) -> (y: u8)
+            requires r(x),
+            ensures e(x, y),
+        {
+            assume(false);
+            0
+        }
+
+        proof fn test_fn(x: u8, y: u8) {
+            assert(call_requires(f, (x,)) <==> r(x));
+            assert(call_ensures(f, (x,), y) <==> e(x, y));
+        }
+
+        fn test_closure() {
+            let clos = |x: u8| -> (y: u8)
+                requires r(x),
+                ensures e(x, y),
+            {
+                assume(false);
+                0
+            };
+            proof {
+                assert(forall|x: u8| call_requires(clos, (x,)) <==> r(x));
+                assert(forall|x: u8, y: u8| call_ensures(clos, (x,), y) <==> e(x, y));
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] call_ensures_trait_method_not_iff verus_code! {
+        trait Tr: Sized {
+            spec fn ens(&self, i: u8, s: &Self) -> bool;
+
+            fn test(&self, i: u8) -> (s: Self)
+                ensures self.ens(i, &s);
+        }
+
+        struct X { j: u8 }
+
+        impl Tr for X {
+            spec fn ens(&self, i: u8, s: &Self) -> bool { true }
+
+            fn test(&self, i: u8) -> (s: Self)
+                ensures !(20 <= i < 30),
+            {
+                assume(false);
+                X { j: 0 }
+            }
+        }
+
+        // If the trait method's call_ensures axiom were an iff,
+        // this would combine with the extended ensures of X::test to prove false
+        proof fn trait_iff<T: Tr>(t: T, i: u8, r: T)
+            ensures t.ens(i, &r) ==> call_ensures(T::test, (&t, i), r), // FAILS
+        {
+        }
+
+        proof fn contra(x: X, r: X) {
+            trait_iff::<X>(x, 20, r);
+            assert(call_ensures(X::test, (&x, 20u8), r));
+            assert(false);
         }
     } => Err(err) => assert_one_fails(err)
 }

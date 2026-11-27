@@ -155,12 +155,13 @@ fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirE
             args,
             post_args,
             body,
-        } if extension_traits.contains(&get_trait(fun)) => {
+        } if extension_traits.contains(&get_trait(fun)) && !funs.contains(resolved_fun) => {
             assert!(traits.contains(&get_trait(fun)));
             assert!(funs.contains(fun));
-            assert!(!funs.contains(resolved_fun));
-            // Extension traits have just one impl (an external blanket impl);
-            // calls to this are always dynamic
+            // The call resolved to the external blanket impl for the extension trait
+            // (rust_verify redirects calls to TSpecImpl impls when possible,
+            // in which case resolved_fun is in funs and we keep the DynamicResolved);
+            // calls to the blanket impl are always dynamic
             let ct = CallTarget::Fun(
                 CallTargetKind::Dynamic,
                 fun.clone(),

@@ -85,10 +85,13 @@ pub trait ForLoopGhostIteratorNew {
 
 #[cfg(verus_keep_ghost)]
 pub trait FnWithRequiresEnsures<Args, Output>: Sized {
+    #[verifier::prophetic]
     spec fn requires(self, args: Args) -> bool;
 
+    #[verifier::prophetic]
     spec fn ensures(self, args: Args, output: Output) -> bool;
 
+    #[verifier::prophetic]
     spec fn opens_invariants(self, args: Args) -> ISet<int>;
 }
 
@@ -98,16 +101,19 @@ impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output = Output>> FnWith
     Output,
 > for F {
     #[verifier::inline]
+    #[verifier::prophetic]
     open spec fn requires(self, args: Args) -> bool {
         call_requires(self, args)
     }
 
     #[verifier::inline]
+    #[verifier::prophetic]
     open spec fn ensures(self, args: Args, output: Output) -> bool {
         call_ensures(self, args, output)
     }
 
     #[verifier::inline]
+    #[verifier::prophetic]
     open spec fn opens_invariants(self, args: Args) -> ISet<int> {
         call_opens_invariants(self, args)
     }
@@ -416,6 +422,7 @@ impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
 /// It is usually recommended to use [`cloned`] instead,
 /// which takes the reflexive closure.
 #[rustc_diagnostic_item = "verus::vstd::pervasive::strictly_cloned"]
+#[verifier::prophetic]
 pub open spec fn strictly_cloned<T: Clone>(a: T, b: T) -> bool {
     call_ensures(T::clone, (&a,), b)
 }
@@ -426,6 +433,7 @@ pub open spec fn strictly_cloned<T: Clone>(a: T, b: T) -> bool {
 /// By always considering a value to be a clone of itself, regardless of the definition
 /// of `T::clone`, this definition is useful in places where 'clone' calls might be
 /// optimized to copies. This is particularly common in the Rust stdlib.
+#[verifier::prophetic]
 pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
     strictly_cloned(a, b) || a == b
 }
@@ -435,6 +443,7 @@ pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
 /// Integers, `bool`, `char` and the `Clone` impls Verus derives satisfy this. A collection
 /// relies on it when it clones its keys: a key that clones to an unequal value can leave the
 /// copy holding keys in the wrong order or bucket.
+#[verifier::prophetic]
 pub open spec fn obeys_clone_eq<T: Clone>() -> bool {
     forall|a: T, b: T| #[trigger] cloned(a, b) ==> a == b
 }
