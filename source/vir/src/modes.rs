@@ -78,6 +78,7 @@ enum ProphReasonKind {
     AfterBorrow,
     HasResolved,
     SpecFunction(Span),
+    SpecConst(Span),
     Var(VarIdent, ProphVarReason),
 }
 
@@ -363,6 +364,11 @@ impl ProphReason {
                     &decl_span,
                     "function is declared prophetic at this definition",
                 );
+            }
+            ProphReasonKind::SpecConst(decl_span) => {
+                err = err.secondary_label(&root.span, "this const is prophetic");
+                err = err
+                    .secondary_label(&decl_span, "const is declared prophetic at this definition");
             }
         }
         err
@@ -1944,7 +1950,17 @@ fn check_expr(
                 ));
             }
             let mode = typing.block_ghostness.join_mode(function.x.outer_ret.x.mode);
-            Ok((mode, Proph::No))
+
+            let out_proph = if function.x.attrs.prophecy_dependent {
+                Proph::Yes(ProphReason {
+                    span: expr.span.clone(),
+                    kind: ProphReasonKind::SpecConst(function.span.clone()),
+                })
+            } else {
+                Proph::No
+            };
+
+            Ok((mode, out_proph))
         }
         ExprX::Call {
             target: CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),

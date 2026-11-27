@@ -854,3 +854,28 @@ test_verify_one_file! {
     //} => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
     } => Err(err) => assert_vir_error_msg(err, "cannot use a function as a value unless it has mode `exec`")
 }
+
+test_verify_one_file! {
+    #[test] proph_const verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn foo() -> int;
+
+        #[verifier::prophetic]
+        spec const FOO: int = foo();
+
+        proof fn pfn<A>(tracked a: A, s: int) { }
+
+        proof fn test() {
+            pfn(false, FOO);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for argument to proof-mode function with tracked parameters")
+}
+
+test_verify_one_file! {
+    #[test] proph_const2 verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn foo() -> int;
+
+        spec const FOO: int = foo();
+    } => Err(err) => assert_vir_error_msg(err, "prophetic value not allowed for body of non-prophetic spec function")
+}
