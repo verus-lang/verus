@@ -52,9 +52,9 @@ extra_verus_args = [
 prepare_script = """
 pushd test_libc
 cargo clean
-cargo +1.99.1 build --release
+cargo +1.100.0 build --release
 popd
-LIBC_RLIB_NAME=$(find ./test_libc/target/release/deps/ -name 'liblibc-*.rlib')
+LIBC_RLIB_NAME=$(find ./test_libc/target/release/build/ -name 'liblibc-*.rlib')
 mkdir -p build
 cp $LIBC_RLIB_NAME build/liblibc.rlib
 """
@@ -62,9 +62,9 @@ prepare_script_windows = """
 $ErrorActionPreference = 'Stop'
 Push-Location test_libc
 cargo clean
-cargo +1.99.1 build --release
+cargo +1.100.0 build --release
 Pop-Location
-$libcRlib = Get-ChildItem -Path "./test_libc/target/release/deps/" -Filter "liblibc-*.rlib" | Select-Object -First 1
+$libcRlib = Get-ChildItem -Path "./test_libc/target/release/build/" -Filter "liblibc-*.rlib" | Select-Object -First 1
 New-Item -ItemType Directory -Path "build" -Force | Out-Null
 Copy-Item -Path $libcRlib.FullName -Destination "build/liblibc.rlib"
 """
@@ -103,8 +103,11 @@ extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"i
 
 [[project]]
 name = "svsm"
-git_url = "https://github.com/ziqiaozhou/svsm.git"
-refspec = "origin/verita"
+#TODO: restore this when updates are merged into it:
+#git_url = "https://github.com/ziqiaozhou/svsm.git"
+#refspec = "origin/verita"
+git_url = "https://github.com/Chris-Hawblitzel/svsm.git"
+refspec = "origin/verita-fix1"
 cargo_verus = true
 extra_cargo_args = ["--features", "verus"]
 crate_roots = ["kernel"]
@@ -114,7 +117,7 @@ prepare_script = """
 git submodule init
 git submodule update
 cargo update
-rustup target add x86_64-unknown-none --toolchain 1.99.1
+rustup target add x86_64-unknown-none --toolchain 1.100.0
 """
 
 [[project]]
@@ -139,7 +142,10 @@ extra_verus_args = [
 
 [[project]]
 name = "verismo"
-git_url = "https://github.com/microsoft/verismo.git"
-refspec = "main"
+#TODO: restore this when updates are merged into it:
+#git_url = "https://github.com/microsoft/verismo.git"
+#refspec = "origin/main"
+git_url = "https://github.com/Chris-Hawblitzel/verismo.git"
+refspec = "origin/verita-fix1"
 cargo_verus = true
 crate_roots = ["source/bitflags_verus/src", "source/verismo_tspec/src", "source/verismo/src"]

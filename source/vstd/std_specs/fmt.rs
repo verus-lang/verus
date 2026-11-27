@@ -96,18 +96,11 @@ macro_rules! def_fmt_trait {
             pub trait $extrait: core::marker::PointeeSized {
                 type ExternalTraitSpecificationFor: $trait;
 
-                spec fn fmt_req(&self, f: &Formatter<'_>) -> bool;
-
-                fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error>
-                    requires
-                        self.fmt_req(f);
+                fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error>;
             }
 
             #[doc(hidden)]
-            pub assume_specification<'a, 'b, T: $trait>[ rt::Argument::<'a>::$new ](x: &'b T) -> rt::Argument<'b>
-                requires
-                    forall|f: &Formatter<'a>| x.fmt_req(f),
-            ;
+            pub assume_specification<'a, 'b, T: $trait>[ rt::Argument::<'a>::$new ](x: &'b T) -> rt::Argument<'b>;
         }
 };
 }
@@ -134,8 +127,6 @@ def_fmt_trait!(core::fmt::UpperHex, ExUpperHex, UpperHexSpec, UpperHexSpecImpl, 
 pub assume_specification<'a, 'b, T: core::fmt::Debug>[ rt::Argument::<'a>::new_debug_noop ](
     x: &'b T,
 ) -> rt::Argument<'b>
-    requires
-        forall|f: &Formatter<'a>| x.fmt_req(f),
 ;
 
 #[doc(hidden)]
@@ -171,128 +162,5 @@ pub assume_specification<'a, const N: usize, const M: usize>[ arguments_new ](
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification[ alloc::fmt::format ](args: Arguments<'_>) -> alloc::string::String
 ;
-
-pub uninterp spec fn fmt_req_all<A: ?Sized>() -> bool;
-
-macro_rules! def_type_axiom {
-    ($ty:ty, $name: ident) => {
-        $crate::vstd::prelude::verus! {
-            pub broadcast axiom fn $name()
-                ensures
-                    #[trigger] fmt_req_all::<$ty>();
-        }
-};
-}
-
-def_type_axiom!(u8, axiom_fmt_req_all_u8);
-
-def_type_axiom!(u16, axiom_fmt_req_all_u16);
-
-def_type_axiom!(u32, axiom_fmt_req_all_u32);
-
-def_type_axiom!(u64, axiom_fmt_req_all_u64);
-
-def_type_axiom!(u128, axiom_fmt_req_all_u128);
-
-def_type_axiom!(usize, axiom_fmt_req_all_usize);
-
-def_type_axiom!(i8, axiom_fmt_req_all_i8);
-
-def_type_axiom!(i16, axiom_fmt_req_all_i16);
-
-def_type_axiom!(i32, axiom_fmt_req_all_i32);
-
-def_type_axiom!(i64, axiom_fmt_req_all_i64);
-
-def_type_axiom!(i128, axiom_fmt_req_all_i128);
-
-def_type_axiom!(isize, axiom_fmt_req_all_isize);
-
-def_type_axiom!(f32, axiom_fmt_req_all_f32);
-
-def_type_axiom!(f64, axiom_fmt_req_all_f64);
-
-def_type_axiom!(bool, axiom_fmt_req_all_bool);
-
-def_type_axiom!(char, axiom_fmt_req_all_char);
-
-def_type_axiom!(str, axiom_fmt_req_all_str_slice);
-
-def_type_axiom!(&str, axiom_fmt_req_all_str);
-
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-def_type_axiom!(alloc::string::String, axiom_fmt_req_all_string);
-
-pub broadcast axiom fn axiom_fmt_req_all_ref<A>()
-    requires
-        fmt_req_all::<A>(),
-    ensures
-        #[trigger] fmt_req_all::<&A>(),
-;
-
-macro_rules! def_trait_axiom {
-    ($trait:path, $name: ident) => {
-        $crate::vstd::prelude::verus! {
-            pub broadcast axiom fn $name<A: $trait + ?Sized>(a: &A, f: &Formatter)
-                requires
-                    fmt_req_all::<A>(),
-                ensures
-                    #[trigger] a.fmt_req(f);
-        }
-};
-}
-
-def_trait_axiom!(core::fmt::Binary, axiom_fmt_req_all_binary);
-
-def_trait_axiom!(core::fmt::Debug, axiom_fmt_req_all_debug);
-
-def_trait_axiom!(core::fmt::Display, axiom_fmt_req_all_display);
-
-def_trait_axiom!(core::fmt::LowerExp, axiom_fmt_req_all_lower_exp);
-
-def_trait_axiom!(core::fmt::LowerHex, axiom_fmt_req_all_lower_hex);
-
-def_trait_axiom!(core::fmt::Octal, axiom_fmt_req_all_octal);
-
-def_trait_axiom!(core::fmt::Pointer, axiom_fmt_req_all_pointer);
-
-def_trait_axiom!(core::fmt::UpperExp, axiom_fmt_req_all_upper_exp);
-
-def_trait_axiom!(core::fmt::UpperHex, axiom_fmt_req_all_upper_hex);
-
-pub broadcast group group_fmt_axioms {
-    // types
-    axiom_fmt_req_all_u8,
-    axiom_fmt_req_all_u16,
-    axiom_fmt_req_all_u32,
-    axiom_fmt_req_all_u64,
-    axiom_fmt_req_all_u128,
-    axiom_fmt_req_all_usize,
-    axiom_fmt_req_all_i8,
-    axiom_fmt_req_all_i16,
-    axiom_fmt_req_all_i32,
-    axiom_fmt_req_all_i64,
-    axiom_fmt_req_all_i128,
-    axiom_fmt_req_all_isize,
-    axiom_fmt_req_all_f32,
-    axiom_fmt_req_all_f64,
-    axiom_fmt_req_all_bool,
-    axiom_fmt_req_all_char,
-    axiom_fmt_req_all_str_slice,
-    axiom_fmt_req_all_str,
-    #[cfg(all(feature = "alloc", not(verus_verify_core)))]
-    axiom_fmt_req_all_string,
-    axiom_fmt_req_all_ref,
-    // traits
-    axiom_fmt_req_all_binary,
-    axiom_fmt_req_all_debug,
-    axiom_fmt_req_all_display,
-    axiom_fmt_req_all_lower_exp,
-    axiom_fmt_req_all_lower_hex,
-    axiom_fmt_req_all_octal,
-    axiom_fmt_req_all_pointer,
-    axiom_fmt_req_all_upper_exp,
-    axiom_fmt_req_all_upper_hex,
-}
 
 } // verus!

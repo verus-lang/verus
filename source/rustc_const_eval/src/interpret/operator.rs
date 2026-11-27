@@ -1,11 +1,11 @@
 use either::Either;
 use rustc_abi::Size;
 use rustc_apfloat::{Float, FloatConvert};
+use rustc_middle::mir;
 use rustc_middle::mir::interpret::{InterpResult, PointerArithmetic, Scalar};
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_middle::ty::{self, FloatTy, ScalarInt};
-use rustc_middle::{bug, mir, span_bug};
-use rustc_span::sym;
+use rustc_span::{bug, span_bug, sym};
 use tracing::trace;
 
 use super::{ImmTy, InterpCx, Machine, MemPlaceMeta, interp_ok, throw_ub};
@@ -324,7 +324,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         match bin_op {
             // Pointer ops that are always supported.
             Offset => {
-                let ptr = left.to_scalar().to_pointer(self)?;
+                let ptr = left.to_scalar().to_pointer(self);
                 let pointee_ty = left.layout.ty.builtin_deref(true).unwrap();
                 let pointee_layout = self.layout_of(pointee_ty)?;
                 assert!(pointee_layout.is_sized());

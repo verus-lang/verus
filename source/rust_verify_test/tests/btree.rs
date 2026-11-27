@@ -58,6 +58,7 @@ test_verify_one_file! {
 
         fn test_structural<Key: Ord, Value>(m: &BTreeMap<Key, Value>, k: &Key) -> (result: bool)
             requires
+                vstd::std_specs::btree::btree_map_wf(m),
                 vstd::laws_cmp::obeys_cmp::<Key>(),
                 obeys_cmp_concrete_eq::<Key>(),
             ensures
@@ -99,6 +100,7 @@ test_verify_one_file! {
             m: &'a BTreeMap<Key, Value>, k: &Key,
         ) -> (result: Option<&'a Value>)
             requires
+                vstd::std_specs::btree::btree_map_wf(m),
                 vstd::laws_cmp::obeys_cmp::<Key>(),
                 obeys_cmp_concrete_eq::<Key>(),
             ensures
@@ -164,6 +166,7 @@ test_verify_one_file! {
             m: &mut BTreeMap<Key, Value>, k: &Key,
         ) -> (result: Option<Value>)
             requires
+                vstd::std_specs::btree::btree_map_wf(old(m)),
                 vstd::laws_cmp::obeys_cmp::<Key>(),
                 obeys_cmp_concrete_eq::<Key>(),
             ensures
@@ -280,6 +283,7 @@ test_verify_one_file! {
             m: &mut BTreeMap<Key, Value>, k: &Key, replacement: Value,
         ) -> (found: bool)
             requires
+                vstd::std_specs::btree::btree_map_wf(old(m)),
                 vstd::laws_cmp::obeys_cmp::<Key>(),
                 obeys_cmp_concrete_eq::<Key>(),
             ensures
@@ -885,6 +889,7 @@ test_verify_one_file! {
 
         fn test_structural<Key: Ord>(s: &BTreeSet<Key>, k: &Key) -> (result: bool)
             requires
+                vstd::std_specs::btree::btree_set_wf(s),
                 vstd::laws_cmp::obeys_cmp::<Key>(),
                 obeys_cmp_concrete_eq::<Key>(),
             ensures
@@ -926,6 +931,7 @@ test_verify_one_file! {
             s: &'a BTreeSet<Key>, k: &Key,
         ) -> (result: Option<&'a Key>)
             requires
+                vstd::std_specs::btree::btree_set_wf(s),
                 vstd::laws_cmp::obeys_cmp::<Key>(),
                 obeys_cmp_concrete_eq::<Key>(),
             ensures
@@ -986,6 +992,7 @@ test_verify_one_file! {
 
         fn test_structural<Key: Ord>(s: &mut BTreeSet<Key>, k: &Key) -> (result: bool)
             requires
+                vstd::std_specs::btree::btree_set_wf(old(s)),
                 vstd::laws_cmp::obeys_cmp::<Key>(),
                 obeys_cmp_concrete_eq::<Key>(),
             ensures
@@ -1356,6 +1363,7 @@ test_verify_one_file_with_options! {
             for (k, v) in iter: m.iter()
                 invariant
                     m@.kv_pairs() == set![(3u32, 4i8), (6u32, -8i8)],
+                    btree_map_wf(&m),
             {
                 // OBSERVE: triggers the extensionality in the invariant
                 assert(m@.kv_pairs().contains((*k, *v)));
@@ -1428,4 +1436,159 @@ test_verify_one_file_with_options! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_map_shared_ptr_keys verus_code! {
+        use std::collections::BTreeMap;
+        use std::rc::Rc;
+        use std::sync::Arc;
+        use vstd::prelude::*;
+
+        // The `m@.contains_key(k)` asserts give the borrowed lookups a witness key.
+        fn rc_keys() {
+            let k3 = Rc::new(3u64);
+            let mut m = BTreeMap::<Rc<u64>, u8>::new();
+            m.insert(k3.clone(), 30);
+            assert(m@.contains_key(k3));
+            match m.get(&3u64) {
+                Some(v) => assert(*v == 30),
+                None => assert(false),
+            }
+            // A separately allocated Rc with an equal pointee is the same key.
+            let old = m.insert(Rc::new(3u64), 31);
+            assert(old == Some(30u8));
+        }
+
+        fn arc_keys() {
+            let mut m = BTreeMap::<Arc<u64>, u8>::new();
+            let k = Arc::new(1u64);
+            m.insert(k, 10);
+            assert(m@.contains_key(k));
+            let r = m.remove(&1u64);
+            assert(r == Some(10u8));
+        }
+
+        fn box_keys() {
+            let mut m = BTreeMap::<Box<u64>, u8>::new();
+            let k = Box::new(1u64);
+            m.insert(k, 10);
+            assert(m@.contains_key(k));
+            let b = m.contains_key(&1u64);
+            assert(b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // #3086: a key whose `Clone` changes it makes the clone of a tree malformed (here, two
+    // equal keys), and nothing may be concluded about the clone
+    #[test] test_btree_clone_unfaithful_key verus_code! {
+        use std::collections::BTreeSet;
+        use std::cmp::Ordering;
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::{PartialEqSpecImpl, PartialOrdSpecImpl, OrdSpecImpl};
+        pub struct K { pub a: u8 }
+        impl PartialEqSpecImpl for K {
+            open spec fn obeys_eq_spec() -> bool { true }
+            open spec fn eq_spec(&self, other: &K) -> bool { self.a == other.a }
+        }
+        impl PartialEq for K { fn eq(&self, other: &K) -> bool { self.a == other.a } }
+        impl Eq for K {}
+        impl PartialOrdSpecImpl for K {
+            open spec fn obeys_partial_cmp_spec() -> bool { true }
+            open spec fn partial_cmp_spec(&self, other: &K) -> Option<Ordering> {
+                Some(if self.a < other.a { Ordering::Less } else if self.a > other.a { Ordering::Greater } else { Ordering::Equal })
+            }
+        }
+        impl PartialOrd for K { fn partial_cmp(&self, other: &K) -> Option<Ordering> { Some(self.cmp(other)) } }
+        impl OrdSpecImpl for K {
+            open spec fn obeys_cmp_spec() -> bool { true }
+            open spec fn cmp_spec(&self, other: &K) -> Ordering {
+                if self.a < other.a { Ordering::Less } else if self.a > other.a { Ordering::Greater } else { Ordering::Equal }
+            }
+        }
+        impl Ord for K {
+            fn cmp(&self, other: &K) -> Ordering {
+                if self.a < other.a { Ordering::Less } else if self.a > other.a { Ordering::Greater } else { Ordering::Equal }
+            }
+        }
+        impl Clone for K { fn clone(&self) -> (r: K) ensures r.a == 0 { K { a: 0 } } }
+        fn test() {
+            assume(vstd::laws_cmp::obeys_cmp::<K>());
+            assume(vstd::laws_cmp::obeys_cmp_concrete_eq::<K>());
+            let mut s = BTreeSet::<K>::new();
+            s.insert(K { a: 1 });
+            s.insert(K { a: 2 });
+            assert(s@.contains(K { a: 1 }));
+            let mut c = s.clone(); // holds K { a: 0 } twice
+            let _ = c.remove(&K { a: 0 });
+            let still = c.contains(&K { a: 0 }); // true when run
+            assert(!still); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // a map cloned through a generic `T: Clone` (whose clone has no specification) is not
+    // known to be well formed either
+    #[test] test_btree_generic_clone_not_wf verus_code! {
+        use std::collections::BTreeMap;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::btree_map_wf;
+        fn dup<T: Clone>(t: &T) -> T { t.clone() }
+        fn test<K: Ord + Clone>(m: &BTreeMap<K, u8>) {
+            let c = dup(m);
+            assert(btree_map_wf(&c)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // keys that clone to equal values: clone copies the view (and well-formedness)
+    #[test] test_btree_clone_faithful_keys verus_code! {
+        use std::collections::{BTreeMap, BTreeSet};
+        use vstd::prelude::*;
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+        pub struct P { pub x: u8 }
+        fn param(m: &BTreeMap<u64, u8>, k: u64) -> (r: bool)
+            requires vstd::std_specs::btree::btree_map_wf(m),
+            ensures r == m@.contains_key(k),
+        {
+            m.contains_key(&k)
+        }
+        fn test(m: &BTreeMap<u64, u8>, s: &BTreeSet<u32>) {
+            let c = m.clone();
+            assert(c@ == m@);
+            let d = s.clone();
+            assert(d@ == s@);
+            let mut e = BTreeSet::<P>::new();
+            e.insert(P { x: 1 });
+            let f = e.clone();
+            assert(vstd::pervasive::obeys_clone_eq::<P>());
+            assert(f@ == e@);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // A set from unverified code need not be well formed: e.g. `get_or_insert_with` with a
+    // `Borrow` whose order disagrees with the key's `Ord` puts elements out of order (review of
+    // #3494). So a set parameter's iteration order is known only if the set is well formed.
+    #[test] test_btree_set_param_iter_needs_wf verus_code! {
+        use std::collections::BTreeSet;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::*;
+        use vstd::std_specs::iter::IteratorSpec;
+        fn known(s: &BTreeSet<u64>)
+            requires btree_set_wf(s),
+        {
+            let it = s.iter();
+            assert(it.remaining().unref().to_set() =~= s@);
+        }
+        fn not_known(s: &BTreeSet<u64>) {
+            let it = s.iter();
+            assert(it.remaining().unref().to_set() =~= s@); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
