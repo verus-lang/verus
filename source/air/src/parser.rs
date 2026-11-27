@@ -922,17 +922,18 @@ impl Parser {
         }
     }
 
-    pub fn lines_to_model(&self, lines: &Vec<String>) -> ModelDefs {
-        let node = parse_sexpression(lines);
-        self.node_to_model(&node).expect("failed to parse SMT model")
+    pub fn lines_to_model(&self, lines: &Vec<String>) -> Result<ModelDefs, String> {
+        let node = parse_sexpression(lines)?;
+        self.node_to_model(&node)
     }
 }
 
-pub(crate) fn parse_sexpression(lines: &Vec<String>) -> Node {
+/// Parse the solver's output as one S-expression. The error, for output that is not one (an
+/// unexpected message from the solver, e.g. of another version), includes the output.
+pub(crate) fn parse_sexpression(lines: &Vec<String>) -> Result<Node, String> {
     let expr = lines.join("\n");
     let mut parser = sise::Parser::new(expr.as_str());
-    let node = sise::parse_tree(&mut parser).unwrap();
-    node
+    sise::parse_tree(&mut parser).map_err(|e| format!("cannot parse solver output ({e:?}): {expr}"))
 }
 
 fn is_quoted_pair(nodes: &[Node]) -> bool {
