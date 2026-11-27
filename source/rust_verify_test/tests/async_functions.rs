@@ -868,3 +868,90 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] async_fn_tracked_param verus_code! {
+        use vstd::prelude::*;
+
+        proof fn use_tracked(tracked r: &u64) {}
+
+        async fn ret7() -> u64 {
+            7
+        }
+
+        async fn f(Tracked(r): Tracked<u64>) -> u64 {
+            let x = ret7().await;
+            proof {
+                use_tracked(&r);
+                assert(r == r);
+            }
+            x
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] async_fn_ghost_param verus_code! {
+        use vstd::prelude::*;
+
+        async fn ret7() -> u64 {
+            7
+        }
+
+        async fn f(Ghost(g): Ghost<int>) -> u64
+            requires g > 0,
+        {
+            let x = ret7().await;
+            assert(g > 0);
+            x
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] async_fn_ghost_tracked_params verus_code! {
+        use vstd::prelude::*;
+
+        async fn f(x: u64, Ghost(g): Ghost<int>, Tracked(r): Tracked<u64>) -> (ret: u64)
+            requires
+                r == 3,
+                g == x + 1,
+            ensures ret == r,
+        {
+            3
+        }
+
+        async fn f_fails(x: u64, Ghost(g): Ghost<int>, Tracked(r): Tracked<u64>) -> (ret: u64)
+            requires
+                r == 3,
+                g == x + 1,
+            ensures ret == g, // FAILS
+        {
+            3
+        }
+
+        async fn caller() {
+            let ret = f(2, Ghost(3), Tracked(3)).await;
+            assert(ret == 3);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] async_method_tracked_param verus_code! {
+        use vstd::prelude::*;
+
+        struct S {
+            v: u64,
+        }
+
+        impl S {
+            async fn m(&self, Tracked(r): Tracked<u64>) -> (ret: u64)
+                requires r == self.v,
+                ensures ret == r,
+            {
+                self.v
+            }
+        }
+    } => Ok(())
+}
