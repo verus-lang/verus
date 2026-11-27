@@ -461,6 +461,34 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3120
+    #[test] test_array_repeat_copy_impl_dependency verus_code! {
+        use vstd::prelude::*;
+
+        pub trait Build {
+            fn build(x: u64) -> (t: [W<Niels>; 8])
+                ensures t[0].w.a == x;
+        }
+
+        impl Build for () {
+            fn build(x: u64) -> (t: [W<Niels>; 8]) {
+                [W { w: Niels { a: x } }; 8]
+            }
+        }
+
+        #[derive(Copy)]
+        pub struct W<T> { pub w: T }
+
+        impl<T: Copy> Clone for W<T> {
+            fn clone(&self) -> Self { *self }
+        }
+
+        #[derive(Copy, Clone)]
+        pub struct Niels { pub a: u64 }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_array_to_slice verus_code! {
         use vstd::prelude::*;
 
