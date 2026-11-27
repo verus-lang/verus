@@ -239,7 +239,7 @@ crate-updates.yml (weekly/manual) → Updates crate versions → Publishes to cr
 All workflows build and test Verus on:
 
 - **Linux**: `x86_64` (ubuntu-24.04)
-- **macOS**: ARM64 (macOS 14) and `x86_64` (macOS 15)
+- **macOS**: ARM64 (macOS 15) and `x86_64` (macOS 15)
 - **Windows**: `x86_64` (2022)
 
 `x86_64` Linux receives full testing; other platforms run basic and smoke tests for efficiency.

@@ -4,10 +4,10 @@ use crate::context::{BodyCtxt, Context, ContextX, ErasureInfo, HeaderSetting};
 use crate::pre_header::PreHeader;
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir::State;
+use crate::rust_to_vir_base::{alias_const_def_id, mk_visibility, qpath_to_ident};
 use crate::rust_to_vir_base::{
     check_fn_opaque_ty, check_generics_bounds_no_polarity, local_to_var, no_body_param_to_var,
 };
-use crate::rust_to_vir_base::{mk_visibility, qpath_to_ident};
 use crate::rust_to_vir_expr::{
     add_param_decls, expr_to_vir_consume, param_pat_to_decl, param_pat_to_destructure,
     param_pat_to_mut_var,
@@ -20,10 +20,11 @@ use rustc_hir::{
     Attribute, Body, BodyId, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
     HirId, Param, Pat, PatKind, Safety,
 };
+use rustc_middle::ty::consts::ConstExt;
 use rustc_middle::ty::{
     AdtDef, AliasTermKind, AliasTyKind, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind,
-    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionExt, RegionKind,
-    TyCtxt, TyKind, TypingEnv, ValTreeKind, Value,
+    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, TyCtxt,
+    TyKind, TypingEnv, ValTreeKind, Value,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
@@ -276,7 +277,6 @@ fn handle_autospec<'tcx>(
                 outer_ret: spec_ret_param,
                 item_kind: ItemKind::Function,
                 attrs: Arc::new(FunctionAttrsX {
-                    uses_ghost_blocks: vattrs.verus_macro,
                     inline: false,
                     broadcast_forall: false,
                     broadcast_forall_only: false,
@@ -298,15 +298,18 @@ fn handle_autospec<'tcx>(
                     size_of_broadcast_proof: false,
                     is_type_invariant_fn: false,
                     is_external_body: false,
+                    no_cheating_trusted: functionx.attrs.no_cheating_trusted,
                     is_unsafe: false,
                     impls_cannot_extend_spec: false,
                     exec_assume_termination: false,
+                    assume_compatibility_with_trait_spec: false,
                     exec_allows_no_decreases_clause: false,
                     tracked_swap: false,
                     tracked_take_option: false,
                     create_open_invariant_credit: false,
                     is_async: false,
                     is_drop: false,
+                    has_trivial_clone: false,
                 }),
                 decreases_len: 0,
                 returns: false,
@@ -467,6 +470,14 @@ fn body_to_vir<'tcx>(
     for (param, vir_param) in body.params.iter().zip(params) {
         let ParamX { name, typ, mode: param_mode, .. } = &vir_param.x;
         let pat = peel_verus_param(param.pat);
+        if *param_mode != Mode::Exec {
+            // Record the binders so erasure knows not to emit drops for them
+            param.pat.walk_always(|p| {
+                if let PatKind::Binding(..) = p.kind {
+                    bctx.erasure_info.borrow_mut().ghost_param_binders.push(p.hir_id);
+                }
+            });
+        }
         let decl = param_pat_to_decl(&bctx, pat, name, typ, *param_mode)?;
         // exec code can only initialize ghost and tracked variables in proof blocks
         if decl.is_some() && mode == Mode::Exec && *param_mode != Mode::Exec {
@@ -774,7 +785,7 @@ fn array_len_eq<'tcx>(
     let eval = |len: rustc_middle::ty::Const<'tcx>| -> Option<u64> {
         let len = match len.kind() {
             ConstKind::Alias(IsRigid::No, alias) => {
-                let typing_env = TypingEnv::post_analysis(tcx, alias.kind.opt_def_id()?);
+                let typing_env = TypingEnv::post_analysis(tcx, alias_const_def_id(alias.kind));
                 tcx.try_normalize_erasing_regions(
                     typing_env,
                     rustc_middle::ty::Unnormalized::new_wip(len),
@@ -1403,10 +1414,7 @@ fn mismatch_type_error_user_str_early<'tcx>(
                         let mut r = r;
                         r.name = rustc_span::Symbol::intern(&format!("'_{:}", idx));
                         idx += 1;
-                        GenericArg::from(Region::new_from_kind(
-                            ctxt.tcx,
-                            RegionKind::ReEarlyParam(r),
-                        ))
+                        GenericArg::from(Region::new_early_param(ctxt.tcx, r))
                     } else {
                         arg
                     }
@@ -1551,7 +1559,6 @@ fn make_attributes<'tcx>(
     ctxt: &Context<'tcx>,
     def_id: DefId,
     vattrs: &crate::attributes::VerifierAttrs,
-    uses_ghost_blocks: bool,
     print_zero_args: bool,
     print_as_method: bool,
     safety: Safety,
@@ -1567,7 +1574,6 @@ fn make_attributes<'tcx>(
         );
     }
     let fattrs = FunctionAttrsX {
-        uses_ghost_blocks,
         inline: vattrs.inline,
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
@@ -1589,12 +1595,15 @@ fn make_attributes<'tcx>(
         size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
         is_type_invariant_fn: vattrs.type_invariant_fn,
         is_external_body: vattrs.external_body,
+        no_cheating_trusted: crate::no_cheating::effective_trust(ctxt.tcx, def_id)?
+            .permits_assumptions(),
         is_unsafe: match safety {
             Safety::Safe => false,
             Safety::Unsafe => true,
         },
         impls_cannot_extend_spec: vattrs.impls_cannot_extend_spec,
         exec_assume_termination: vattrs.assume_termination,
+        assume_compatibility_with_trait_spec: vattrs.assume_compatibility_with_trait_spec,
         exec_allows_no_decreases_clause: if !is_trait_decl_no_default {
             crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents(
                 ctxt.tcx, def_id,
@@ -1607,6 +1616,7 @@ fn make_attributes<'tcx>(
         create_open_invariant_credit: vattrs.create_open_invariant_credit,
         is_async: is_async,
         is_drop: is_drop,
+        has_trivial_clone: false, // set later, see rust_to_vir_impl::set_trivial_clone_attrs
     };
     Ok(Arc::new(fattrs))
 }
@@ -1752,6 +1762,13 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         None
     };
+
+    if Some(id) == ctxt.tcx.lang_items().panic_impl() {
+        return err_span(
+            sig.span,
+            "`#[panic_handler]` must be outside verus! or marked #[verifier::external]",
+        );
+    }
 
     let (
         path,
@@ -2220,7 +2237,6 @@ pub(crate) fn check_item_fn<'tcx>(
         ctxt,
         id,
         &vattrs,
-        vattrs.verus_macro && !matches!(sig.sig, FnOrConstSigEnum::ConstVar(..)),
         n_params == 0,
         has_self_param,
         safety,
@@ -2836,14 +2852,17 @@ fn param_names_for_async_func<'tcx>(
                 );
             }
             rustc_hir::StmtKind::Let(rustc_hir::LetStmt {
-                pat: rustc_hir::Pat { kind: rustc_hir::PatKind::Binding(_, id, ident, _), .. },
+                pat: rustc_hir::Pat { kind: rustc_hir::PatKind::Binding(bm, id, ident, _), .. },
                 init: Some(rustc_hir::Expr { kind: rustc_hir::ExprKind::Path(qpath), .. }),
                 ..
             }) => {
                 let pat = local_to_var(ident, id.local_id);
                 let init = qpath_to_ident(ctxt.tcx, &qpath)
                     .expect("internal error, async closure rebindings has no init value");
-                async_body_modes.insert(init.clone(), pat.clone());
+                // `async fn f(mut x: T)` becomes `fn f(x: T) { async move { let mut x = x; .. } }`:
+                // the `mut` is on the rebinding
+                let is_mut = bm.1 == rustc_middle::ty::Mutability::Mut;
+                async_body_modes.insert(init.clone(), (pat.clone(), is_mut));
             }
             _ => {}
         }
@@ -2854,11 +2873,11 @@ fn param_names_for_async_func<'tcx>(
         rewitten_params.push(Spanned::new(
             param.span.clone(),
             ParamX {
-                name: async_body_modes[&param.x.name].clone(),
+                name: async_body_modes[&param.x.name].0.clone(),
                 typ: param.x.typ.clone(),
                 mode: param.x.mode,
                 unwrapped_info: param.x.unwrapped_info.clone(),
-                user_mut: param.x.user_mut,
+                user_mut: param.x.user_mut || async_body_modes[&param.x.name].1,
             },
         ));
     }
@@ -3151,10 +3170,17 @@ fn all_predicates<'tcx>(
     }
     let typing_env = TypingEnv::post_analysis(tcx, id);
     let preds = preds.instantiate(tcx, substs);
+    // `normalize_erasing_regions` ICEs when a clause mentions a projection it cannot
+    // normalize in this environment, which happens for `assume_specification`s whose
+    // bounds carry a projection of the proxy's own type parameter (e.g. `P::Target: Unpin`
+    // on `Pin::new`); keep such clauses as written instead of aborting.
     let mut clauses: Vec<Clause<'tcx>> = preds
         .clauses
         .into_iter()
-        .map(|clause| tcx.normalize_erasing_regions(typing_env, clause))
+        .map(|clause| {
+            tcx.try_normalize_erasing_regions(typing_env, clause.clone())
+                .unwrap_or_else(|_| clause.skip_normalization())
+        })
         .collect();
     if preliminarily_try_to_process_and_eliminate_trait_aliases {
         clauses.retain(|clause| match clause.kind().skip_binder() {
@@ -3424,7 +3450,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         ctxt,
         id,
         &vattrs,
-        vattrs.verus_macro,
         false,
         false,
         Safety::Safe,
@@ -3944,7 +3969,7 @@ fn get_async_inner_return_ty<'tcx>(
         typing_env,
         ctxt.tcx.item_bounds(alias_def_id).instantiate(ctxt.tcx, al_ty.args),
     );
-    // We are looking for a ProjectionPredicate that <F as Future>::Output = X
+    // We are looking for a ProjectionClause that <F as Future>::Output = X
     // where F is the opaque type.
     let ty_list = instantiated_bounds
         .iter()

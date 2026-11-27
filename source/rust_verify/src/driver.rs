@@ -5,6 +5,7 @@ use rustc_hir::attrs::AttributeKind;
 use rustc_hir::{Attribute, AttributeMap};
 use rustc_hir::{HirId, ItemKind, OwnerId, OwnerNode};
 use rustc_middle::ty::TyCtxt;
+use rustc_session::config::{OutFileName, OutputType};
 use rustc_span::{Span, sym};
 use std::time::{Duration, Instant};
 
@@ -118,6 +119,7 @@ for all functions (it would only be needed for functions with tracked data in pr
 struct CompilerCallbacksEraseMacro {
     pub do_compile: bool,
     pub override_stability: bool,
+    pub second_pass_dep_info: Option<std::path::PathBuf>,
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
@@ -137,6 +139,19 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
                 };
             });
         }
+    }
+
+    fn after_expansion<'tcx>(
+        &mut self,
+        _compiler: &rustc_interface::interface::Compiler,
+        tcx: TyCtxt<'tcx>,
+    ) -> rustc_driver::Compilation {
+        if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
+            if let OutFileName::Real(path) = tcx.output_filenames(()).path(OutputType::DepInfo) {
+                self.second_pass_dep_info = Some(path);
+            }
+        }
+        rustc_driver::Compilation::Continue
     }
 
     fn after_analysis<'tcx>(
@@ -227,10 +242,11 @@ fn run_with_erase_macro_compile_in_process(
     mut rustc_args: Vec<String>,
     do_compile: bool,
     vstd: Vstd,
-) -> Result<(), ()> {
+) -> Result<Option<std::path::PathBuf>, ()> {
     let mut callbacks = CompilerCallbacksEraseMacro {
         do_compile,
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
+        second_pass_dep_info: None,
     };
     rustc_args.extend(["--cfg", "verus_only", "--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     if matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
@@ -256,7 +272,8 @@ fn run_with_erase_macro_compile_in_process(
     for a in allow {
         rustc_args.extend(["-A", a].map(|s| s.to_string()));
     }
-    run_compiler(rustc_args, true, true, &mut callbacks)
+    run_compiler(rustc_args, true, true, &mut callbacks)?;
+    Ok(callbacks.second_pass_dep_info)
 }
 
 pub struct VerusRoot {
@@ -352,6 +369,7 @@ pub fn run(
     }
     // Build VIR and run verification
     let mut verifier_callbacks = VerifierCallbacksEraseMacro {
+        first_pass_dep_info: None,
         verifier,
         rust_start_time: Instant::now(),
         rust_end_time: None,
@@ -361,13 +379,15 @@ pub fn run(
         spans: None,
         unresolved_import_deps: std::collections::HashSet::new(),
     };
-    let status = run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
+    let first_pass_result =
+        run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
     let VerifierCallbacksEraseMacro {
         verifier,
         rust_start_time,
         rust_end_time,
         tc_start_time,
         tc_end_time,
+        first_pass_dep_info,
         ..
     } = verifier_callbacks;
     let time1 = Instant::now();
@@ -381,28 +401,24 @@ pub fn run(
         _ => Duration::new(0, 0),
     };
 
-    if status.is_err() || verifier.encountered_vir_error {
-        return (
-            verifier,
-            Stats {
-                time_rustc,
-                time_verify: (time1 - time0) - time_trait_conflicts,
-                time_trait_conflicts,
-                time_compile: Duration::new(0, 0),
-            },
-            Err(()),
-        );
-    }
+    let first_pass_failed = first_pass_result.is_err() || verifier.encountered_vir_error;
+    let second_pass_result = if first_pass_failed {
+        Err(())
+    } else if verifier.has_second_compile_pass() {
+        let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
+        run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
+    } else {
+        Ok(None)
+    };
 
-    let compile_status =
-        if !verifier.compile && (verifier.args.no_erasure_check || verifier.args.no_lifetime) {
-            Ok(())
-        } else {
-            let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
-            run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
-        };
+    let time2 = if first_pass_failed { time1 } else { Instant::now() };
 
-    let time2 = Instant::now();
+    // Rustc writes dep-info after after_expansion, so combine files after the passes return.
+    let second_pass_dep_info = second_pass_result.as_ref().ok().and_then(|path| path.as_ref());
+    let dep_info_result = combine_dep_info(
+        first_pass_dep_info.as_deref(),
+        second_pass_dep_info.map(|path| path.as_path()),
+    );
 
     let stats = Stats {
         time_rustc,
@@ -411,12 +427,86 @@ pub fn run(
         time_compile: time2 - time1,
     };
 
+    if let Err(err) = dep_info_result {
+        eprintln!("error: {err}");
+        return (verifier, stats, Err(()));
+    }
+
     // Run borrow checker and compiler with #[exec] (not #[proof])
-    if let Err(_) = compile_status {
+    if let Err(_) = second_pass_result {
         return (verifier, stats, Err(()));
     }
 
     (verifier, stats, Ok(()))
+}
+
+fn combine_dep_info(
+    first_pass_dep_info: Option<&std::path::Path>,
+    second_pass_dep_info: Option<&std::path::Path>,
+) -> Result<(), String> {
+    use crate::verifier::rename_first_pass_dep_info;
+
+    match (first_pass_dep_info, second_pass_dep_info) {
+        (Some(original_first), Some(second)) => {
+            let renamed_first = rename_first_pass_dep_info(original_first);
+            let info_1 = rustc_dep_info::Contents::read_file(&renamed_first).map_err(|err| {
+                format!(
+                    "failed to read first-pass dep-info from `{}`: {err}",
+                    renamed_first.display()
+                )
+            })?;
+            let info_2 = rustc_dep_info::Contents::read_file(&second).map_err(|err| {
+                format!("failed to read second-pass dep-info from `{}`: {err}", second.display())
+            })?;
+            // Shared dependencies must not change between verification and compilation.
+            let mut checksums_changed = false;
+            let mut env_vars_changed = false;
+            let merged = info_1.merge(
+                info_2,
+                |source, meta_1, meta_2| {
+                    if meta_1 != meta_2 {
+                        checksums_changed = true;
+                        eprintln!("dep-info checksum changed between `rustc` passes: {source}");
+                    }
+                    meta_1
+                },
+                |key, val_1, val_2| {
+                    if val_1 != val_2 {
+                        env_vars_changed = true;
+                        eprintln!("dep-info env var changed between `rustc` passes: {key}");
+                    }
+                    val_1
+                },
+            );
+            if checksums_changed || env_vars_changed {
+                return Err(format!(
+                    "dep-info changes were detected between `rustc` passes, for details compare {} and {}",
+                    renamed_first.display(),
+                    second.display()
+                ));
+            }
+            merged.write_file(&second).map_err(|err| {
+                format!("failed to write combined dep-info to `{}`: {err}", second.display())
+            })?;
+            std::fs::remove_file(&renamed_first).unwrap_or_else(|err| {
+                eprintln!("warning: failed to remove `{}`: {err}", renamed_first.display())
+            });
+        }
+        (Some(original_first), None) => {
+            let renamed_first = rename_first_pass_dep_info(original_first);
+            std::fs::rename(renamed_first, original_first).map_err(|err| {
+                format!("failed to restore dep-info `{}`: {err}", original_first.display())
+            })?;
+        }
+        (None, Some(second)) => {
+            return Err(format!(
+                "second-pass dep-info `{}` has no corresponding first-pass dep-info",
+                second.display()
+            ));
+        }
+        (None, None) => {}
+    }
+    Ok(())
 }
 
 fn stable_attr(span: Span) -> Attribute {
@@ -424,7 +514,7 @@ fn stable_attr(span: Span) -> Attribute {
     Attribute::Parsed(AttributeKind::Stability {
         stability: Stability {
             level: StabilityLevel::Unstable {
-                reason: UnstableReason::Default,
+                reason: rustc_hir::attrs::UnstableReason::Default,
                 issue: None,
                 implied_by: None,
                 old_name: None,

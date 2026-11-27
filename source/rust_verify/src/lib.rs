@@ -1,5 +1,5 @@
 #![feature(rustc_private)]
-#![feature(box_patterns)]
+#![feature(deref_patterns)]
 
 // not using this as a dependency, only necessary to make the rlib for the compiler crates
 // available to cargo
@@ -49,6 +49,7 @@ pub mod file_loader;
 mod fn_call_to_vir;
 mod hir_hide_reveal_rewrite;
 mod import_export;
+mod no_cheating;
 mod observers;
 mod pre_header;
 pub mod profiler;

@@ -1,8 +1,8 @@
 // tidy-alphabetical-start
+#![cfg_attr(bootstrap, feature(never_type))]
 #![feature(array_try_map)]
 #![feature(decl_macro)]
 #![feature(deref_patterns)]
-#![feature(never_type)]
 #![feature(slice_ptr_get)]
 #![feature(trait_alias)]
 #![feature(unqualified_local_imports)]
@@ -15,17 +15,20 @@ extern crate either;
 extern crate rustc_abi;
 extern crate rustc_apfloat;
 extern crate rustc_ast;
+extern crate rustc_attr_ir;
 extern crate rustc_data_structures;
 extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_index;
 extern crate rustc_infer;
+extern crate rustc_lint_defs;
 extern crate rustc_macros;
 extern crate rustc_middle;
 extern crate rustc_mir_dataflow;
 extern crate rustc_mir_transform;
 extern crate rustc_session;
 extern crate rustc_span;
+extern crate rustc_structures;
 extern crate rustc_target;
 extern crate rustc_trait_selection;
 
@@ -49,12 +52,13 @@ mod ctfe_limit;
 mod promote_consts;
 #[path = "../../rustc_mir_transform/src/required_consts.rs"]
 mod required_consts;
-use crate::verus::{MirPass, PassPolicy};
+use crate::verus::{MirPass, PassCtx, PassPolicy};
 
 use std::sync::atomic::AtomicBool;
 
+use rustc_middle::ty;
 use rustc_middle::util::Providers;
-use rustc_middle::{bug, ty};
+use rustc_span::bug;
 
 /// Const eval always happens in post analysis mode in order to be able to use the hidden types of
 /// opaque types. This is needed for trivial things like `size_of`, but also for using associated

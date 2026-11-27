@@ -14,9 +14,9 @@ use std::{assert_matches, fmt, ptr};
 use rustc_abi::{Align, HasDataLayout, Size};
 use rustc_ast::Mutability;
 use rustc_data_structures::fx::{FxHashSet, FxIndexMap};
-use rustc_middle::bug;
 use rustc_middle::mir::display_allocation;
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
+use rustc_span::bug;
 use tracing::{debug, instrument, trace};
 
 use super::{
@@ -135,10 +135,10 @@ pub struct Memory<'tcx, M: Machine<'tcx>> {
     // FIXME: this should not be public, but interning currently needs access to it
     pub(super) dead_alloc_map: FxIndexMap<AllocId, (Size, Align)>,
 
-    /// This stores whether we are currently doing reads purely for the purpose of validation.
-    /// Those reads do not trigger the machine's hooks for memory reads.
+    /// This stores whether we are currently doing reads/writes that aren't "real".
+    /// Those accesses do not trigger the machine's hooks.
     /// Needless to say, this must only be set with great care!
-    validation_in_progress: Cell<bool>,
+    ghost_mode: Cell<bool>,
 }
 
 /// A reference to some allocation that was already bounds-checked for the given region
@@ -166,7 +166,7 @@ impl<'tcx, M: Machine<'tcx>> Memory<'tcx, M> {
             extra_fn_ptr_map: FxIndexMap::default(),
             va_list_map: FxIndexMap::default(),
             dead_alloc_map: FxIndexMap::default(),
-            validation_in_progress: Cell::new(false),
+            ghost_mode: Cell::new(false),
         }
     }
 
@@ -768,7 +768,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         // We want to call the hook on *all* accesses that involve an AllocId, including zero-sized
         // accesses. That means we cannot rely on the closure above or the `Some` branch below. We
         // do this after `check_and_deref_ptr` to ensure some basic sanity has already been checked.
-        if !self.memory.validation_in_progress.get() {
+        if !self.memory.ghost_mode.get() {
             if let Ok((alloc_id, ..)) = self.ptr_try_get_alloc_id(ptr, size_i64) {
                 M::before_alloc_access(self.tcx, &self.machine, alloc_id)?;
             }
@@ -776,7 +776,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
         if let Some((alloc_id, offset, prov, alloc)) = ptr_and_alloc {
             let range = alloc_range(offset, size);
-            if !self.memory.validation_in_progress.get() {
+            if !self.memory.ghost_mode.get() {
                 M::before_memory_read(
                     self.tcx,
                     &self.machine,
@@ -856,7 +856,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     ) -> InterpResult<'tcx, Option<AllocRefMut<'a, 'tcx, M::Provenance, M::AllocExtra, M::Bytes>>>
     {
         let tcx = self.tcx;
-        let validation_in_progress = self.memory.validation_in_progress.get();
+        let validation_in_progress = self.memory.ghost_mode.get();
 
         let size_i64 = i64::try_from(size.bytes()).unwrap(); // it would be an error to even ask for more than isize::MAX bytes
         let ptr_and_alloc = Self::check_and_deref_ptr(
@@ -910,6 +910,12 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             // We check `tcx` last as that has to acquire a lock in `many-seeds` mode.
             // This also matches the order in `get_alloc_info`.
             || self.tcx.try_get_global_alloc(id).is_some()
+    }
+
+    /// Check whether an allocation contains provenance.
+    pub fn has_provenance_in_alloc(&self, id: AllocId) -> InterpResult<'tcx, bool> {
+        let alloc = self.get_alloc_raw(id)?;
+        interp_ok(!alloc.provenance().range_empty(alloc_range(Size::ZERO, alloc.size()), &self.tcx))
     }
 
     /// Obtain the size and alignment of an allocation, even if that allocation has
@@ -1204,48 +1210,44 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         result
     }
 
-    /// Runs the closure in "validation" mode, which means the machine's memory read hooks will be
+    /// Runs the closure in "ghost" mode, which means the machine's memory read hooks will be
     /// suppressed. Needless to say, this must only be set with great care! Cannot be nested.
     ///
     /// We do this so Miri's allocation access tracking does not show the validation
-    /// reads as spurious accesses.
-    pub fn run_for_validation_mut<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+    /// reads as spurious accesses as those aren't "real" reads. Also useful for debuggers
+    /// that want to just display the Miri machine state.
+    pub fn ghost_run_mut<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
         // This deliberately uses `==` on `bool` to follow the pattern
         // `assert!(val.replace(new) == old)`.
-        assert!(
-            self.memory.validation_in_progress.replace(true) == false,
-            "`validation_in_progress` was already set"
-        );
+        assert!(self.memory.ghost_mode.replace(true) == false, "`ghost_mode` was already set");
         let res = f(self);
         assert!(
-            self.memory.validation_in_progress.replace(false) == true,
-            "`validation_in_progress` was unset by someone else"
+            self.memory.ghost_mode.replace(false) == true,
+            "`ghost_mode` was unset by someone else"
         );
         res
     }
 
-    /// Runs the closure in "validation" mode, which means the machine's memory read hooks will be
+    /// Runs the closure in "ghost" mode, which means the machine's memory read hooks will be
     /// suppressed. Needless to say, this must only be set with great care! Cannot be nested.
     ///
     /// We do this so Miri's allocation access tracking does not show the validation
-    /// reads as spurious accesses.
-    pub fn run_for_validation_ref<R>(&self, f: impl FnOnce(&Self) -> R) -> R {
+    /// reads as spurious accesses as those aren't "real" reads. Also useful for debuggers
+    /// that want to just display the Miri machine state.
+    pub fn ghost_run<R>(&self, f: impl FnOnce(&Self) -> R) -> R {
         // This deliberately uses `==` on `bool` to follow the pattern
         // `assert!(val.replace(new) == old)`.
-        assert!(
-            self.memory.validation_in_progress.replace(true) == false,
-            "`validation_in_progress` was already set"
-        );
+        assert!(self.memory.ghost_mode.replace(true) == false, "`ghost_mode` was already set");
         let res = f(self);
         assert!(
-            self.memory.validation_in_progress.replace(false) == true,
-            "`validation_in_progress` was unset by someone else"
+            self.memory.ghost_mode.replace(false) == true,
+            "`ghost_mode` was unset by someone else"
         );
         res
     }
 
     pub(super) fn validation_in_progress(&self) -> bool {
-        self.memory.validation_in_progress.get()
+        self.memory.ghost_mode.get()
     }
 }
 
@@ -1516,7 +1518,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         };
         let src_alloc = self.get_alloc_raw(src_alloc_id)?;
         let src_range = alloc_range(src_offset, size);
-        assert!(!self.memory.validation_in_progress.get(), "we can't be copying during validation");
+        assert!(!self.memory.ghost_mode.get(), "we can't be copying during validation");
 
         // Trigger read hook.
         // For the overlapping case, it is crucial that we trigger the read hook
@@ -1641,7 +1643,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             Ok(int) => interp_ok(int.is_null()),
             Err(_) => {
                 // We can't cast this pointer to an integer. Can only happen during CTFE.
-                let ptr = scalar.to_pointer(self)?;
+                let ptr = scalar.to_pointer(self);
                 match self.ptr_try_get_alloc_id(ptr, 0) {
                     Ok((alloc_id, offset, _)) => {
                         let info = self.get_alloc_info(alloc_id);

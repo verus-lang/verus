@@ -772,9 +772,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Old(R::get(e))))
             }
-            ExprX::ProphecyDisallowed(reason, e) => {
+            ExprX::ForcePureAndNonProphetic(reason, e) => {
                 let e = self.visit_expr(e)?;
-                R::ret(|| expr_new(ExprX::ProphecyDisallowed(reason.clone(), R::get(e))))
+                R::ret(|| expr_new(ExprX::ForcePureAndNonProphetic(reason.clone(), R::get(e))))
             }
             ExprX::Await(e) => {
                 let e = self.visit_expr(e)?;
@@ -1430,6 +1430,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             owning_module,
             auto_imported,
             external_trait_blanket,
+            is_unsafe,
         } = &imp.x;
         let type_bounds = self.visit_generic_bounds(typ_bounds)?;
         let trait_typ_args = self.visit_typs(trait_typ_args)?;
@@ -1444,6 +1445,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 owning_module: owning_module.clone(),
                 auto_imported: *auto_imported,
                 external_trait_blanket: *external_trait_blanket,
+                is_unsafe: *is_unsafe,
             })
         })
     }

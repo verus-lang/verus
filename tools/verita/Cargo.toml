@@ -23,3 +23,6 @@ toml_edit = "0.22"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17" }
 xshell = "0.2.6"
+
+[target.'cfg(windows)'.dependencies]
+junction = "2.1"
