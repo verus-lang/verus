@@ -87,6 +87,8 @@ fn client()
 }
 ```
 
+### Panicking conditions as preconditions
+
 It's also possible to write the panicking condition in "precondition-style".
 
 ```rust
@@ -101,14 +103,35 @@ fn checked_double(x: u8) -> (res: u8)
 }
 ```
 
-Formally speaking, `requires[no_panic] e` is equivalent to `ensures[panic] !e`.
-Depending on the situation, one or the other might be more natural.
-Furthermore, the `requires[no_panic]` registers the condition as a "user panic", causing it to
-be checked if `check_user_panics` is enabled.
+This can be more intuitive, since users of the function often want to know what precondition
+they need to establish in order to correctly call the function. Don't get it confused with a
+"normal" precondition, though. Verus still has to check the panicking paths for memory safety.
+This would still be an error:
 
+```rust
+fn my_unwrap(x: Option<u8>)
+    requires[no_panic] x.is_some()
+{
+    let y = unsafe { x.unwrap_unchecked() }; // this is UB if x == None
+}
+```
+
+That is, having a `requires[no_panic]` is not the same as an assertion that the condition
+only holds true. Rather, it just means that any path through the function that panics cannot
+hold true under that hypothesis.
+Formally speaking, `requires[no_panic] e` is just equivalent to `ensures[panic] !e`;
+the use of `requires[no_panic]` is primarily a matter of framing.
+
+Which style should you use?
+Depending on the situation, one or the other might be more natural.
 Generally speaking, `requires[no_panic]` is more suitable for conditions that you expect a client
 to be able to uphold, while `ensures[panic]` is suitable for unexpected conditions that may not
 be easy to predict in advance (like OOM).
+
+Furthermore, the `requires[no_panic]` registers the condition as a "user panic", causing it to
+be checked if `check_user_panics` is enabled.
+
+### Even more precise specs
 
 The `requires[no_panic]` has an even stronger form, `requires[no_panic exact]`, which means
 that if the condition _doesn't_ hold, then the function _will_ panic (modulo nontermination).
@@ -132,7 +155,7 @@ fn client2(x: u8) {
 }
 ```
 
-(In this case, the `no_panic exact` condition is technically redundant, because the postcondition `res == 2*x` where `res: u8` happens to imply that `x < 128` already.)
+(In our example, the `no_panic exact` condition is technically redundant, because the postcondition `res == 2*x` where `res: u8` happens to imply that `x < 128` already.)
 
 ## Specifying recovable panics
 

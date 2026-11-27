@@ -112,6 +112,13 @@
   - [Full source for the examples](./container_bst_all_source.md)
 
 - [Panicking](./panicking.md)
+  - ["User panics" — panics checked by default](./user_panics.md)
+  - [Panicking specs](./panic_specs.md)
+  - [Strict verification: no panics](./strict_panics.md)
+  - [Lenient verification](./lenient_panics.md)
+  - [Dealing with system errors](./system_errors.md)
+  - [Recoverable panics](./recoverable_panics.md)
+  - [Dealing with panics from generic code](./generic_code_panics.md)
 
 - [Interacting with unverified code](./interacting-with-unverified-code.md)
   - [Calling unverified code from verified code](./calling-unverified-from-verified.md)
