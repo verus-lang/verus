@@ -190,6 +190,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         },
         TypX::Projection { .. } => str_typ(POLY),
         TypX::PointeeMetadata(_) => str_typ(POLY),
+        TypX::ProjectionDeref(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::ConstBool(_) => panic!("const bool cannot be used as an expression type"),
@@ -396,6 +397,14 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
             let pt = ident_apply(&ctx.name_ctxt.projection(false, trait_path, name), &args);
             vec![pd, pt]
         }
+        TypX::ProjectionDeref(t) => {
+            let ids = typ_to_ids(ctx, t);
+            assert!(ids.len() == 2);
+            // Decorations don't affect the base type component (see TypX::Decorate above),
+            // so the base type is unchanged; only the decoration needs inverting.
+            let ds = str_apply(crate::def::DECORATE_REF_INV, &vec![ids[0].clone()]);
+            vec![ds, ids[1].clone()]
+        }
         TypX::PointeeMetadata(t) => {
             let ids = typ_to_ids(ctx, t);
             let id = ids[0].clone(); // Metadata is a function of just the decoration
@@ -576,6 +585,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::TypParam(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(ctx, expr, typ)),
         TypX::PointeeMetadata(_) => Some(expr_has_typ(ctx, expr, typ)),
+        TypX::ProjectionDeref(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Bool | TypX::Real | TypX::AnonymousClosure(..) | TypX::TypeId => None,
         TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
@@ -659,6 +669,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
         TypX::PointeeMetadata(_) => None,
+        TypX::ProjectionDeref(_) => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
@@ -701,6 +712,7 @@ pub(crate) fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
         TypX::PointeeMetadata(_) => None,
+        TypX::ProjectionDeref(_) => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
