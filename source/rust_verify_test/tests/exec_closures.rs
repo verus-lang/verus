@@ -2251,3 +2251,14 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_rust_error_msg(e, "use of moved value: `x`")
 }
+
+test_verify_one_file! {
+    #[test] dummy_capture_consume_with_return_arg verus_code! {
+        fn f() -> (r: u64)
+            ensures r == 0,
+        {
+            dummy_capture_consume({ return 1; });
+            0
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::dummy_capture_consume`")
+}

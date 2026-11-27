@@ -283,8 +283,6 @@ pub broadcast proof fn to_string_from_display_ensures_for_str(t: &str, res: Stri
 pub assume_specification<T: core::fmt::Display + ?Sized>[ <T as ToString>::to_string ](
     t: &T,
 ) -> (res: String)
-    requires
-        forall|f: &core::fmt::Formatter<'_>| t.fmt_req(f),
     ensures
         to_string_from_display_ensures::<T>(t, res),
 ;

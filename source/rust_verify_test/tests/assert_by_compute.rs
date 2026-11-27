@@ -1710,6 +1710,24 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] seq_to_sst_array_view_not_pruned_regression_3074 verus_code! {
+        use vstd::prelude::*;
+
+        uninterp spec fn p(s: Seq<int>) -> bool;
+
+        spec fn mk(n: nat) -> Seq<int>
+            decreases n,
+        {
+            if n == 0 { Seq::empty() } else { mk((n - 1) as nat).push(n as int) }
+        }
+
+        proof fn test() {
+            assert(p(mk(4))) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] inline_quant_shadows_outer_quant_var verus_code! {
         spec fn f(x: int) -> int { x }
 
@@ -1720,4 +1738,19 @@ test_verify_one_file! {
             assert(forall|x: int| { let y = x; inl(y) }) by (compute); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_on_seq_not_builtin_seq_fn verus_code! {
+        use vstd::prelude::*;
+        pub trait MyLen {
+            spec fn len(self) -> nat;
+        }
+        impl<A> MyLen for Seq<A> {
+            open spec fn len(self) -> nat { 0 }
+        }
+        proof fn test() {
+            assert(<Seq<u8> as MyLen>::len(Seq::<u8>::empty().push(1u8)) == 1) by (compute); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "which evaluates to false")
 }
