@@ -328,14 +328,38 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                     });
                     let typ_args: Result<Vec<vir::ast::Typ>, VirErr> =
                         ts.iter().map(|t| bctx.mid_ty_to_vir(expr.span, &t)).collect();
+                    // the impl paths of the components' `Clone` bounds, which are those of
+                    // `(T1, .., Tn): Clone` (get_impl_paths_for_clauses splits the tuple)
+                    let impl_paths = {
+                        use crate::rustc_type_ir::Upcast;
+                        let tcx = bctx.ctxt.tcx;
+                        let clone_trait = tcx.lang_items().clone_trait().expect("Clone lang item");
+                        let clause: rustc_middle::ty::Clause<'tcx> =
+                            rustc_middle::ty::Binder::dummy(rustc_middle::ty::ClauseKind::Trait(
+                                rustc_middle::ty::TraitClause {
+                                    trait_ref: rustc_middle::ty::TraitRef::new(
+                                        tcx,
+                                        clone_trait,
+                                        [GenericArg::from(self_ty)],
+                                    ),
+                                    polarity: rustc_middle::ty::ClausePolarity::Positive,
+                                },
+                            ))
+                            .upcast(tcx);
+                        crate::rust_to_vir_base::get_impl_paths_for_clauses(
+                            tcx,
+                            &bctx.ctxt.verus_items,
+                            bctx.fun_id,
+                            vec![(None, clause)],
+                            None,
+                            expr.span,
+                        )?
+                    };
                     let call_target = vir::ast::CallTarget::Fun(
                         vir::ast::CallTargetKind::Static,
                         fun,
                         Arc::new(typ_args?),
-                        // the components' `Clone` bounds hold (rustc checked them); impl paths
-                        // only matter for recursion through trait impls, which an exec clone
-                        // does not need to terminate for
-                        Arc::new(vec![]),
+                        impl_paths,
                         vir::ast::CallTargetAttrs {
                             autospec: vir::ast::AutospecUsage::Final,
                             const_var: false,

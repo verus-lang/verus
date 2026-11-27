@@ -3241,6 +3241,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // the component-wise clone of a tuple calls the components' `Clone` impls, so a `clone`
+    // that clones a tuple of its own type is a cycle (it recurses forever at run time)
+    #[test] test_builtin_clone_of_tuple_cycle verus_code! {
+        use vstd::prelude::*;
+        pub struct X(pub u8);
+        impl Clone for X {
+            fn clone(&self) -> (r: X) {
+                let t = (X(self.0), 1u8);
+                let u = t.clone();
+                u.0
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
     // the key function must be deterministic (std calls it more than once per element)
     #[test] sort_by_key_requires_deterministic_key verus_code! {
         use vstd::prelude::*;
