@@ -325,13 +325,13 @@ impl MonotonicCounterResource {
 
 // This example illustrates some uses of the monotonic counter.
 fn main() {
-    let tracked full = MonotonicCounterResource::alloc();
+    let tracked mut full = MonotonicCounterResource::alloc();
     proof {
         full.increment();
     }
     assert(full@.n() == 1);
     let tracked full = MonotonicCounterResource::alloc();
-    let tracked zero_lower_bound = full.extract_lower_bound();
+    let tracked mut zero_lower_bound = full.extract_lower_bound();
     let tracked (mut half1, mut half2) = full.split();
     assert(half1.id() == half2.id());
     assert(half1@.n() == 0);

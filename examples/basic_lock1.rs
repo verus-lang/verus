@@ -64,7 +64,7 @@ impl<T> Lock<T> {
         loop
             invariant self.wf(),
         {
-            let tracked points_to_opt = None;
+            let tracked mut points_to_opt = None;
             let res;
             open_atomic_invariant!(self.inv.borrow() => ghost_stuff => {
                 let tracked (mut atomic_permission, mut points_to_inv) = ghost_stuff;

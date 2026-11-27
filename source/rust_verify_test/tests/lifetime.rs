@@ -578,7 +578,7 @@ test_verify_one_file! {
     #[test] tracked_new_issue870 verus_code! {
         use vstd::simple_pptr::*;
         fn test() {
-            let (pptr, Tracked(perm)) = PPtr::<u64>::empty();
+            let (pptr, Tracked(mut perm)) = PPtr::<u64>::empty();
             pptr.put(Tracked(&mut perm), 5);
             let x: &u64 = pptr.borrow(Tracked(&perm)); // should tie x's lifetime to the perm borrow
             assert(x == 5);
@@ -592,7 +592,7 @@ test_verify_one_file! {
     #[test] tracked_new2_issue870 verus_code! {
         use vstd::simple_pptr::*;
         fn test() {
-            let (pptr, Tracked(perm)) = PPtr::<u64>::empty();
+            let (pptr, Tracked(mut perm)) = PPtr::<u64>::empty();
             pptr.put(Tracked(&mut perm), 5);
             let x: &u64 = pptr.borrow(Tracked(&perm)); // should tie x's lifetime to the perm borrow
             assert(x == 5);
