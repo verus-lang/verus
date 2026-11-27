@@ -249,6 +249,52 @@ pub enum TypDecoration {
     /// This is done because `*mut T` is represented identically `*const T`,
     /// but neither are represented identically to T.
     ConstPtr,
+    /// An auto-trait bound of a trait object, applied to `dyn T` (or to `dyn T` with other
+    /// auto-trait decorations): `dyn T + Send` is `AutoTrait(Send)` applied to `dyn T`.
+    /// The auto traits are applied in the order of `AutoTrait`, so that `dyn T + Send + Sync`
+    /// and `dyn T + Sync + Send` are the same type, as in Rust. They make the type id of
+    /// `dyn T + Send` differ from that of `dyn T` (so that impls for the two types are kept
+    /// apart); Verus does not otherwise reason about auto traits.
+    AutoTrait(AutoTrait),
+}
+
+impl TypDecoration {
+    /// A number for each decoration, used in names (`dec as u32` before `AutoTrait` had a field)
+    pub fn code(self) -> u32 {
+        match self {
+            TypDecoration::Ref => 0,
+            TypDecoration::Box => 1,
+            TypDecoration::Rc => 2,
+            TypDecoration::Arc => 3,
+            TypDecoration::Ghost => 4,
+            TypDecoration::Tracked => 5,
+            TypDecoration::Never => 6,
+            TypDecoration::ConstPtr => 7,
+            TypDecoration::AutoTrait(a) => 8 + a as u32,
+        }
+    }
+}
+
+/// The auto traits of the standard library, which are the only ones in stable Rust
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Serialize,
+    Deserialize,
+    Hash,
+    ToDebugSNode,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord
+)]
+pub enum AutoTrait {
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+    RefUnwindSafe,
 }
 
 #[derive(

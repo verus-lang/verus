@@ -141,6 +141,11 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
     let decorate_tracked = str_to_node(DECORATE_TRACKED);
     let decorate_never = str_to_node(DECORATE_NEVER);
     let decorate_const_ptr = str_to_node(DECORATE_CONST_PTR);
+    let decorate_auto_send = str_to_node(DECORATE_AUTO_SEND);
+    let decorate_auto_sync = str_to_node(DECORATE_AUTO_SYNC);
+    let decorate_auto_unpin = str_to_node(DECORATE_AUTO_UNPIN);
+    let decorate_auto_unwind_safe = str_to_node(DECORATE_AUTO_UNWIND_SAFE);
+    let decorate_auto_ref_unwind_safe = str_to_node(DECORATE_AUTO_REF_UNWIND_SAFE);
     let decorate_dst_inherit = str_to_node(DECORATE_DST_INHERIT);
     let has_type = str_to_node(HAS_TYPE);
     let as_type = str_to_node(AS_TYPE);
@@ -230,6 +235,11 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-fun [decorate_tracked] ([decoration]) [decoration])
         (declare-fun [decorate_never] ([decoration]) [decoration])
         (declare-fun [decorate_const_ptr] ([decoration]) [decoration])
+        (declare-fun [decorate_auto_send] ([decoration]) [decoration])
+        (declare-fun [decorate_auto_sync] ([decoration]) [decoration])
+        (declare-fun [decorate_auto_unpin] ([decoration]) [decoration])
+        (declare-fun [decorate_auto_unwind_safe] ([decoration]) [decoration])
+        (declare-fun [decorate_auto_ref_unwind_safe] ([decoration]) [decoration])
         (declare-fun [type_id_array] ([decoration] [typ] [decoration] [typ]) [typ])
         (declare-fun [type_id_mut_ref] ([decoration] [typ]) [typ])
         (declare-fun [type_id_slice] ([decoration] [typ]) [typ])

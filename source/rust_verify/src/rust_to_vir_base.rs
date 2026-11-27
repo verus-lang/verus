@@ -904,6 +904,25 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
     true
 }
 
+/// The auto trait (of the standard library) that `def_id` is, if it is one
+fn auto_trait_of<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<vir::ast::AutoTrait> {
+    use vir::ast::AutoTrait;
+    let is = |d: Option<DefId>| d == Some(def_id);
+    if is(tcx.get_diagnostic_item(rustc_span::sym::Send)) {
+        Some(AutoTrait::Send)
+    } else if is(tcx.lang_items().sync_trait()) {
+        Some(AutoTrait::Sync)
+    } else if is(tcx.lang_items().unpin_trait()) {
+        Some(AutoTrait::Unpin)
+    } else if is(tcx.get_diagnostic_item(rustc_span::sym::unwind_safe_trait)) {
+        Some(AutoTrait::UnwindSafe)
+    } else if is(tcx.get_diagnostic_item(rustc_span::sym::ref_unwind_safe_trait)) {
+        Some(AutoTrait::RefUnwindSafe)
+    } else {
+        None
+    }
+}
+
 // returns VIR Typ and whether Ghost/Tracked was erased from around the outside of the VIR Typ
 pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -1306,19 +1325,29 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Dynamic(preds, _) => {
             use rustc_middle::ty::ExistentialPredicate;
-            // Auto-trait bounds (`dyn Trait + Send + Sync`) carry no verification content:
-            // a value of `dyn Trait + Send` is a value of `dyn Trait`, so encoding the former
-            // as the latter over-approximates the type, exactly as the auto-trait bounds on
-            // generics are dropped in `check_generic_bound` above. Keep the remaining
-            // predicates and require exactly one principal trait among them.
-            let non_auto: Vec<_> = preds
-                .iter()
-                .filter(|p| !matches!(p.skip_binder(), ExistentialPredicate::AutoTrait(_)))
-                .collect();
+            // Auto-trait bounds are part of the type: `dyn Trait + Send` is `dyn Trait` with
+            // the decoration `AutoTrait(Send)` (see `TypDecoration::AutoTrait`), so the two
+            // have different type ids, as they are different types in Rust. Verus does not
+            // otherwise reason about auto traits (as for the auto-trait bounds of generics,
+            // which `check_generic_bound` drops).
+            let mut auto_traits: Vec<vir::ast::AutoTrait> = Vec::new();
+            let mut non_auto = Vec::new();
+            for pred in preds.iter() {
+                match pred.skip_binder() {
+                    ExistentialPredicate::AutoTrait(def_id) => match auto_trait_of(tcx, def_id) {
+                        Some(a) => auto_traits.push(a),
+                        None => unsupported_err!(span, "dyn with this auto trait"),
+                    },
+                    _ => non_auto.push(pred),
+                }
+            }
+            if non_auto.is_empty() {
+                unsupported_err!(span, "dyn without a principal trait");
+            }
             if non_auto.len() != 1 {
                 unsupported_err!(span, "dyn with more than one trait");
             }
-            match non_auto[0].skip_binder() {
+            let dyn_typ = match non_auto[0].skip_binder() {
                 ExistentialPredicate::Trait(trait_ref) => {
                     let trait_did = trait_ref.def_id;
                     let args = trait_ref.args;
@@ -1339,16 +1368,21 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         None,
                         span,
                     )?;
-                    let typx = TypX::Dyn(trait_path, Arc::new(typ_args), impl_paths);
-                    (Arc::new(typx), false)
+                    Arc::new(TypX::Dyn(trait_path, Arc::new(typ_args), impl_paths))
                 }
                 ExistentialPredicate::Projection(_) => {
                     unsupported_err!(span, "dyn with projections");
                 }
-                ExistentialPredicate::AutoTrait(_def_id) => {
-                    unsupported_err!(span, "dyn with auto-traits");
-                }
+                ExistentialPredicate::AutoTrait(_) => unreachable!(),
+            };
+            // in the order of `AutoTrait`, so that the order in the source does not matter
+            auto_traits.sort();
+            auto_traits.dedup();
+            let mut typ = dyn_typ;
+            for a in auto_traits {
+                typ = Arc::new(TypX::Decorate(TypDecoration::AutoTrait(a), None, typ));
             }
+            (typ, false)
         }
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
         TyKind::FnPtr(..) => unsupported_err!(span, "function pointer types"),

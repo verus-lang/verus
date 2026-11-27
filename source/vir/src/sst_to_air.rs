@@ -221,6 +221,7 @@ fn decoration_str(d: TypDecoration) -> &'static str {
         TypDecoration::Tracked => crate::def::DECORATE_TRACKED,
         TypDecoration::Never => crate::def::DECORATE_NEVER,
         TypDecoration::ConstPtr => crate::def::DECORATE_CONST_PTR,
+        TypDecoration::AutoTrait(a) => crate::def::decorate_auto_trait(a),
     }
 }
 
