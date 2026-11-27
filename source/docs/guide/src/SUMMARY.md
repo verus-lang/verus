@@ -111,6 +111,8 @@
   - [Mutable references in a container](./container_bst_mut_refs.md)
   - [Full source for the examples](./container_bst_all_source.md)
 
+- [Panicking](./panicking.md)
+
 - [Interacting with unverified code](./interacting-with-unverified-code.md)
   - [Calling unverified code from verified code](./calling-unverified-from-verified.md)
   - [Calling verified code from unverified code](./calling-verified-from-unverified.md)
