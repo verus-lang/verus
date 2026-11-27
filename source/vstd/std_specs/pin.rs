@@ -54,6 +54,19 @@ pub assume_specification<P: core::ops::Deref>[ Pin::<P>::new ](pointer: P) -> (r
         res.pointer() == pointer,
 ;
 
+// `Pin::new_unchecked` has the same spec as `Pin::new`, but without the `Unpin` bound.
+// Its safety contract (that the pointee is never moved again) is not captured by this spec;
+// instead, Verus enforces it by restricting how calls to `Pin::new_unchecked` may appear:
+// the argument must be `&mut x` for a local `x` of the enclosing function, `x` cannot be
+// moved from or mutably borrowed anywhere else in the function, and `x` cannot be captured
+// by a closure.
+pub assume_specification<P: core::ops::Deref>[ Pin::<P>::new_unchecked ](pointer: P) -> (res: Pin<
+    P,
+>)
+    ensures
+        res.pointer() == pointer,
+;
+
 pub assume_specification<P: core::ops::Deref>[ Pin::<P>::into_inner ](pin: Pin<P>) -> (res:
     P) where P::Target: Unpin
     ensures

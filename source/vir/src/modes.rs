@@ -524,6 +524,9 @@ struct Record {
     mut_bor_place_modes: HashMap<crate::messages::AstId, (Mode, Option<ProofModeMutRefNote>)>,
     /// Nodes to set the 'assert_irrefutable' flag
     assert_irrefutable: HashSet<crate::messages::AstId>,
+    /// Does the function contain any calls to `Pin::new_unchecked`?
+    /// (If so, pin_new_unchecked.rs needs to check the function.)
+    has_pin_new_unchecked: bool,
 }
 
 #[derive(Debug)]
@@ -2086,6 +2089,9 @@ fn check_expr(
                     p.check(&arg.span, disallow_arg_proph)?;
                 };
                 out_proph = out_proph.join(p);
+            }
+            if function.x.attrs.is_pin_new_unchecked {
+                record.has_pin_new_unchecked = true;
             }
             if function.x.attrs.tracked_swap || function.x.attrs.tracked_take_option {
                 if typing.block_ghostness == Ghost::Exec {
@@ -3976,6 +3982,7 @@ fn check_function_inner(
         infer_spec_for_implicit_reborrows,
         mut_bor_place_modes,
         assert_irrefutable,
+        has_pin_new_unchecked,
     } = record;
     // Reset the fields that are per-function
     *type_inv_info = TypeInvInfo { ctor_needs_check: HashMap::new() };
@@ -3985,6 +3992,7 @@ fn check_function_inner(
     *infer_spec_for_implicit_reborrows = None;
     *mut_bor_place_modes = HashMap::new();
     *assert_irrefutable = HashSet::new();
+    *has_pin_new_unchecked = false;
 
     let mut fun_typing = typing.push_var_scope();
 
@@ -4351,6 +4359,7 @@ pub fn check_function(
         infer_spec_for_implicit_reborrows: None,
         mut_bor_place_modes: HashMap::new(),
         assert_irrefutable: HashSet::new(),
+        has_pin_new_unchecked: false,
     };
     let mut state = State {
         vars: ScopeMap::new(),
@@ -4382,6 +4391,7 @@ pub fn check_function(
                 temporary_modes: record.temporary_modes,
                 typ_inv_info: record.type_inv_info,
                 dual_mode,
+                has_pin_new_unchecked: record.has_pin_new_unchecked,
             });
         }
     }

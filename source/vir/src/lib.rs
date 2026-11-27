@@ -53,6 +53,7 @@ pub mod messages;
 pub mod modes;
 pub mod opaque_type_to_air;
 pub mod patterns;
+mod pin_new_unchecked;
 pub mod place_preconditions;
 pub mod poly;
 pub mod prelude;
