@@ -83,7 +83,7 @@ fn expr_get_early_exits_rec(
             | ExprX::ReadPlace(..)
             | ExprX::EvalAndResolve(..)
             | ExprX::Old(..)
-            | ExprX::ProphecyDisallowed(..)
+            | ExprX::ForcePureAndNonProphetic(..)
             | ExprX::Block(..)
             | ExprX::MatchGuardFreeze(..)
             | ExprX::ShrRefStructWrap(..)

@@ -9,8 +9,8 @@ use rustc_middle::ty::{
     self, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable, TypeVisitableExt, TypeVisitor, TypingMode,
     Unnormalized,
 };
-use rustc_middle::{bug, span_bug};
 use rustc_span::def_id::{DefId, LocalDefId};
+use rustc_span::{bug, span_bug};
 use rustc_trait_selection::traits::{
     self, IsFirstInputType, OrphanCheckErr, OrphanCheckMode, UncoveredTyParams,
 };
@@ -319,8 +319,11 @@ fn orphan_check<'tcx>(
     }
 
     // (1)  Instantiate all generic params with fresh inference vars.
-    let infcx =
-        tcx.infer_ctxt().enable_next_solver_overflow_fcw(false).build(TypingMode::Coherence);
+    let infcx = tcx
+        .infer_ctxt()
+        .with_next_trait_solver(tcx.next_trait_solver_in_coherence())
+        .enable_next_solver_overflow_fcw(false)
+        .build(TypingMode::Coherence);
     let cause = traits::ObligationCause::dummy();
     let args = infcx.fresh_args_for_item(cause.span, impl_def_id.to_def_id());
     let trait_ref = trait_ref.instantiate(tcx, args).skip_norm_wip();
@@ -330,7 +333,7 @@ fn orphan_check<'tcx>(
 
         let ocx = traits::ObligationCtxt::new(&infcx);
         let ty = ocx.normalize(&cause, ty::ParamEnv::empty(), Unnormalized::new_wip(user_ty));
-        let ty = infcx.resolve_vars_if_possible(ty);
+        let ty = infcx.deeply_resolve_ignoring_regions(ty);
         let errors = ocx.try_evaluate_obligations();
         if !errors.no_errors() {
             return Ok(user_ty);
@@ -374,7 +377,7 @@ fn orphan_check<'tcx>(
                         id_arg,
                     );
                 }
-                infcx.resolve_vars_if_possible(tys)
+                infcx.deeply_resolve_ignoring_regions(tys)
             });
             OrphanCheckErr::NonLocalInputType(tys)
         }
@@ -465,18 +468,26 @@ fn emit_orphan_check_error<'tcx>(
                         });
                     }
                     ty::Adt(adt_def, _) => {
-                        diag.subdiagnostic(diagnostics::OnlyCurrentTraitsAdt {
-                            span,
-                            name: tcx.def_path_str(adt_def.did()),
-                        });
+                        if is_foreign {
+                            diag.subdiagnostic(diagnostics::OnlyCurrentTraitsForeign { span });
+                        } else {
+                            diag.subdiagnostic(diagnostics::OnlyCurrentTraitsAdt {
+                                span,
+                                name: tcx.def_path_str(adt_def.did()),
+                            });
+                        }
                     }
                     _ => {
-                        diag.subdiagnostic(diagnostics::OnlyCurrentTraitsTy { span, ty });
+                        if is_foreign {
+                            diag.subdiagnostic(diagnostics::OnlyCurrentTraitsForeign { span });
+                        } else {
+                            diag.subdiagnostic(diagnostics::OnlyCurrentTraitsTy { span, ty });
+                        }
                     }
                 }
             }
 
-            diag.emit()
+            diag.emit_err()
         }
         traits::OrphanCheckErr::UncoveredTyParams(UncoveredTyParams { uncovered, local_ty }) => {
             let mut guar = None;

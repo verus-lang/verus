@@ -386,6 +386,11 @@ pub(crate) fn build_datatype_graph(krate: &Krate, span_infos: &mut Vec<Span>) ->
     for tr in &krate.traits {
         let src_node = TypNode::Trait(tr.x.name.clone());
         type_graph.add_node(src_node.clone());
+        for bound in tr.x.typ_bounds.iter().chain(tr.x.assoc_typs_bounds.iter()) {
+            if let GenericBoundX::Trait(TraitId::Path(u_path), _) = &**bound {
+                type_graph.add_edge(src_node.clone(), TypNode::Trait(u_path.clone()));
+            }
+        }
         let mut visitor = WalkTypVisitorEnv { env: &mut (&mut type_graph, src_node), ft };
         visitor.visit_trait(tr).unwrap();
     }

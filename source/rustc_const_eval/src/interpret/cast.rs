@@ -6,9 +6,10 @@ use rustc_apfloat::{Float, FloatConvert};
 use rustc_middle::mir::CastKind;
 use rustc_middle::mir::interpret::{InterpResult, PointerArithmetic, Scalar};
 use rustc_middle::ty::adjustment::PointerCoercion;
+use rustc_middle::ty::consts::ConstExt;
 use rustc_middle::ty::layout::{IntegerExt, TyAndLayout};
 use rustc_middle::ty::{self, FloatTy, Ty};
-use rustc_middle::{bug, span_bug};
+use rustc_span::{bug, span_bug};
 use tracing::trace;
 
 use super::util::ensure_monomorphic_enough;
@@ -293,7 +294,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         assert!(cast_to.ty.is_integral());
 
         let scalar = src.to_scalar();
-        let ptr = scalar.to_pointer(self)?;
+        let ptr = scalar.to_pointer(self);
         match ptr.into_pointer_or_addr() {
             Ok(ptr) => M::expose_provenance(self, ptr.provenance)?,
             Err(_) => {} // Do nothing, exposing an invalid pointer (`None` provenance) is a NOP.
@@ -464,8 +465,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 }
                 // Take apart the old pointer, and find the dynamic type.
                 let (old_data, old_vptr) = val.to_scalar_pair();
-                let old_data = old_data.to_pointer(self)?;
-                let old_vptr = old_vptr.to_pointer(self)?;
+                let old_data = old_data.to_pointer(self);
+                let old_vptr = old_vptr.to_pointer(self);
                 let ty = self.get_ptr_vtable_ty(old_vptr, Some(data_a))?;
 
                 // Sanity-check that `supertrait_vtable_slot` in this type's vtable indeed produces

@@ -153,7 +153,7 @@ fn unwrap_param_extract_idents<'tcx>(
     Ok(UnwrapParameter { mode, outer_name: rhs_name, inner_name: lhs_name })
 }
 
-fn is_header_verus_item(verus_item: &VerusItem) -> bool {
+pub(crate) fn is_header_verus_item(verus_item: &VerusItem) -> bool {
     match verus_item {
         VerusItem::Spec(spec_item) => match spec_item {
             SpecItem::Admit

@@ -5,6 +5,10 @@ verified code to call unverified code. To do this, we need to make Verus
 aware of the unverified code, and we need to tell Verus what it should
 **assume without proof**.
 
+The mechanisms below (`external_body`, `assume_specification`) introduce unverified assumptions,
+so they are rejected under [no-cheating mode](./tcb.md#no-cheating-mode) unless the containing
+function is (directly or indirectly) [annotated as trusted](./tcb.md).
+
 ## Specifications without proof
 
 One way to apply an assumption to an unverified function is to use the `#[verifier::external_body]` attribute.
@@ -102,6 +106,13 @@ It should have exactly this form, with the parentheses and semicolon. The `ExSom
 anywhere else.
 
 This declaration makes Verus aware of the type `SomeStruct` and all its fields (and for an enum, all its variants). If you don't want Verus to be aware of the fields/variants, you can also mark it `#[verifier::external_body]`.
+
+> [!CAUTION]
+> Due to limitations in Verus, Verus assumes that no type has a destructor which can panic.
+> Users of `#[verifier::external_type_specification]` are required to ensure this property is
+> upheld.
+>
+> We intend to remove this requirement in the future.
 
 ## Adding specifications for external traits
 

@@ -10,6 +10,21 @@ verus! {
 #[verifier::external_body]
 pub struct ExGlobal(alloc::alloc::Global);
 
+// Rc/Arc's Clone impls are bounded by this std marker trait, so their
+// assume_specifications must name it.
+#[cfg(feature = "alloc")]
+#[verifier::external_trait_specification]
+pub unsafe trait ExAllocatorClone: core::alloc::Allocator + Clone {
+    type ExternalTraitSpecificationFor: core::alloc::AllocatorClone;
+}
+
+// Likewise for Rc/Arc's `From<Vec<T, A>>` impls.
+#[cfg(feature = "alloc")]
+#[verifier::external_trait_specification]
+pub trait ExAllocatorNightly: core::alloc::Allocator {
+    type ExternalTraitSpecificationFor: alloc::alloc::AllocatorNightly;
+}
+
 #[cfg(feature = "alloc")]
 #[feature(liballoc_internals)]
 pub assume_specification<T, const N: usize>[ alloc::boxed::box_assume_init_into_vec_unsafe ](

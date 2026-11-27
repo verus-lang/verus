@@ -9,8 +9,8 @@ edition = "2024"
 air = { workspace = true }
 bincode-next = { workspace = true }
 cargo-verus-toolchains = { workspace = true }
+clap = { workspace = true }
 console = { workspace = true }
-getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
 hex = { workspace = true }
 indexmap = { workspace = true }
 indicatif = { workspace = true }
@@ -18,6 +18,7 @@ internals_interface = { workspace = true }
 num-bigint = { workspace = true }
 num-format = { workspace = true }
 regex = { workspace = true }
+rustc-dep-info = { workspace = true }
 rustc_mir_build_verus = { workspace = true }
 rustc_hir_analysis_verus = { workspace = true }
 rustc_const_eval_verus = { workspace = true }
