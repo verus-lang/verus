@@ -443,6 +443,7 @@ pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
 /// Integers, `bool`, `char` and the `Clone` impls Verus derives satisfy this. A collection
 /// relies on it when it clones its keys: a key that clones to an unequal value can leave the
 /// copy holding keys in the wrong order or bucket.
+#[verifier::prophetic]
 pub open spec fn obeys_clone_eq<T: Clone>() -> bool {
     forall|a: T, b: T| #[trigger] cloned(a, b) ==> a == b
 }
