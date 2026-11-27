@@ -1784,6 +1784,137 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    /// Tests `<=` upper bounds and `<` lower bounds that are not constants.
+    #[test] test_exec_spec_quant_variable_bounds IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            spec fn small(x: u8) -> bool {
+                x < 200
+            }
+
+            spec fn pos(x: u8) -> bool {
+                x > 0
+            }
+
+            spec fn is_seven(x: u8) -> bool {
+                x == 7
+            }
+
+            spec fn all_small(n: u8) -> bool {
+                forall |x: u8| 0 <= x <= n ==> small(x)
+            }
+
+            spec fn all_above(lo: u8) -> bool {
+                forall |x: u8| lo < x < 100 ==> pos(x)
+            }
+
+            spec fn has_seven(n: u8) -> bool {
+                exists |x: u8| 0 <= x <= n && is_seven(x)
+            }
+
+            spec fn has_seven_lt_le(lo: u8, hi: u8) -> bool {
+                exists |x: u8| lo < x <= hi && is_seven(x)
+            }
+
+            spec fn all_le(s: Seq<u8>, n: usize) -> bool
+                recommends n < s.len(),
+            {
+                forall |i: usize| 0 <= i <= n ==> s[i as int] > 0
+            }
+
+            spec fn is_i8_max(x: i8) -> bool {
+                x == 127
+            }
+
+            spec fn any_le_i8(lo: i8, hi: i8) -> bool {
+                exists |x: i8| lo <= x <= hi && is_i8_max(x)
+            }
+        }
+
+        fn sanity_check() {
+            let b = exec_has_seven(255);
+            assert(is_seven(7u8));
+            assert(b);
+            let b = exec_has_seven(6);
+            assert(!b);
+            let b = exec_has_seven_lt_le(7, 255);
+            assert(!b);
+            let b = exec_all_above(255);
+            assert(b);
+            let b = exec_any_le_i8(-128, 127);
+            assert(is_i8_max(127i8));
+            assert(b);
+        }
+    } => Ok(())
+}
+
+/// Tests quantifier bounds at the maximum of the quantified type.
+#[test]
+fn test_exec_spec_quant_bounds_overflow_runtime() {
+    let source = code_str! {
+        use vstd::prelude::*;
+        use vstd::contrib::exec_spec::*;
+
+        verus! {
+
+        exec_spec_verified! {
+            spec fn is_seven(x: u8) -> bool { x == 7 }
+            spec fn is_max(x: u8) -> bool { x == 255 }
+            spec fn yes(x: u8) -> bool { true }
+            spec fn is_i8_max(x: i8) -> bool { x == 127 }
+            spec fn is_i8_min(x: i8) -> bool { x == -128 }
+
+            spec fn has_seven(n: u8) -> bool { exists |x: u8| 0 <= x <= n && is_seven(x) }
+            spec fn le_le(lo: u8, hi: u8) -> bool { exists |x: u8| lo <= x <= hi && is_max(x) }
+            spec fn lt_le_all(lo: u8, hi: u8) -> bool { forall |x: u8| lo < x <= hi ==> !yes(x) }
+            spec fn lt_lt_any(lo: u8, hi: u8) -> bool { exists |x: u8| lo < x < hi && yes(x) }
+            spec fn le_lt_any(lo: u8, hi: u8) -> bool { exists |x: u8| lo <= x < hi && yes(x) }
+            spec fn i8_le_le(lo: i8, hi: i8) -> bool { exists |x: i8| lo <= x <= hi && is_i8_max(x) }
+            spec fn i8_lt_le(lo: i8, hi: i8) -> bool { exists |x: i8| lo < x <= hi && is_i8_min(x) }
+            spec fn all_le_seq(s: Seq<u8>, n: usize) -> bool
+                recommends n < s.len(),
+            {
+                forall |i: usize| 0 <= i <= n ==> s[i as int] > 0
+            }
+        }
+
+        } // verus!
+
+        fn main() {
+            assert!(exec_has_seven(255));
+            assert!(exec_has_seven(7));
+            assert!(!exec_has_seven(6));
+            assert!(exec_le_le(0, 255));
+            assert!(exec_le_le(255, 255));
+            assert!(!exec_le_le(255, 254));
+            assert!(exec_lt_le_all(255, 255));
+            assert!(!exec_lt_le_all(254, 255));
+            assert!(!exec_lt_lt_any(255, 10));
+            assert!(!exec_lt_lt_any(0, 1));
+            assert!(!exec_lt_lt_any(254, 255));
+            assert!(exec_lt_lt_any(253, 255));
+            assert!(!exec_le_lt_any(0, 0));
+            assert!(exec_le_lt_any(0, 1));
+            assert!(exec_i8_le_le(-128, 127));
+            assert!(!exec_i8_le_le(-128, 126));
+            assert!(!exec_i8_lt_le(-128, 127));
+            assert!(!exec_i8_lt_le(127, 127));
+            let v: Vec<u8> = vec![1, 2, 0];
+            assert!(exec_all_le_seq(&v, 1));
+            assert!(!exec_all_le_seq(&v, 2));
+        }
+    };
+    let tempdir = tempfile::tempdir().unwrap();
+    let entry_file = tempdir.path().join("quant_bounds.rs");
+    std::fs::write(&entry_file, format!("{FEATURE_PRELUDE}\n{USE_PRELUDE}\n{source}")).unwrap();
+    let output = run_verus_raw(&["--compile", entry_file.to_str().unwrap()], tempdir.path());
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let binary =
+        tempdir.path().join(if cfg!(windows) { "quant_bounds.exe" } else { "quant_bounds" });
+    let output = std::process::Command::new(binary).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+}
+
+test_verify_one_file! {
     /// Tests nested `forall`s.
     #[test] test_exec_spec_nested_foralls IMPORTS.to_string() + verus_code_str! {
         exec_spec_verified! {
