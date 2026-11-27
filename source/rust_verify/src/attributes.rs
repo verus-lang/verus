@@ -414,6 +414,7 @@ pub(crate) enum Attr {
     MigratePostconditionsWithMutRefs(bool),
     TrackedSwap,
     TrackedTakeOption,
+    ShadowData,
     AssumeUnsupportedAttributes,
     CreateOpenInvariantCredit,
 }
@@ -781,6 +782,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "tracked_take_option_primitive" => {
                     v.push(Attr::TrackedTakeOption)
                 }
+                AttrTree::Fun(_, arg, None) if arg == "shadow_data" => v.push(Attr::ShadowData),
                 AttrTree::Fun(_, arg, None) if arg == "assume_unsupported_attributes" => {
                     v.push(Attr::AssumeUnsupportedAttributes)
                 }
@@ -1377,6 +1379,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) structural_const_wrapper: bool,
     pub(crate) tracked_swap: bool,
     pub(crate) tracked_take_option: bool,
+    pub(crate) shadow_data: bool,
     pub(crate) create_open_invariant_credit: bool,
 }
 
@@ -1581,6 +1584,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         structural_const_wrapper: false,
         tracked_swap: false,
         tracked_take_option: false,
+        shadow_data: false,
         create_open_invariant_credit: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
@@ -1672,6 +1676,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::StructuralConstWrapper => vs.structural_const_wrapper = true,
             Attr::TrackedSwap => vs.tracked_swap = true,
             Attr::TrackedTakeOption => vs.tracked_take_option = true,
+            Attr::ShadowData => vs.shadow_data = true,
             Attr::CreateOpenInvariantCredit => vs.create_open_invariant_credit = true,
             _ => {}
         }

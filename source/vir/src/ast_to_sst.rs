@@ -1376,7 +1376,7 @@ pub(crate) fn expr_to_one_stm_with_post(
                 expr.span.clone(),
                 StmX::Return {
                     base_error,
-                    ret_exp: Some(exp),
+                    ret_exp: Arc::new(vec![exp]),
                     inside_body: false,
                     assert_id: state.next_assert_id(),
                 },
@@ -1416,9 +1416,10 @@ fn is_small_exp(exp: &Exp) -> bool {
         ExpX::Const(_) => true,
         ExpX::Var(..) | ExpX::VarAt(..) => true,
         ExpX::Old(..) => true,
-        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip { .. } | UnaryOp::MustBeFinalized, e) => {
-            is_small_exp_or_loc(e)
-        }
+        ExpX::Unary(
+            UnaryOp::Not | UnaryOp::Clip { .. } | UnaryOp::MustBeFinalized | UnaryOp::ShadowAddrOf,
+            e,
+        ) => is_small_exp_or_loc(e),
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
         _ => false,
     }
@@ -1474,7 +1475,7 @@ fn stm_call(
     is_trait_default: Option<bool>,
     typs: Typs,
     args: Exps,
-    dest: Option<Dest>,
+    dest: Vec<Dest>,
     body: Option<Stm>,
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
@@ -1522,7 +1523,7 @@ fn stm_call(
         typ_args: typs,
         args: small_args.clone(),
         split: None,
-        dest,
+        dest: Arc::new(dest),
         assert_id: state.next_assert_id(),
         body,
     };
@@ -1839,7 +1840,7 @@ pub(crate) fn expr_to_stm_opt(
                             is_trait_default,
                             typs.clone(),
                             args.clone(),
-                            Some(dest),
+                            vec![dest],
                             body,
                         )?);
                         // REVIEW: this emits a StmX::Assign to set the value of the destination when,
@@ -1879,7 +1880,7 @@ pub(crate) fn expr_to_stm_opt(
                             is_trait_default,
                             typs.clone(),
                             args,
-                            None,
+                            vec![],
                             body,
                         )?);
                         let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(x) };
@@ -1919,7 +1920,7 @@ pub(crate) fn expr_to_stm_opt(
                 typ_args: Arc::new(vec![]),
                 args: Arc::new(exps),
                 split: None,
-                dest: Some(dest),
+                dest: Arc::new(vec![dest]),
                 assert_id: None,
                 body,
             };
@@ -3714,7 +3715,7 @@ pub(crate) fn expr_to_stm_opt(
                         expr.span.clone(),
                         StmX::Return {
                             base_error,
-                            ret_exp: Some(ret_exp),
+                            ret_exp: Arc::new(vec![ret_exp]),
                             inside_body: true,
                             assert_id: state.next_assert_id(),
                         },
@@ -3906,8 +3907,22 @@ pub(crate) fn expr_to_stm_opt(
             panic!("ShrRefStructWrap should have been simplified out");
         }
         ExprX::ReadPlace(place, _) | ExprX::ImplicitReborrowOrSpecRead(place, _, _) => {
+            use crate::ast::{ReadKind, UnfinalizedReadKind};
             let (stms, e) = place_to_exp_for_read(ctx, state, place)?;
             let e = unwrap_or_return_never!(e, stms);
+            let e = match &expr.x {
+                ExprX::ReadPlace(
+                    _,
+                    UnfinalizedReadKind {
+                        preliminary_kind: ReadKind::ImmutBor { is_expr_addr_of: true },
+                        ..
+                    },
+                ) => {
+                    let typ = e.typ.clone();
+                    SpannedTyped::new(&expr.span, &typ, ExpX::Unary(UnaryOp::ShadowAddrOf, e))
+                }
+                _ => e,
+            };
             Ok((stms, Maybe::Some(Value::Exp(e))))
         }
         ExprX::EvalAndResolve(e1, e2) => {
@@ -4761,7 +4776,7 @@ fn stmt_to_stm(
                             is_trait_default,
                             typs,
                             args,
-                            Some(dest),
+                            vec![dest],
                             body,
                         )?);
                         // REVIEW: for a similar case in `ExprX::Call` we emit a StmX::Assign to set the

@@ -22,6 +22,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
     exp: &Exp,
 ) -> Result<Exp, VirErr> {
     match &exp.x {
+        ExpX::Unary(UnaryOp::ShadowAddrOf, e1) => Ok(e1.clone()),
         ExpX::Call(CallFun::Fun(fun, resolved_method), typs, args) => {
             let (fun, typs) =
                 if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };

@@ -72,6 +72,8 @@ pub trait ExIterator {
     spec fn produces(&self) -> Seq<bool>;
 
     /// Advances the iterator and returns the next value.
+    // In rustlib, `next` impls that turn a permission into a reference (`ptr_shr_ref`) need shadow data.
+    #[cfg_attr(verus_verify_core, verifier::shadow_data)]
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
             iter_state_preserved!(old(self), final(self)),

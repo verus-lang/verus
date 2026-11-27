@@ -69,7 +69,11 @@ fn check_well_founded_typ(
                 )
         }
         TypX::Primitive(
-            Primitive::Slice | Primitive::StrSlice | Primitive::Ptr | Primitive::Global,
+            Primitive::Slice
+            | Primitive::StrSlice
+            | Primitive::Ptr
+            | Primitive::Global
+            | Primitive::ShadowData,
             _,
         ) => true,
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
@@ -306,7 +310,8 @@ fn check_positive_uses(
             | Primitive::Slice
             | Primitive::StrSlice
             | Primitive::Ptr
-            | Primitive::Global,
+            | Primitive::Global
+            | Primitive::ShadowData,
             ts,
         ) => {
             for t in ts.iter() {

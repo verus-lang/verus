@@ -1365,9 +1365,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | CastToInteger
                         | MutRefCurrent
                         | MutRefFuture(_)
-                        | MutRefFinal(_) => ok,
+                        | MutRefFinal(_)
+                        | ShadowData => ok,
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
+                        }
+                        ShadowAddrOf => {
+                            panic!("ShadowAddrOf should have been removed")
                         }
                     }
                 }
@@ -1483,6 +1487,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
                         CastToInteger => Ok(e.clone()),
+                        ShadowAddrOf => {
+                            panic!("ShadowAddrOf should have been removed")
+                        }
                         Not
                         | HeightTrigger
                         | Trigger(_)
@@ -1496,7 +1503,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Length(..)
                         | MutRefCurrent
                         | MutRefFuture(_)
-                        | MutRefFinal(_) => ok,
+                        | MutRefFinal(_)
+                        | ShadowData => ok,
                     }
                 }
                 // !(!(e_inner)) == e_inner

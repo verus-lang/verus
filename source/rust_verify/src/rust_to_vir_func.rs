@@ -308,6 +308,7 @@ fn handle_autospec<'tcx>(
                     tracked_take_option: false,
                     create_open_invariant_credit: false,
                     is_async: false,
+                    has_shadow_data: false,
                     is_drop: false,
                     has_trivial_clone: false,
                 }),
@@ -1615,6 +1616,7 @@ fn make_attributes<'tcx>(
         tracked_take_option: vattrs.tracked_take_option,
         create_open_invariant_credit: vattrs.create_open_invariant_credit,
         is_async: is_async,
+        has_shadow_data: vattrs.shadow_data,
         is_drop: is_drop,
         has_trivial_clone: false, // set later, see rust_to_vir_impl::set_trivial_clone_attrs
     };

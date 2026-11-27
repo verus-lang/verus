@@ -134,7 +134,9 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::MutRefCurrent
             | UnaryOp::MutRefFuture(_)
             | UnaryOp::MutRefFinal(_)
-            | UnaryOp::Length(_) => {}
+            | UnaryOp::Length(_)
+            | UnaryOp::ShadowData => {}
+            UnaryOp::ShadowAddrOf => panic!("unexpected ShadowAddrOf"),
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
@@ -286,10 +288,12 @@ fn check_trigger_expr(
             | UnaryOp::MustBeFinalized
             | UnaryOp::MustBeElaborated
             | UnaryOp::CastToInteger => Ok(()),
+            UnaryOp::ShadowAddrOf => panic!("unexpected ShadowAddrOf"),
             UnaryOp::Not => Err(error(&exp.span, "triggers cannot contain boolean operators")),
             UnaryOp::Length(_) => {
                 Err(error(&exp.span, "triggers cannot contain the array/slice length operator"))
             }
+            UnaryOp::ShadowData => Err(error(&exp.span, "triggers cannot contain shadow_data")),
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),

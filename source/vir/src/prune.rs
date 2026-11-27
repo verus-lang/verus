@@ -149,6 +149,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Primitive(Primitive::Slice | Primitive::Ptr | Primitive::Global, _) => {
             ReachedType::Primitive
         }
+        TypX::Primitive(Primitive::ShadowData, _) => ReachedType::Primitive,
         TypX::MutRef(_) => ReachedType::None,
         TypX::Opaque { .. } => ReachedType::None,
     }

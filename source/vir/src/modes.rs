@@ -531,7 +531,11 @@ enum VarMode {
     Infer(Span),
     /// We know mode to be spec, but propheticness hasn't been inferred yet
     SpecInferProph,
-    Mode(Mode, ProphVar),
+    // (mode, mode for shadow data of the return value in ensures clause, ProphVar)
+    // TODO: instead of having the separate Option<Mode> just for the return value,
+    // consider making the return value in ensures clause the actual return mode rather
+    // than always Mode::Spec (this breaks parts of erasure now)
+    Mode(Mode, Option<Mode>, ProphVar),
 }
 
 #[derive(Clone)]
@@ -775,7 +779,7 @@ mod typing {
 
         pub(super) fn insert(&mut self, x: &VarIdent, mode: Mode, pv: Option<ProphVar>) {
             if let Some(pv) = pv {
-                self.insert_var_mode(x, VarMode::Mode(mode, pv))
+                self.insert_var_mode(x, VarMode::Mode(mode, None, pv))
             } else {
                 assert!(mode == Mode::Spec);
                 self.insert_var_mode(x, VarMode::SpecInferProph);
@@ -784,14 +788,17 @@ mod typing {
 
         pub(super) fn infer_as(&mut self, x: &VarIdent, mode: Mode, pv: ProphVar) {
             assert!(self.to_be_inferred(x).is_some());
-            self.internal_state.vars.replace(x.clone(), VarMode::Mode(mode, pv)).expect("infer_as");
+            self.internal_state
+                .vars
+                .replace(x.clone(), VarMode::Mode(mode, None, pv))
+                .expect("infer_as");
         }
 
         pub(super) fn infer_proph_as(&mut self, x: &VarIdent, pv: ProphVar) {
             assert!(self.proph_to_be_inferred(x));
             self.internal_state
                 .vars
-                .replace(x.clone(), VarMode::Mode(Mode::Spec, pv))
+                .replace(x.clone(), VarMode::Mode(Mode::Spec, None, pv))
                 .expect("infer_as");
         }
 
@@ -815,16 +822,33 @@ mod typing {
 use typing::Typing;
 
 impl State {
-    fn get<'a>(&'a self, x: &VarIdent, span: &Span) -> Result<(Mode, &'a ProphVar), VirErr> {
+    fn get_inner<'a>(
+        &'a self,
+        x: &VarIdent,
+        span: &Span,
+        for_shadow_data: bool,
+    ) -> Result<(Mode, &'a ProphVar), VirErr> {
         let Some(var_mode) = self.vars.get(x) else {
             eprintln!("{x:#?}");
             panic!("internal error: missing mode");
         };
 
         match var_mode {
-            VarMode::Mode(mode, proph) => Ok((*mode, proph)),
+            VarMode::Mode(mode, shadow_mode, proph) => {
+                if let Some(shadow_mode) = shadow_mode
+                    && for_shadow_data
+                {
+                    Ok((*shadow_mode, proph))
+                } else {
+                    Ok((*mode, proph))
+                }
+            }
             _ => Err(error(span, "uninitialized infer-mode variable")),
         }
+    }
+
+    fn get<'a>(&'a self, x: &VarIdent, span: &Span) -> Result<(Mode, &'a ProphVar), VirErr> {
+        self.get_inner(x, span, false)
     }
 }
 
@@ -2359,6 +2383,30 @@ fn check_expr(
                 check_expr(ctxt, record, typing, Mode::Spec, Expect(Mode::Spec), e1, outer_proph)?;
             Ok((Mode::Spec, proph))
         }
+        ExprX::Unary(UnaryOp::ShadowData, e1) => match &e1.x {
+            ExprX::ReadPlace(place, read_kind) => match &place.x {
+                PlaceX::Local(x) => {
+                    let (x_mode, proph) = typing.get_inner(x, &place.span, true)?;
+                    let proph = proph.to_proph(x, &expr.span);
+                    if x_mode == Mode::Spec {
+                        return Err(error(
+                            &expr.span,
+                            "shadow_data expects exec or tracked variable",
+                        ));
+                    }
+                    // `shadow_data(x)` only reads `x` in spec mode (never moves it);
+                    // resolution inference looks up every read's final kind.
+                    record.read_kind_finals.insert(read_kind.id, ReadKind::Spec);
+                    record
+                        .erasure_modes
+                        .local_modes
+                        .push((place.span.clone(), (Mode::Spec, Mode::Spec)));
+                    return Ok((Mode::Spec, proph));
+                }
+                _ => return Err(error(&expr.span, "shadow_data expects variable")),
+            },
+            _ => return Err(error(&expr.span, "shadow_data expects variable")),
+        },
         ExprX::Unary(_, e1) => {
             check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
         }
@@ -3444,7 +3492,7 @@ fn check_expr(
 
             record.var_modes.insert(au.clone(), Mode::Proof);
 
-            typing.insert_var_mode(au, VarMode::Mode(Mode::Spec, ProphVar::No));
+            typing.insert_var_mode(au, VarMode::Mode(Mode::Spec, None, ProphVar::No));
             let mut typing = typing.push_block_ghostness(Ghost::Ghost);
             let mut typing = typing.push_var_multi_scope();
 
@@ -4076,7 +4124,8 @@ fn check_function_inner(
     }
 
     let mut ens_typing = fun_typing.push_var_scope();
-    ens_typing.insert(&function.x.inner_ret.x.name, Mode::Spec, Some(ProphVar::No));
+    let var_mode = VarMode::Mode(Mode::Spec, Some(function.x.inner_ret.x.mode), ProphVar::No);
+    ens_typing.insert_var_mode(&function.x.inner_ret.x.name, var_mode);
 
     for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let mut ens_typing = ens_typing.push_block_ghostness(Ghost::Ghost);
