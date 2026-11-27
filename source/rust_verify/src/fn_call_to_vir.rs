@@ -262,6 +262,122 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                 vir::ast::CallTargetKind::Dynamic
             }
             ResolutionResult::Builtin(b) => {
+                // The compiler-provided `Clone` (`BuiltinImplSource::Misc`) is rustc's clone
+                // shim: a copy for fn items and fn pointers, and a component-wise
+                // `Clone::clone` for tuples and closures. It is a copy when every component
+                // is, recursively, a type whose clone is a copy: primitives (core's impls are
+                // `*self`), shared references, raw pointers, fn items and pointers, `()`,
+                // and tuples and closures of these. (A `Copy` user type may have a `Clone`
+                // impl that is not a copy, so user types are excluded.) Then
+                // `Clone::clone(&x)` is `*x`; a derived `Clone` for a struct with a `()`
+                // field calls it. Other built-in instances remain unsupported.
+                fn clone_is_copy<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+                    match ty.kind() {
+                        TyKind::Bool
+                        | TyKind::Char
+                        | TyKind::Int(_)
+                        | TyKind::Uint(_)
+                        | TyKind::Float(_)
+                        | TyKind::Never
+                        | TyKind::RawPtr(..)
+                        | TyKind::FnDef(..)
+                        | TyKind::FnPtr(..)
+                        | TyKind::Ref(_, _, rustc_ast::Mutability::Not) => true,
+                        TyKind::Tuple(ts) => ts.iter().all(clone_is_copy),
+                        TyKind::Closure(_, args) => {
+                            args.as_closure().upvar_tys().iter().all(clone_is_copy)
+                        }
+                        _ => false,
+                    }
+                }
+                let self_ty = node_substs.type_at(0);
+                let is_clone = Some(tcx.parent(f)) == tcx.lang_items().clone_trait();
+                if is_clone && clone_is_copy(self_ty) && args.as_ref().is_some_and(|a| a.len() == 1)
+                {
+                    let arg = args.as_ref().unwrap()[0];
+                    let arg_ty = bctx.types.expr_ty_adjusted(arg);
+                    let place = crate::rust_to_vir_expr::expr_to_vir_place(bctx, arg)?;
+                    let place =
+                        crate::rust_to_vir_expr::deref_primitive(bctx, expr.span, arg_ty, &place)?;
+                    let copy =
+                        crate::rust_to_vir_expr::ExprOrPlace::Place(place).consume(bctx, self_ty);
+                    record_call(bctx, expr, ResolvedCall::NonStaticExec);
+                    return Ok(copy);
+                }
+                // For a tuple with a component whose clone is not a copy (`(String, u8)`), the
+                // shim clones component-wise; vstd's `clone_tupleN` does the same, with each
+                // component's clone as its postcondition, so the call is lowered to it.
+                if let TyKind::Tuple(ts) = self_ty.kind()
+                    && is_clone
+                    && !bctx.ctxt.no_vstd
+                    && (1..=12).contains(&ts.len())
+                    && args.as_ref().is_some_and(|a| a.len() == 1)
+                {
+                    let arg = args.as_ref().unwrap()[0];
+                    let arg_vir = crate::rust_to_vir_expr::expr_to_vir_consume(bctx, arg)?;
+                    let seg = |x: &str| Arc::new(x.to_string());
+                    let fun = Arc::new(vir::ast::FunX {
+                        path: Arc::new(vir::ast::PathX {
+                            krate: CrateId::Vstd,
+                            segments: Arc::new(vec![
+                                vir::ast::Segment::T(seg("std_specs"), 0),
+                                vir::ast::Segment::T(seg("clone"), 0),
+                                vir::ast::Segment::V(seg(&format!("clone_tuple{}", ts.len())), 0),
+                            ]),
+                        }),
+                    });
+                    let typ_args: Result<Vec<vir::ast::Typ>, VirErr> =
+                        ts.iter().map(|t| bctx.mid_ty_to_vir(expr.span, &t)).collect();
+                    // the impl paths of the components' `Clone` bounds, which are those of
+                    // `(T1, .., Tn): Clone` (get_impl_paths_for_clauses splits the tuple)
+                    let impl_paths = {
+                        use crate::rustc_type_ir::Upcast;
+                        let tcx = bctx.ctxt.tcx;
+                        let clone_trait = tcx.lang_items().clone_trait().expect("Clone lang item");
+                        let clause: rustc_middle::ty::Clause<'tcx> =
+                            rustc_middle::ty::Binder::dummy(rustc_middle::ty::ClauseKind::Trait(
+                                rustc_middle::ty::TraitClause {
+                                    trait_ref: rustc_middle::ty::TraitRef::new(
+                                        tcx,
+                                        clone_trait,
+                                        [GenericArg::from(self_ty)],
+                                    ),
+                                    polarity: rustc_middle::ty::ClausePolarity::Positive,
+                                },
+                            ))
+                            .upcast(tcx);
+                        crate::rust_to_vir_base::get_impl_paths_for_clauses(
+                            tcx,
+                            &bctx.ctxt.verus_items,
+                            bctx.fun_id,
+                            vec![(None, clause)],
+                            None,
+                            expr.span,
+                        )?
+                    };
+                    let call_target = vir::ast::CallTarget::Fun(
+                        vir::ast::CallTargetKind::Static,
+                        fun,
+                        Arc::new(typ_args?),
+                        impl_paths,
+                        vir::ast::CallTargetAttrs {
+                            autospec: vir::ast::AutospecUsage::Final,
+                            const_var: false,
+                            assume_external_allowed: false,
+                        },
+                    );
+                    record_call(bctx, expr, ResolvedCall::NonStaticExec);
+                    return Ok(bctx.spanned_typed_new(
+                        expr.span,
+                        &expr_typ()?,
+                        ExprX::Call {
+                            target: call_target,
+                            args: Arc::new(vec![arg_vir]),
+                            post_args: None,
+                            body: None,
+                        },
+                    ));
+                }
                 unsupported_err!(expr.span, format!("this built-in instance: {:?}", b));
             }
             ResolutionResult::Unresolved => {
