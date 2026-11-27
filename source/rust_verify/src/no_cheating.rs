@@ -3,7 +3,8 @@
 //! Code is untrusted by default. `#[verus::trusted]` permits assumptions and is inherited by
 //! child items. `#[verus::untrusted]` overrides inherited trust and permanently prevents child
 //! items from opting back into trust. `#[verus::trusted(spec)]` trusts a function's type-level
-//! signature and Verus specification for reference closure while leaving its body untrusted.
+//! signature and Verus specification for reference closure while leaving its body untrusted;
+//! like `#[verus::untrusted]`, it prevents items nested in that body from opting back into trust.
 
 use crate::attributes::{TrustAttribute, get_trust_attributes};
 use crate::config::Vstd;
@@ -14,13 +15,18 @@ use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::intravisit::{FnKind, Visitor};
 use rustc_hir::{
-    BodyId, Expr, ExprKind, FnDecl, ForeignItem, ForeignItemKind, HirId, ImplItem, ImplItemKind,
-    Item, ItemKind, OwnerId, TraitItem, TraitItemKind,
+    AmbigArg, BodyId, Expr, ExprKind, FnDecl, ForeignItem, ForeignItemKind, HirId, ImplItem,
+    ImplItemKind, Item, ItemKind, OwnerId, PatExpr, PatExprKind, QPath, TraitItem, TraitItemKind,
+    TyKind,
 };
 use rustc_middle::hir::nested_filter;
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::traits::ImplSource;
+use rustc_middle::ty::adjustment::{Adjust, DerefAdjustKind};
+use rustc_middle::ty::{
+    self, GenericArgsRef, TraitRef, Ty, TyCtxt, TypeVisitableExt, TypeckResults, TypingEnv,
+};
 use rustc_span::Span;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use vir::ast::VirErr;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,6 +49,7 @@ impl EffectiveTrust {
 #[derive(Clone, Copy)]
 struct InheritedPolicy {
     trusted: bool,
+    /// Set by `#[verus::untrusted]` and `#[verus::trusted(spec)]`: no descendant may be trusted.
     untrusted_locked: bool,
 }
 
@@ -59,6 +66,8 @@ fn apply_trust_attribute(
         Some(TrustAttribute::TrustedSpec)
             if trusted_spec_allowed && !inherited.untrusted_locked =>
         {
+            // The body of the function is untrusted, so items nested in it must be untrusted too
+            inherited.untrusted_locked = true;
             EffectiveTrust::TrustedSpec
         }
         Some(TrustAttribute::Trusted) if !inherited.untrusted_locked => EffectiveTrust::Trusted,
@@ -186,7 +195,7 @@ impl<'tcx> PolicyCollector<'tcx> {
         {
             self.errors.push(vir_err_span_str(
                 span,
-                "a child of an item marked `#[verus::untrusted]` cannot be marked trusted",
+                "a child of an item marked `#[verus::untrusted]` or `#[verus::trusted(spec)]` cannot be marked trusted",
             ));
         }
 
@@ -343,11 +352,20 @@ impl<'a, 'tcx> Visitor<'tcx> for TrustedItemScanner<'a, 'tcx> {
     }
 }
 
+/// Bound on how deeply `check_trait_ref` follows the nested obligations of selected impls.
+const MAX_IMPL_DEPTH: usize = 16;
+
 struct RefChecker<'a, 'tcx> {
     ctxt: &'a ContextX<'tcx>,
     policies: &'a HashMap<LocalDefId, EffectiveTrust>,
     root_owner: OwnerId,
     signature_only: bool,
+    /// Typeck results for the body currently being visited (`None` outside of bodies)
+    typeck: Option<&'tcx TypeckResults<'tcx>>,
+    /// Trait references whose impls have already been checked
+    checked_trait_refs: HashSet<TraitRef<'tcx>>,
+    /// Items already reported, to avoid repeating the same error at every use
+    reported: HashSet<DefId>,
     errors: Vec<VirErr>,
 }
 
@@ -358,7 +376,16 @@ impl<'a, 'tcx> RefChecker<'a, 'tcx> {
         root_owner: OwnerId,
         signature_only: bool,
     ) -> Self {
-        Self { ctxt, policies, root_owner, signature_only, errors: Vec::new() }
+        Self {
+            ctxt,
+            policies,
+            root_owner,
+            signature_only,
+            typeck: None,
+            checked_trait_refs: HashSet::new(),
+            reported: HashSet::new(),
+            errors: Vec::new(),
+        }
     }
 
     fn target_is_trusted(&self, def_id: DefId) -> bool {
@@ -407,14 +434,224 @@ impl<'a, 'tcx> RefChecker<'a, 'tcx> {
         ));
     }
 
+    /// An impl is trusted if it is in the trusted closure, or if it is derived (by
+    /// `#[derive]`) for a type that is in the trusted closure.
+    fn impl_is_trusted(&self, impl_def_id: DefId) -> bool {
+        if self.target_is_trusted(impl_def_id) {
+            return true;
+        }
+        let tcx = self.ctxt.tcx;
+        tcx.is_automatically_derived(impl_def_id)
+            && match tcx.type_of(impl_def_id).instantiate_identity().skip_norm_wip().kind() {
+                ty::Adt(adt, _) => self.target_is_trusted(adt.did()),
+                _ => false,
+            }
+    }
+
+    /// An impl item is trusted if it is in the trusted closure or belongs to a trusted derived impl.
+    fn impl_item_is_trusted(&self, item_def_id: DefId) -> bool {
+        if self.target_is_trusted(item_def_id) {
+            return true;
+        }
+        let tcx = self.ctxt.tcx;
+        let impl_def_id = tcx.parent(item_def_id);
+        tcx.is_automatically_derived(impl_def_id) && self.impl_is_trusted(impl_def_id)
+    }
+
+    fn report_untrusted_impl(&mut self, def_id: DefId, span: Span, what: &str) {
+        if !self.reported.insert(def_id) {
+            return;
+        }
+        let name = self.ctxt.tcx.def_path_str(def_id);
+        self.errors.push(vir_err_span_str(
+            span,
+            &format!(
+                "trusted code may not depend on the untrusted {what} `{name}` in the same crate; trusted code must be transitively closed"
+            ),
+        ));
+    }
+
+    fn typing_env(&self) -> TypingEnv<'tcx> {
+        TypingEnv::post_analysis(self.ctxt.tcx, self.root_owner.def_id)
+    }
+
+    /// Select the impl that satisfies `trait_ref`, and require it (and every impl it in turn
+    /// relies on) to be trusted if it is local.  References to trait items resolve to the trait,
+    /// not the impl, so without this check trusted code could silently depend on untrusted
+    /// impls (e.g., an untrusted `impl View for S` giving meaning to `s@` in a trusted spec).
+    fn check_trait_ref(&mut self, trait_ref: TraitRef<'tcx>, span: Span, depth: usize) {
+        let tcx = self.ctxt.tcx;
+        if depth > MAX_IMPL_DEPTH || trait_ref.references_error() {
+            return;
+        }
+        let typing_env = self.typing_env();
+        let Ok(trait_ref) = tcx.try_normalize_erasing_regions(
+            typing_env,
+            rustc_middle::ty::Unnormalized::new_wip(trait_ref),
+        ) else {
+            return;
+        };
+        if !self.checked_trait_refs.insert(trait_ref) {
+            return;
+        }
+        let Ok(ImplSource::UserDefined(impl_data)) =
+            tcx.codegen_select_candidate(typing_env.as_query_input(trait_ref))
+        else {
+            // Builtin impls carry no user code; `Param` means the obligation is discharged by a
+            // where-clause of the trusted item, which is itself checked at each use.
+            return;
+        };
+        let impl_def_id = impl_data.impl_def_id;
+        if impl_def_id.is_local() && !self.impl_is_trusted(impl_def_id) {
+            self.report_untrusted_impl(impl_def_id, span, "impl");
+        }
+        let predicates = tcx.clauses_of(impl_def_id).instantiate(tcx, impl_data.args);
+        self.check_clauses(
+            predicates.clauses.into_iter().map(|c| c.skip_norm_wip()),
+            span,
+            depth + 1,
+        );
+    }
+
+    fn check_clauses(
+        &mut self,
+        clauses: impl IntoIterator<Item = ty::Clause<'tcx>>,
+        span: Span,
+        depth: usize,
+    ) {
+        let tcx = self.ctxt.tcx;
+        for clause in clauses {
+            if let Some(trait_clause) = clause.as_trait_clause() {
+                let trait_ref = tcx.instantiate_bound_regions_with_erased(trait_clause).trait_ref;
+                self.check_trait_ref(trait_ref, span, depth);
+            }
+        }
+    }
+
+    /// Check a use of `def_id` instantiated with `args`: every trait bound of `def_id` must be
+    /// satisfied by trusted impls, and a trait item must resolve to a trusted impl item.
+    fn check_instantiation(&mut self, def_id: DefId, args: GenericArgsRef<'tcx>, span: Span) {
+        let tcx = self.ctxt.tcx;
+        if args.references_error()
+            || !matches!(
+                tcx.def_kind(def_id),
+                DefKind::Fn
+                    | DefKind::AssocFn
+                    | DefKind::AssocConst { .. }
+                    | DefKind::AssocTy
+                    | DefKind::Const { .. }
+                    | DefKind::Struct
+                    | DefKind::Enum
+                    | DefKind::Union
+                    | DefKind::Ctor(..)
+                    | DefKind::Variant
+                    | DefKind::TyAlias
+            )
+        {
+            return;
+        }
+        if args.len() != tcx.generics_of(def_id).count() {
+            return;
+        }
+        let predicates = tcx.clauses_of(def_id).instantiate(tcx, args);
+        self.check_clauses(predicates.clauses.into_iter().map(|c| c.skip_norm_wip()), span, 0);
+        if tcx.trait_of_assoc(def_id).is_some()
+            && let Ok(crate::resolve_traits::ResolutionResult::Resolved {
+                resolved_item: crate::resolve_traits::ResolvedItem::FromImpl(item_def_id, _),
+                ..
+            }) = crate::resolve_traits::resolve_trait_item(
+                span,
+                tcx,
+                self.typing_env(),
+                def_id,
+                args,
+            )
+            && item_def_id.is_local()
+            && !self.impl_item_is_trusted(item_def_id)
+        {
+            self.report_untrusted_impl(item_def_id, span, "impl item");
+        }
+    }
+
+    /// Trusted code that drops a value runs the value's `Drop` impl.
+    fn check_drop_ty(&mut self, ty: Ty<'tcx>, span: Span, depth: usize) {
+        if depth > MAX_IMPL_DEPTH {
+            return;
+        }
+        match ty.kind() {
+            ty::Adt(adt, args) => {
+                if adt.is_phantom_data() {
+                    return;
+                }
+                if let Some(destructor) = self.ctxt.tcx.adt_destructor(adt.did())
+                    && destructor.did.is_local()
+                    && !self.impl_item_is_trusted(destructor.did)
+                {
+                    self.report_untrusted_impl(destructor.did, span, "destructor");
+                }
+                for arg_ty in args.types() {
+                    self.check_drop_ty(arg_ty, span, depth + 1);
+                }
+            }
+            ty::Tuple(tys) => {
+                for t in tys.iter() {
+                    self.check_drop_ty(t, span, depth + 1);
+                }
+            }
+            ty::Array(t, _) | ty::Slice(t) => self.check_drop_ty(*t, span, depth + 1),
+            _ => {}
+        }
+    }
+
+    /// Check the def that typeck resolved for a type-dependent node (method calls, overloaded
+    /// operators, and type-relative paths such as `S::f` or `Self::C`).
+    fn check_type_dependent(&mut self, hir_id: HirId, span: Span) {
+        let Some(typeck) = self.typeck else { return };
+        if let Some((_, def_id)) = typeck.type_dependent_def(hir_id) {
+            self.check_ref(def_id, span);
+            self.check_instantiation(def_id, typeck.node_args(hir_id), span);
+        }
+    }
+
+    fn check_adjustments(&mut self, expr: &'tcx Expr<'tcx>) {
+        let Some(typeck) = self.typeck else { return };
+        let tcx = self.ctxt.tcx;
+        let mut source = typeck.expr_ty(expr);
+        for adjustment in typeck.expr_adjustments(expr) {
+            if let Adjust::Deref(DerefAdjustKind::Overloaded(overloaded)) = adjustment.kind {
+                let method = overloaded.method_call(tcx);
+                let args = tcx.mk_args(&[source.into()]);
+                self.check_ref(method, expr.span);
+                self.check_instantiation(method, args, expr.span);
+            }
+            source = adjustment.target;
+        }
+    }
+
+    /// Projections written in types (`<S as Tr>::Out`, `Self::Out`) are resolved through impls.
+    fn check_ty_projections(&mut self, hir_ty: &'tcx rustc_hir::Ty<'tcx>) {
+        let tcx = self.ctxt.tcx;
+        let ty = rustc_hir_analysis::lower_ty(tcx, hir_ty);
+        for arg in ty.walk() {
+            if let ty::GenericArgKind::Type(t) = arg.kind()
+                && let ty::Alias(_, alias_ty) = t.kind()
+                && let ty::AliasTyKind::Projection { def_id } = alias_ty.kind
+            {
+                self.check_instantiation(def_id, alias_ty.args, hir_ty.span);
+            }
+        }
+    }
+
     fn scan_signature_headers(&mut self, body_id: BodyId) {
         let body = self.ctxt.tcx.hir_body(body_id);
         let mut finder =
             HeaderFinder { ctxt: self.ctxt, root_owner: self.root_owner, header_exprs: Vec::new() };
         finder.visit_expr(body.value);
+        let saved = self.typeck.replace(self.ctxt.tcx.typeck_body(body_id));
         for expr in finder.header_exprs {
             self.visit_expr(expr);
         }
+        self.typeck = saved;
     }
 }
 
@@ -423,6 +660,12 @@ impl<'a, 'tcx> Visitor<'tcx> for RefChecker<'a, 'tcx> {
 
     fn maybe_tcx(&mut self) -> TyCtxt<'tcx> {
         self.ctxt.tcx
+    }
+
+    fn visit_nested_body(&mut self, body_id: BodyId) {
+        let saved = self.typeck.replace(self.ctxt.tcx.typeck_body(body_id));
+        self.visit_body(self.ctxt.tcx.hir_body(body_id));
+        self.typeck = saved;
     }
 
     fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
@@ -473,12 +716,53 @@ impl<'a, 'tcx> Visitor<'tcx> for RefChecker<'a, 'tcx> {
         rustc_hir::intravisit::walk_path(self, path);
     }
 
+    fn visit_ty(&mut self, t: &'tcx rustc_hir::Ty<'tcx, AmbigArg>) {
+        if matches!(
+            t.kind,
+            TyKind::Path(QPath::TypeRelative(..)) | TyKind::Path(QPath::Resolved(Some(_), _))
+        ) {
+            self.check_ty_projections(t.as_unambig_ty());
+        }
+        rustc_hir::intravisit::walk_ty(self, t);
+    }
+
+    fn visit_pat(&mut self, pat: &'tcx rustc_hir::Pat<'tcx>) {
+        if let Some(typeck) = self.typeck
+            && let Some(ty) = typeck.node_type_opt(pat.hir_id)
+            && matches!(pat.kind, rustc_hir::PatKind::Binding(..))
+        {
+            self.check_drop_ty(ty, pat.span, 0);
+        }
+        rustc_hir::intravisit::walk_pat(self, pat);
+    }
+
+    fn visit_pat_expr(&mut self, expr: &'tcx PatExpr<'tcx>) {
+        if let PatExprKind::Path(_) = expr.kind {
+            self.check_type_dependent(expr.hir_id, expr.span);
+        }
+        rustc_hir::intravisit::walk_pat_expr(self, expr);
+    }
+
     fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
-        if let ExprKind::MethodCall(..) = expr.kind {
-            let owner = expr.hir_id.owner.def_id;
-            if let Some(def_id) = self.ctxt.tcx.typeck(owner).type_dependent_def_id(expr.hir_id) {
+        // Method calls, overloaded operators, and type-relative paths (`S::f`)
+        self.check_type_dependent(expr.hir_id, expr.span);
+        if let Some(typeck) = self.typeck {
+            if let ExprKind::Path(qpath) = &expr.kind
+                && let Res::Def(_, def_id) = typeck.qpath_res(qpath, expr.hir_id)
+                && typeck.type_dependent_def(expr.hir_id).is_none()
+            {
+                // Paths resolved directly (`f::<S>`, `<S as Tr>::f`, lang items like
+                // `IntoIterator::into_iter` in `for` loops)
                 self.check_ref(def_id, expr.span);
+                self.check_instantiation(def_id, typeck.node_args(expr.hir_id), expr.span);
             }
+            if let Some(ty) = typeck.node_type_opt(expr.hir_id)
+                && !matches!(expr.kind, ExprKind::Path(..))
+            {
+                // Temporaries are dropped by the trusted code
+                self.check_drop_ty(ty, expr.span, 0);
+            }
+            self.check_adjustments(expr);
         }
         rustc_hir::intravisit::walk_expr(self, expr);
     }
