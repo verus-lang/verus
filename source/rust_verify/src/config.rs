@@ -49,6 +49,7 @@ const OPT_NO_LIFETIME: &str = "no-lifetime";
 const OPT_NO_TRAIT_CONFLICTS: &str = "no-trait-conflicts";
 const OPT_NO_ERASURE_CHECK: &str = "no-erasure-check";
 const OPT_NO_CHEATING: &str = "no-cheating";
+const OPT_NO_CHECK_DROPS: &str = "no-check-drops";
 const OPT_IS_VSTD: &str = "is-vstd";
 const OPT_IS_CORE: &str = "is-core";
 const OPT_IS_STDLIB_OUTSIDE_OF_CORE: &str = "is-stdlib-outside-of-core";
@@ -200,6 +201,7 @@ pub struct ArgsX {
     pub no_erasure_check: bool,
     pub no_auto_recommends_check: bool,
     pub no_cheating: bool,
+    pub check_drops: bool,
     pub time: bool,
     pub time_expanded: bool,
     pub output_json: bool,
@@ -250,6 +252,7 @@ impl ArgsX {
             no_erasure_check: Default::default(),
             no_auto_recommends_check: Default::default(),
             no_cheating: Default::default(),
+            check_drops: true,
             time: Default::default(),
             time_expanded: Default::default(),
             output_json: Default::default(),
@@ -387,6 +390,10 @@ pub struct VerusCli {
     /// Do not allow assume, admit, verifier::external_body, and assume_specification; also reject options that skip or weaken checks
     #[arg(long)]
     pub no_cheating: bool,
+
+    /// Do not check the implicit drops of no_unwind and atomic exec functions (found in rustc's MIR) against unverified Drop impls of the crate
+    #[arg(long)]
+    pub no_check_drops: bool,
 
     /// Measure and report time taken
     #[arg(long)]
@@ -783,6 +790,7 @@ pub fn parse_args_with_imports(
         no_erasure_check: cli.no_erasure_check,
         no_auto_recommends_check: cli.no_auto_recommends_check,
         no_cheating: cli.no_cheating,
+        check_drops: !cli.no_check_drops,
         time: cli.time || cli.time_expanded,
         time_expanded: cli.time_expanded,
         output_json: cli.output_json,
@@ -902,6 +910,7 @@ pub fn parse_args_with_imports(
             (OPT_NO_LIFETIME, cli.no_lifetime),
             (OPT_NO_ERASURE_CHECK, cli.no_erasure_check),
             (OPT_NO_TRAIT_CONFLICTS, cli.no_trait_conflicts),
+            (OPT_NO_CHECK_DROPS, cli.no_check_drops),
             (OPT_IS_VSTD, cli.is_vstd),
             (OPT_IS_CORE, cli.is_core),
             (OPT_IS_STDLIB_OUTSIDE_OF_CORE, cli.is_stdlib_outside_of_core),
