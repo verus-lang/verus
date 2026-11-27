@@ -317,14 +317,20 @@ pub broadcast axiom fn axiom_new_strlit_view_id(id: int)
         strlit_view_id(#[trigger] strslice_new_strlit(id).view()) == id,
 ;
 
-/// A `str` is determined by its characters: `str` has no identity beyond its content (as
-/// `[T]` is extensional in its elements), so two `str` values with equal views are equal.
-/// Without this, `s == "lit"` in spec could not be established from the exec comparison
-/// `s == other`, whose specification is view equality.
+/// The `str` with the characters `v`; see `axiom_str_view_injective`.
 #[cfg(not(verus_verify_core))]
-pub broadcast axiom fn axiom_str_view_injective<'a>(a: &'a str, b: &'a str)
+pub uninterp spec fn str_from_view<'a>(v: Seq<char>) -> &'a str;
+
+/// A `str` is determined by its characters: `str` has no identity beyond its content (as
+/// `[T]` is extensional in its elements), so two `str` values with equal views are equal
+/// (both are `str_from_view` of the view; stating it through this inverse gives one
+/// instantiation per view instead of one per pair). Without this, `s == "lit"` in spec
+/// could not be established from the exec comparison `s == other`, whose specification is
+/// view equality.
+#[cfg(not(verus_verify_core))]
+pub broadcast axiom fn axiom_str_view_injective(s: &str)
     ensures
-        #[trigger] a@ == #[trigger] b@ ==> a == b,
+        str_from_view(#[trigger] s@) == s,
 ;
 
 #[cfg(not(verus_verify_core))]
