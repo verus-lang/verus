@@ -1330,7 +1330,7 @@ pub enum ExprX {
     /// Marks an expression that is not allowed to be prophetic.
     /// The string is a description of the context, used in the error message.
     /// Like `Old`, this is only used for checks (in modes.rs) and otherwise has no meaning.
-    ProphecyDisallowed(Arc<String>, Expr),
+    ForcePureAndNonProphetic(Arc<String>, Expr),
     /// Async await
     Await(Expr),
     /// Used to check that match guards don't mutate the scrutinee, these are used between
@@ -1619,6 +1619,8 @@ pub struct FunctionAttrsX {
     /// Marked with external_body or external_fn_specification
     /// TODO: might be duplicate with https://github.com/verus-lang/verus/pull/1473
     pub is_external_body: bool,
+    /// This function may introduce assumptions when `--no-cheating` is enabled.
+    pub no_cheating_trusted: bool,
     /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
     pub is_unsafe: bool,
     /// Does the exec trait function disallow impls from extending the ensures clause
@@ -1628,6 +1630,10 @@ pub struct FunctionAttrsX {
     pub impls_cannot_extend_spec: bool,
     /// Whether to assume that this function terminates
     pub exec_assume_termination: bool,
+    /// For a trait method impl whose method isn't declared in the trait's Verus spec
+    /// (e.g., an incomplete `external_trait_specification`), assume compatibility
+    /// and treat the impl as a static function rather than erroring
+    pub assume_compatibility_with_trait_spec: bool,
     /// Whether to allow this function to not terminate
     pub exec_allows_no_decreases_clause: bool,
     /// Is this function `tracked_swap`, which requires special handling

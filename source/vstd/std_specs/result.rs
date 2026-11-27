@@ -476,6 +476,18 @@ pub assume_specification<T, E>[ Result::<T, E>::err ](result: Result<T, E>) -> (
     no_unwind
 ;
 
+// clone
+pub assume_specification<T: Clone, E: Clone>[ <Result<T, E> as Clone>::clone ](
+    result: &Result<T, E>,
+) -> (res: Result<T, E>)
+    ensures
+        match (*result, res) {
+            (Ok(src), Ok(dst)) => cloned(src, dst),
+            (Err(src), Err(dst)) => cloned(src, dst),
+            _ => false,
+        },
+;
+
 // transpose
 /// Swaps the `Result` and the inner `Option`; `Ok(None)` becomes `None`.
 #[verifier::allow_in_spec]

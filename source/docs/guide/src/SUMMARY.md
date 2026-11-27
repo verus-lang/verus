@@ -116,6 +116,7 @@
   - [Calling verified code from unverified code](./calling-verified-from-unverified.md)
 
 - [Understanding the guarantees of a verified program](./guarantees.md)
+  - [What Verus guarantees](./verus-guarantees.md)
   - [Assumptions and trusted components](./tcb.md)
   - [Memory safety is conditional on verification](./memory-safety.md)
   - [Calling verified code from unverified code](./call-from-unverified-code.md)

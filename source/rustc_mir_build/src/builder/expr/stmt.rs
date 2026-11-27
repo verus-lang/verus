@@ -1,8 +1,7 @@
 use rustc_middle::middle::region::{self, TempLifetime};
 use rustc_middle::mir::*;
-use rustc_middle::span_bug;
 use rustc_middle::thir::*;
-use rustc_span::Spanned;
+use rustc_span::{Spanned, span_bug};
 use tracing::debug;
 
 use crate::builder::scope::{BreakableTarget, LintLevel};
@@ -27,6 +26,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         match expr.kind {
             ExprKind::Scope { region_scope, hir_id, value } => {
                 this.in_scope((region_scope, source_info), LintLevel::Explicit(hir_id), |this| {
+                    this.push_coverage_point_for_expr(block, source_info, hir_id);
                     this.stmt_expr(block, value, statement_scope)
                 })
             }
@@ -42,7 +42,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
                 // Generate better code for things that don't need to be
                 // dropped.
-                if lhs_expr.ty.needs_drop(this.tcx, this.typing_env()) {
+                if lhs_expr.ty.needs_drop(this.tcx, this.typing_env())
+                    && !crate::builder::verus_builder::skip_temp_drop(this, expr_id)
+                {
                     let rhs = unpack!(block = this.as_local_rvalue(block, rhs));
                     let lhs = unpack!(block = this.as_place(block, lhs));
                     block =

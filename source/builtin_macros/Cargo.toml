@@ -1,10 +1,9 @@
 [package]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-11-15-0327"
+version = "0.0.0-2026-11-22-0344"
 edition = "2018"
 license = "MIT"
 description = "Verus Builtin Macros: Various macros used by Verus"
-homepage = "https://github.com/verus-lang/verus"
 repository = "https://github.com/verus-lang/verus"
 readme = "../../README.md"
 keywords = ["verus", "verified-rust", "verification"]

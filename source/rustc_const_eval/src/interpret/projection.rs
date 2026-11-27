@@ -13,8 +13,8 @@ use std::ops::Range;
 use rustc_abi::{self as abi, FieldIdx, Size, VariantIdx};
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::layout::TyAndLayout;
-use rustc_middle::{bug, mir, span_bug, ty};
-use rustc_span::Symbol;
+use rustc_middle::{mir, ty};
+use rustc_span::{Symbol, bug, span_bug};
 use tracing::{debug, instrument};
 
 use super::{
@@ -410,6 +410,9 @@ where
         interp_ok(match proj_elem {
             OpaqueCast(ty) => {
                 span_bug!(self.cur_span(), "OpaqueCast({ty}) encountered after borrowck")
+            }
+            PhantomDeref => {
+                span_bug!(self.cur_span(), "PhantomDeref encountered after borrowck")
             }
             UnwrapUnsafeBinder(target) => base.transmute(self.layout_of(target)?, self)?,
             Field(field, _) => self.project_field(base, field)?,

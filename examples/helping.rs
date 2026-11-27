@@ -71,6 +71,7 @@ impl InvariantPredicate<K, V> for FlagInv {
                 &&& pend_perm.value() == 1
                 &&& gv@ is Some
                 &&& gv@->0 == au@
+                &&& exists|f: &Flag| #[trigger] au@.pred().args(f) && f.token_id() == state_id
             },
             Accepted(done) => {
                 &&& pend_perm.value() == 2
