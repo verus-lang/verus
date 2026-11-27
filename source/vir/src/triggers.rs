@@ -132,6 +132,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::StrLen
             | UnaryOp::CastToInteger
             | UnaryOp::MutRefCurrent
+            | UnaryOp::MutRefPtr
             | UnaryOp::MutRefFuture(_)
             | UnaryOp::MutRefFinal(_)
             | UnaryOp::Length(_) => {}
@@ -267,6 +268,7 @@ fn check_trigger_expr(
             | UnaryOp::StrLen
             | UnaryOp::BitNot(_)
             | UnaryOp::MutRefCurrent
+            | UnaryOp::MutRefPtr
             | UnaryOp::MutRefFuture(_)
             | UnaryOp::MutRefFinal(_) => {
                 check_trigger_expr_arg(state, arg);

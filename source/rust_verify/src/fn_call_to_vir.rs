@@ -2371,10 +2371,14 @@ fn verus_item_to_vir<'tcx, 'a>(
             let t = bctx.mid_ty_to_vir(expr.span, &arg_typ)?;
             mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
         }
-        VerusItem::MutRefCurrent | VerusItem::MutRefFuture | VerusItem::Final => {
+        VerusItem::MutRefPtr
+        | VerusItem::MutRefCurrent
+        | VerusItem::MutRefFuture
+        | VerusItem::Final => {
             let name = match verus_item {
                 VerusItem::MutRefCurrent => "mut_ref_current",
                 VerusItem::MutRefFuture => "mut_ref_future",
+                VerusItem::MutRefPtr => "mut_ref_ptr",
                 VerusItem::Final => "final",
                 _ => unreachable!(),
             };
@@ -2396,6 +2400,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     UnaryOp::MutRefFuture(vir::ast::MutRefFutureSourceName::MutRefFuture)
                 }
                 VerusItem::Final => UnaryOp::MutRefFinal(false),
+                VerusItem::MutRefPtr => UnaryOp::MutRefPtr,
                 _ => unreachable!(),
             };
             mk_expr(ExprX::Unary(op, exp))
@@ -2499,6 +2504,7 @@ fn uncompilable_verus_fn(verus_item: &VerusItem) -> bool {
         | VerusItem::HasResolvedUnsized
         | VerusItem::MutRefCurrent
         | VerusItem::MutRefFuture
+        | VerusItem::MutRefPtr
         | VerusItem::Final
         | VerusItem::AfterBorrow
         | VerusItem::ErasedGhostValue
@@ -3254,7 +3260,7 @@ pub(crate) fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_cal
 /// For example, if the node is the only argument to the given call.
 fn strip_two_phase(e: &vir::ast::Expr) -> vir::ast::Expr {
     match &e.x {
-        ExprX::TwoPhaseBorrowMut(p) => e.new_x(ExprX::BorrowMut(p.clone())),
+        ExprX::TwoPhaseBorrowMut(p, is_ghost) => e.new_x(ExprX::BorrowMut(p.clone(), *is_ghost)),
         ExprX::ImplicitReborrowOrSpecRead(p, true, s) => {
             e.new_x(ExprX::ImplicitReborrowOrSpecRead(p.clone(), false, s.clone()))
         }

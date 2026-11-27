@@ -480,6 +480,7 @@ pub enum UnaryOp {
     CastToInteger,
     MutRefCurrent,
     MutRefFuture(MutRefFutureSourceName),
+    MutRefPtr,
     /// The `final` keyword.
     /// Note: `final` on its own is unsupported.
     /// `*final(e)` should be replaced with `mut_ref_future(e)`; other appearances are an error
@@ -1297,7 +1298,7 @@ pub enum ExprX {
     /// nondeterministic choice
     Nondeterministic,
     /// Creates a mutable borrow from the given place
-    BorrowMut(Place),
+    BorrowMut(Place, bool),
     /// A "two-phase" mutable borrow. These are often created when Rust inserts implicit
     /// borrows. See [https://rustc-dev-guide.rust-lang.org/borrow_check/two_phase_borrows.html].
     ///
@@ -1305,7 +1306,7 @@ pub enum ExprX {
     /// the semantics of a TwoPhaseBorrowMut node are contextual.
     /// It is the structure of the parent node that determines where the "second phase"
     /// of the borrow is.
-    TwoPhaseBorrowMut(Place),
+    TwoPhaseBorrowMut(Place, bool),
     /// Borrow from a tracked place to get &mut Tracked<T>
     BorrowMutTracked(Place),
     /// In exec/tracked code ExprX::BorrowMut(PlaceX::DerefMut(place))

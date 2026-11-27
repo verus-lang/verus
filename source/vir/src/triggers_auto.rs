@@ -43,6 +43,7 @@ enum App {
     Field(Dt, Ident, Ident),
     MutRefCurrent,
     MutRefFuture,
+    MutRefPtr,
     Call(Fun),
     // datatype constructor: (Path, Variant)
     Ctor(Dt, Ident),
@@ -83,6 +84,7 @@ impl std::fmt::Debug for TermX {
             TermX::App(App::Field(_, x, y), es) => write!(f, "{:?}.{}/{}", es[0], x, y),
             TermX::App(App::MutRefCurrent, es) => write!(f, "mut_ref_current({:?})", es[0]),
             TermX::App(App::MutRefFuture, es) => write!(f, "mut_ref_future({:?})", es[0]),
+            TermX::App(App::MutRefPtr, es) => write!(f, "mut_ref_ptr({:?})", es[0]),
             TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
                 match c {
                     App::Call(x) => write!(f, "{}(", path_as_friendly_rust_name(&x.path))?,
@@ -385,11 +387,15 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Unary(UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated, e1) => {
             gather_terms(ctxt, ctx, e1, depth)
         }
-        ExpX::Unary(op @ (UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_)), e1) => {
+        ExpX::Unary(
+            op @ (UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefPtr),
+            e1,
+        ) => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, e1, depth + 1);
             let app = match op {
                 UnaryOp::MutRefCurrent => App::MutRefCurrent,
                 UnaryOp::MutRefFuture(_) => App::MutRefFuture,
+                UnaryOp::MutRefPtr => App::MutRefPtr,
                 _ => unreachable!(),
             };
             (is_pure, Arc::new(TermX::App(app, Arc::new(vec![arg]))))
@@ -411,7 +417,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::StrLen => 1,
                 UnaryOp::CastToInteger => 1,
                 UnaryOp::MutRefFinal(_) => 1,
-                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefPtr => {
+                    unreachable!()
+                }
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {

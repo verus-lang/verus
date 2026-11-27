@@ -1050,4 +1050,10 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&'a PointsTo<T>>) -
     SharedReference(unsafe { &*ptr })
 }
 
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::spec_ptr_addr")]
+#[verifier::inline]
+pub open spec fn spec_ptr_addr<T: Sized>(ptr: *mut T) -> usize {
+    spec_cast_ptr_to_usize(ptr)
+}
+
 } // verus!
