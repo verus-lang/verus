@@ -1255,10 +1255,10 @@ impl VisitMut for StripProofWithCallee {
     }
 }
 
-// Create a copy of function with unverified function signature without a
-// function body, to enable seamless use of unverified call to the function in
-// verification.
-// If the function is const, it will be rewritten to a proxy function and a verified function.
+// Create a copy of function with unverified function signature, to enable
+// seamless use of unverified call to the function in verification.
+// In keep mode, its body is `requires false` followed by `unimplemented!()`,
+// or, for a const fn, by its executable code without the proof code.
 fn rewrite_unverified_func(
     fun: &mut syn::ItemFn,
     span: proc_macro2::Span,
@@ -1292,10 +1292,16 @@ fn rewrite_unverified_func(
         // and so it may cause errors due to undefined vars.
         // Since the body is erased only in keep mode, we still
         // see correct body in generated executable in erase mode.
-        if erase.keep() && fun.sig.constness.is_none() {
-            block.stmts.clear();
-            block.stmts.push(precondition_false);
-            block.stmts.push(unimplemented.clone());
+        // A const fn keeps its executable code, without the proof code,
+        // because const evaluation during type checking may call it.
+        if erase.keep() {
+            if fun.sig.constness.is_some() {
+                replace_block(EraseGhost::Erase, block, has_external_code_syn(&fun.attrs));
+            } else {
+                block.stmts.clear();
+                block.stmts.push(unimplemented.clone());
+            }
+            block.stmts.insert(0, precondition_false);
         }
     }
     // change name to verified_{fname}

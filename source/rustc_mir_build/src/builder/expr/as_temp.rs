@@ -12,21 +12,8 @@ use crate::builder::{BlockAnd, BlockAndExtension, Builder};
 impl<'a, 'tcx> Builder<'a, 'tcx> {
     /// Compile `expr` into a fresh temporary. This is used when building
     /// up rvalues so as to freeze the value that will be consumed.
-    pub(crate) fn as_temp(
-        &mut self,
-        block: BasicBlock,
-        temp_lifetime: TempLifetime,
-        expr_id: ExprId,
-        mutability: Mutability,
-    ) -> BlockAnd<Local> {
-        // this is the only place in mir building that we need to truly need to worry about
-        // infinite recursion. Everything else does recurse, too, but it always gets broken up
-        // at some point by inserting an intermediate temporary
-        self.as_temp_inner(block, temp_lifetime, expr_id, mutability)
-    }
-
     #[instrument(skip(self), level = "debug")]
-    fn as_temp_inner(
+    pub(crate) fn as_temp(
         &mut self,
         mut block: BasicBlock,
         temp_lifetime: TempLifetime,
@@ -42,7 +29,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             return this.in_scope(
                 (region_scope, source_info),
                 LintLevel::Explicit(hir_id),
-                |this| this.as_temp(block, temp_lifetime, value, mutability),
+                |this| {
+                    this.push_coverage_point_for_expr(block, source_info, hir_id);
+                    this.as_temp(block, temp_lifetime, value, mutability)
+                },
             );
         }
 
@@ -126,7 +116,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
         block = this.expr_into_dest(temp_place, block, expr_id).into_block();
 
-        if let Some(temp_lifetime) = temp_lifetime.temp_lifetime {
+        if let Some(temp_lifetime) = temp_lifetime.temp_lifetime
+            && !crate::builder::verus_builder::skip_temp_drop(this, expr_id)
+        {
             this.schedule_drop_value(expr_span, temp_lifetime, temp);
         }
 

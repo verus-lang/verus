@@ -505,6 +505,7 @@ pub fn write_krate_sst(
         trait_impls,
         assoc_type_impls,
         reveal_groups,
+        arch_word_bits,
     } = &**sst_crate;
 
     for datatype in datatypes.iter() {
@@ -557,4 +558,7 @@ pub fn write_krate_sst(
         writeln!(&mut write, "{}\n", nw.node_to_string(&group_node))
             .expect("cannot write to vir write");
     }
+    let arch_nodes = nodes!(arch_word_bits {arch_word_bits.to_node(opts)});
+    writeln!(&mut write, "{}\n", nw.node_to_string(&arch_nodes))
+        .expect("cannot write to vir write");
 }
