@@ -293,7 +293,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::Atomically(..)
             | ExprX::InvMask(..)
             | ExprX::Old(..)
-            | ExprX::ProphecyDisallowed(..)
+            | ExprX::ForcePureAndNonProphetic(..)
             | ExprX::Await(..)
         => None,
         ExprX::NonSpecClosure { .. } => Some(OuterProphReason::NonSpecClosure),
@@ -3427,7 +3427,7 @@ fn check_expr(
         }
         ExprX::AtomicUpdateInitDummy => {
             // Nothing to do here.
-            Ok((outer_mode, outer_proph.clone()))
+            Ok((Mode::Exec, Proph::No))
         }
         ExprX::Atomically(_kind, au, e) => {
             // REVIEW: This is rather complicated since the atomic function call is encoded
@@ -3724,9 +3724,12 @@ fn check_expr(
             )?;
             Ok((Mode::Spec, proph))
         }
-        ExprX::ProphecyDisallowed(reason, e) => {
+        ExprX::ForcePureAndNonProphetic(reason, e) => {
             if typing.block_ghostness == Ghost::Exec {
-                return Err(error(&expr.span, "cannot use `prophecy_disallowed` in exec mode"));
+                return Err(error(
+                    &expr.span,
+                    "cannot use `force_pure_and_nonprophetic` in exec mode",
+                ));
             }
             let mut typing = typing.push_in_pure(true);
             let (_mode, proph) = check_expr(

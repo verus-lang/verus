@@ -230,6 +230,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_proof_note_on_ensures_usable_by_caller verus_code! {
+        fn example(x: u64) -> (z: u64)
+            requires
+                x < 100,
+            ensures
+                #![verifier::proof_note("Property 732")]
+                z == x + 1,
+        {
+            x + 1
+        }
+
+        fn caller() {
+            let z = example(1);
+            assert(z == 2); // the noted postcondition is available to the caller
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_proof_note_on_assert verus_code! {
         fn caller() {
             #[verifier::proof_note("Statement known to be false")]
