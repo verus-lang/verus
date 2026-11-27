@@ -235,7 +235,7 @@ pub assume_specification<T> [core::hint::must_use] (value: T) -> (ret: T)
 
 // The panic functions always panic. By default, the `requires[no_panic]` condition (false)
 // is checked at the call site, so a reachable panic is an error;
-// with `#[verifier::deny_panic(false)]`, the caller may panic instead.
+// with `#[verifier::check_user_panics(false)]`, the caller may panic instead.
 pub assume_specification [core::panicking::panic] (s: &'static str) -> !
     requires[no_panic exact]
         false,

@@ -422,7 +422,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 dest,
                 assert_id,
                 body,
-                deny_panic,
+                check_user_panics,
                 unwind_path,
             } => {
                 let resolved_method = if let Some((f, ts)) = resolved_method {
@@ -448,7 +448,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         dest: R::get_opt(dest),
                         assert_id: assert_id.clone(),
                         body: R::get_opt(body),
-                        deny_panic: *deny_panic,
+                        check_user_panics: *check_user_panics,
                         unwind_path: R::get_opt(unwind_path),
                     })
                 })

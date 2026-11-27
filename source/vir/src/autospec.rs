@@ -115,7 +115,7 @@ fn simplify_one_expr(functions: &HashMap<Fun, FunctionStub>, expr: &Expr) -> Res
                 autospec: AutospecUsage::Final,
                 const_var: attrs.const_var,
                 assume_external_allowed: false,
-                deny_panic: attrs.deny_panic,
+                check_user_panics: attrs.check_user_panics,
             };
             let call = ExprX::Call {
                 target: CallTarget::Fun(kind, tgt, typs, impl_paths, attrs),

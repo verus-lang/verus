@@ -443,7 +443,7 @@ pub open spec fn obeys_clone_eq<T: Clone>() -> bool {
 verus! {
 
 /// Always panics. Like `core::panicking::panic`, a call is rejected unless panicking is
-/// allowed at the call site (see `#[verifier::deny_panic(false)]`).
+/// allowed at the call site (see `#[verifier::check_user_panics(false)]`).
 #[doc(hidden)]
 #[verifier(external_body)]
 pub fn __call_panic(out: &[&str]) -> !

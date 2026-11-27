@@ -1869,7 +1869,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             dest,
             assert_id,
             body,
-            deny_panic,
+            check_user_panics,
             unwind_path,
         } => {
             // When we emit the VCs for a call to `f`, we might also want these to include
@@ -1989,12 +1989,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             };
 
-            // For `requires[no_panic]`, check the condition unless deny_panic is false.
+            // For `requires[no_panic]`, check the condition unless check_user_panics is false.
             // (This makes the unwind path below vacuous.)
             let mut preemptive_panic_check = false;
             match &callee_unwind_spec {
                 UnwindSpec::NoUnwindWhen(e, kind)
-                    if kind.is_no_panic() && *deny_panic && !ctx.checking_spec_preconditions() =>
+                    if kind.is_no_panic()
+                        && *check_user_panics
+                        && !ctx.checking_spec_preconditions() =>
                 {
                     let error = error_with_label(
                         &stm.span,
@@ -2002,7 +2004,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         format!("call to {:} might panic", fun_as_friendly_rust_name(fun)),
                     )
                     .secondary_label(&e.span, "failed this `requires[no_panic]` precondition")
-                    .help("to allow panicking here, use `#[verifier::deny_panic(false)]` or add a panic-specification to the caller function");
+                    .help("to allow panicking here, use `#[verifier::check_user_panics(false)]` or add a panic-specification to the caller function");
                     stmts.push(Arc::new(StmtX::Assert(None, error, None, callee_no_unwind_when())));
                     preemptive_panic_check = true;
                 }

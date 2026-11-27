@@ -959,20 +959,20 @@ test_verify_one_file_with_options! {
             f2(10, 3); // FAILS
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn caller5() {
             f(3);
             f2(10, 3);
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn caller6()
             no_unwind
         {
             f(3); // FAILS
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn caller7()
             no_unwind
         {
@@ -980,13 +980,13 @@ test_verify_one_file_with_options! {
         }
 
         fn caller8() {
-            #[verifier::deny_panic(false)] f(3);
+            #[verifier::check_user_panics(false)] f(3);
             f(3); // FAILS
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn caller9() {
-            #[verifier::deny_panic(true)] f(3); // FAILS
+            #[verifier::check_user_panics(true)] f(3); // FAILS
         }
 
         fn body1(i: u8)
@@ -1001,11 +1001,11 @@ test_verify_one_file_with_options! {
                 i >= 5,
         {
             // the caller's own requires[no_panic] conditions are not preconditions,
-            // so with deny_panic, this must be proven unconditionally
+            // so with check_user_panics, this must be proven unconditionally
             f(i); // FAILS
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn body3(i: u8)
             requires[no_panic]
                 i >= 5,
@@ -1016,7 +1016,7 @@ test_verify_one_file_with_options! {
             }
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn body4(i: u8)
             requires[no_panic]
                 i >= 4,
@@ -1063,13 +1063,13 @@ test_verify_one_file_with_options! {
             do_panic(); // FAILS
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn caller1(j: u8) {
             g(j);
             assert(j >= 5);
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn caller2(j: u8) {
             g(j);
             assert(j >= 6); // FAILS
@@ -1080,8 +1080,8 @@ test_verify_one_file_with_options! {
         }
 
         fn caller4(j: u8) {
-            #[verifier::deny_panic(false)] g(j);
-            #[verifier::deny_panic(true)] g(j);
+            #[verifier::check_user_panics(false)] g(j);
+            #[verifier::check_user_panics(true)] g(j);
         }
     } => Err(err) => assert_fails(err, 4)
 }
@@ -1111,7 +1111,7 @@ test_verify_one_file! {
             let r = ext(0); // FAILS
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn test3(i: u8) {
             let r = ext(i);
             assert(i > 0);
@@ -1383,7 +1383,7 @@ test_verify_one_file! {
         }
 
         // unwinding of r implies !(i < 10)
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn f(i: u8)
             ensures[on unwind]
                 i >= 10,
@@ -1391,7 +1391,7 @@ test_verify_one_file! {
             r(i);
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn f_fail(i: u8)
             ensures[on unwind]
                 i >= 11,
@@ -1648,7 +1648,7 @@ test_verify_one_file! {
             never_unwinds();
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn f5(i: u8)
             no_panic
         {
@@ -2016,8 +2016,8 @@ test_verify_one_file! {
             let y = v[i]; // FAILS
         }
 
-        // with deny_panic(false), the calls may panic, and a normal return implies the condition
-        #[verifier::deny_panic(false)]
+        // with check_user_panics(false), the calls may panic, and a normal return implies the condition
+        #[verifier::check_user_panics(false)]
         fn test2(o: Option<u8>, r: Result<u8, u8>, v: &Vec<u8>, s: &mut [u8], i: usize) {
             let x = o.unwrap();
             assert(o is Some);
@@ -2029,13 +2029,13 @@ test_verify_one_file! {
             assert(i < s.len());
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn test3(a: &AtomicU32, o: Ordering) {
             let _ = a.load(o);
             assert(o != Ordering::Release);
         }
 
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn test4(v: &Vec<u8>, i: usize)
             no_panic
         {

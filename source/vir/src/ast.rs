@@ -860,7 +860,7 @@ pub enum HeaderExprX {
     /// This function will not unwind if the given condition holds (function of arguments)
     NoUnwindWhen(Expr),
     /// `requires[no_panic]`: the function will not panic if the conditions hold,
-    /// and the conditions are checked at call sites by default (see deny_panic)
+    /// and the conditions are checked at call sites by default (see check_user_panics)
     NoPanicRequires(Exprs),
     /// `requires[no_panic exact]`: same as NoPanicRequires, but additionally
     /// the function panics if the conditions do not hold
@@ -1042,8 +1042,10 @@ pub struct CallTargetAttrs {
     /// If the expected Fun is undeclared, enable replacing Fun with AssumeExternal
     pub assume_external_allowed: bool,
     /// If true, check the callee's `requires[no_panic]` conditions at this call site
-    /// even if not needed to prove that the caller does not panic
-    pub deny_panic: bool,
+    /// even if not needed to prove that the caller does not panic.
+    /// ("User" panics are those caused by user error, such as violating these conditions,
+    /// rather than by unpredictable system errors.)
+    pub check_user_panics: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -1687,7 +1689,7 @@ pub enum NoUnwindWhenKind {
     /// when needed to prove that the caller doesn't unwind
     When,
     /// `requires[no_panic] e`: the condition is checked at call sites
-    /// (unless deny_panic is false for the call)
+    /// (unless check_user_panics is false for the call)
     NoPanicRequires,
     /// `requires[no_panic exact] e`: same as NoPanicRequires, but additionally the function
     /// panics if the condition does not hold (so the condition holds if the function returns)

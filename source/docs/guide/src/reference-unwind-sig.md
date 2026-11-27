@@ -50,9 +50,11 @@ This means that the function will not panic if `o.is_some()`.
 By default, the condition is checked at every call site, as if it were a precondition,
 even if the caller is itself allowed to panic.
 
-To skip this check, use `#[verifier::deny_panic(false)]`. This attribute can be placed
+Such a panic is considered a "user panic": it is caused by the caller's error (such as passing
+an out-of-bounds index), rather than by an unpredictable system error (such as running out of memory).
+To skip this check, use `#[verifier::check_user_panics(false)]`. This attribute can be placed
 on a call expression, or on a function, impl, module, or crate, in which case it applies to all
-calls inside it. When `deny_panic` is false for a call, the condition is only checked
+calls inside it. When `check_user_panics` is false for a call, the condition is only checked
 to the extent needed to show that the caller meets its own panic signature.
 
 The form `requires[no_panic exact]` additionally specifies that the function
@@ -66,7 +68,7 @@ fn unwrap<T>(o: Option<T>) -> T
     requires[no_panic exact]
         o.is_some(),
 
-#[verifier::deny_panic(false)]
+#[verifier::check_user_panics(false)]
 fn test(o: Option<u8>) {
     let x = unwrap(o);
     assert(o.is_some());

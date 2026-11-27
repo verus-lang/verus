@@ -339,8 +339,8 @@ pub(crate) enum Attr {
     SpinoffProver,
     // Use a new dedicated Z3 process for loops
     LoopIsolation(bool),
-    // Check requires[no_panic] conditions at call sites
-    DenyPanic(bool),
+    // Check requires[no_panic] conditions at call sites (panics caused by user error)
+    CheckUserPanics(bool),
     // Allow complex invariants (invariant_except_break, ensures) with loop_isolation(false)
     AllowComplexInvariants,
     // Memoize function call results during interpretation
@@ -628,16 +628,18 @@ pub(crate) fn parse_attrs(
                 {
                     v.push(Attr::LoopIsolation(false))
                 }
-                AttrTree::Fun(_, arg, None) if arg == "deny_panic" => v.push(Attr::DenyPanic(true)),
-                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, r, None)]))
-                    if arg == "deny_panic" && r == "true" =>
-                {
-                    v.push(Attr::DenyPanic(true))
+                AttrTree::Fun(_, arg, None) if arg == "check_user_panics" => {
+                    v.push(Attr::CheckUserPanics(true))
                 }
                 AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, r, None)]))
-                    if arg == "deny_panic" && r == "false" =>
+                    if arg == "check_user_panics" && r == "true" =>
                 {
-                    v.push(Attr::DenyPanic(false))
+                    v.push(Attr::CheckUserPanics(true))
+                }
+                AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, r, None)]))
+                    if arg == "check_user_panics" && r == "false" =>
+                {
+                    v.push(Attr::CheckUserPanics(false))
                 }
                 AttrTree::Fun(_, arg, Some([AttrTree::Fun(_, r, None)]))
                     if arg == "deprecated_postcondition_mut_ref_style" && r == "true" =>
@@ -1130,12 +1132,12 @@ pub(crate) fn get_loop_isolation_walk_parents<'tcx>(
     None
 }
 
-pub(crate) fn get_deny_panic_walk_parents<'tcx>(
+pub(crate) fn get_check_user_panics_walk_parents<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     def_id: rustc_span::def_id::DefId,
 ) -> Option<bool> {
     for attr in parse_attrs_walk_parents(tcx, def_id) {
-        if let Attr::DenyPanic(flag) = attr {
+        if let Attr::CheckUserPanics(flag) = attr {
             return Some(flag);
         }
     }
@@ -1370,7 +1372,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
     pub(crate) loop_isolation: Option<bool>,
-    pub(crate) deny_panic: Option<bool>,
+    pub(crate) check_user_panics: Option<bool>,
     pub(crate) allow_complex_invariants: bool,
     pub(crate) memoize: bool,
     pub(crate) rlimit: Option<f32>,
@@ -1575,7 +1577,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         nonlinear: false,
         spinoff_prover: false,
         loop_isolation: None,
-        deny_panic: None,
+        check_user_panics: None,
         allow_complex_invariants: false,
         memoize: false,
         rlimit: None,
@@ -1663,7 +1665,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
             Attr::LoopIsolation(flag) => vs.loop_isolation = Some(flag),
-            Attr::DenyPanic(flag) => vs.deny_panic = Some(flag),
+            Attr::CheckUserPanics(flag) => vs.check_user_panics = Some(flag),
             Attr::AllowComplexInvariants => vs.allow_complex_invariants = true,
             Attr::Memoize => vs.memoize = true,
             Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),

@@ -351,7 +351,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
         autospec: autospec_usage,
         assume_external_allowed,
         const_var,
-        deny_panic: get_deny_panic(bctx, Some(expr.hir_id))?,
+        check_user_panics: get_check_user_panics(bctx, Some(expr.hir_id))?,
     };
     let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, call_target_attrs);
     Ok(bctx.spanned_typed_new(
@@ -438,20 +438,21 @@ pub(crate) fn call_index<'tcx>(
 }
 
 /// Determine whether `requires[no_panic]` conditions should be checked for a call,
-/// based on #[verifier::deny_panic(...)] on the call expression (if any)
+/// based on #[verifier::check_user_panics(...)] on the call expression (if any)
 /// or on the enclosing items.
-pub(crate) fn get_deny_panic<'tcx>(
+pub(crate) fn get_check_user_panics<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     hir_id: Option<rustc_hir::HirId>,
 ) -> Result<bool, VirErr> {
     if let Some(hir_id) = hir_id {
         let expr_attrs = bctx.ctxt.tcx.hir_attrs(hir_id);
         let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
-        if let Some(b) = expr_vattrs.deny_panic {
+        if let Some(b) = expr_vattrs.check_user_panics {
             return Ok(b);
         }
     }
-    Ok(crate::attributes::get_deny_panic_walk_parents(bctx.ctxt.tcx, bctx.fun_id).unwrap_or(true))
+    Ok(crate::attributes::get_check_user_panics_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
+        .unwrap_or(true))
 }
 
 /// Common logic for all the overloaded methods
@@ -521,7 +522,7 @@ pub(crate) fn call_overloaded_method<'tcx>(
         autospec: autospec_usage,
         assume_external_allowed: false,
         const_var: false,
-        deny_panic: get_deny_panic(bctx, None)?,
+        check_user_panics: get_check_user_panics(bctx, None)?,
     };
     let call_target =
         CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, call_target_attrs);

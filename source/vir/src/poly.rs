@@ -861,7 +861,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             dest,
             assert_id,
             body,
-            deny_panic,
+            check_user_panics,
             unwind_path,
         } => {
             let (is_polys, function) = if let crate::sst::CallTarget::Fun(fun) = fun {
@@ -919,7 +919,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 dest,
                 assert_id: assert_id.clone(),
                 body,
-                deny_panic: *deny_panic,
+                check_user_panics: *check_user_panics,
                 unwind_path,
             })
         }

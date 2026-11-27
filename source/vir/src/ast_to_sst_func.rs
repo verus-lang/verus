@@ -259,7 +259,7 @@ fn async_future_spec_call(
         autospec: AutospecUsage::Final,
         const_var: false,
         assume_external_allowed: false,
-        deny_panic: true,
+        check_user_panics: true,
     };
     let future_typ = function.x.outer_ret.x.typ.clone();
     let mut trait_typs = vec![future_typ.clone()];

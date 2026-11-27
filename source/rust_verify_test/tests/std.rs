@@ -2446,8 +2446,8 @@ test_verify_one_file! {
         fn test3() {
             assert!(2 + 2 == 3); // FAILS
         }
-        // panicking is allowed with deny_panic(false)
-        #[verifier::deny_panic(false)]
+        // panicking is allowed with check_user_panics(false)
+        #[verifier::check_user_panics(false)]
         fn test4(x: u8) {
             if x == 0 {
                 panic!();
@@ -2455,7 +2455,7 @@ test_verify_one_file! {
             assert!(x == 1);
             assert(x == 1);
         }
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn test5()
             no_panic
         {
@@ -2527,7 +2527,7 @@ test_verify_one_file! {
         fn test2(x: u64) {
             assert_ne!(x, 3, "x is {}", x); // FAILS
         }
-        #[verifier::deny_panic(false)]
+        #[verifier::check_user_panics(false)]
         fn test3(x: u64) {
             assert_eq!(x, 3);
             assert(x == 3);

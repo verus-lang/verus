@@ -285,7 +285,7 @@ fn stm_assign(
             dest,
             assert_id,
             body,
-            deny_panic,
+            check_user_panics,
             unwind_path,
         } => {
             if let Some(dest) = dest {
@@ -333,7 +333,7 @@ fn stm_assign(
                 dest: dest.clone(),
                 assert_id: assert_id.clone(),
                 body,
-                deny_panic: *deny_panic,
+                check_user_panics: *check_user_panics,
                 unwind_path,
             })
         }
@@ -522,7 +522,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             dest,
             assert_id,
             body,
-            deny_panic,
+            check_user_panics,
             unwind_path,
         } => {
             if let Some(Dest { is_init: false, dest }) = dest {
@@ -547,7 +547,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
                 dest: dest.clone(),
                 assert_id: assert_id.clone(),
                 body,
-                deny_panic: *deny_panic,
+                check_user_panics: *check_user_panics,
                 unwind_path,
             })
         }

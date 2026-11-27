@@ -40,7 +40,7 @@ and the full rust_verify_test suite passes.
 
 For these functions, the Rust docs guarantee a panic, not UB, exactly when the old plain `requires`
 fails. Their plain `requires` + `no_panic` has been replaced with `requires[no_panic exact]`.
-The condition is still checked at call sites by default, but with `#[verifier::deny_panic(false)]`
+The condition is still checked at call sites by default, but with `#[verifier::check_user_panics(false)]`
 callers may let them panic, and may assume the condition after a normal return.
 
 - slices: `swap`, `rotate_left`, `rotate_right`, `split_at`, `split_at_mut`
@@ -60,7 +60,7 @@ can't be relied on.
 (pervasive.rs, used by `vpanic!`) were `requires false` (or `requires allow_panic()`, controlled by
 the `allow_panic` cargo feature). They are now `requires[no_panic exact] false` ("always panics"), and the `allow_panic`
 feature is removed. A reachable panic is still an error by default (the call-site check fails). With
-`#[verifier::deny_panic(false)]`, the caller may panic instead, unless it has its own no-panic obligations.
+`#[verifier::check_user_panics(false)]`, the caller may panic instead, unless it has its own no-panic obligations.
 
 ## Concerns and assumptions
 

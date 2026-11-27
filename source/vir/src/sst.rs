@@ -230,8 +230,8 @@ pub enum StmX {
         /// i.e. emplaced between the pre- and postcondition
         body: Option<Stm>,
         /// If true, check the callee's `requires[no_panic]` conditions
-        /// (see CallTargetAttrs::deny_panic)
-        deny_panic: bool,
+        /// (see CallTargetAttrs::check_user_panics)
+        check_user_panics: bool,
         /// Code to be executed in the case that the call unwinds
         /// (e.g., resolutions and type invariant obligations)
         unwind_path: Option<Stm>,
