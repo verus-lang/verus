@@ -138,6 +138,33 @@ impl SmtSolver {
             SmtSolver::Cvc5 => "(:reason-unknown incomplete)",
         }
     }
+
+    /// Classify a `(get-info :reason-unknown)` response line
+    pub(crate) fn parse_reason_unknown(&self, line: &str) -> Option<SmtReasonUnknown> {
+        if self.reason_unknown_canceled_strs().contains(&line) {
+            Some(SmtReasonUnknown::Canceled)
+        } else if line == "(:reason-unknown \"unknown\")" || line == "(:reason-unknown \"\")" {
+            // it appears this sometimes happens when rlimit is exceeded;
+            // Z3 gives an empty reason when an exception without a message stops the search
+            Some(SmtReasonUnknown::Unknown)
+        } else if line.starts_with(self.reason_unknown_incomplete_str()) {
+            Some(SmtReasonUnknown::Incomplete)
+        } else if line
+            == "(:reason-unknown \"smt tactic failed to show goal to be sat/unsat (incomplete quantifiers)\")"
+        {
+            // longer message shows up when there's no push/pop around the query
+            Some(SmtReasonUnknown::Incomplete)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub(crate) enum SmtReasonUnknown {
+    Canceled,
+    Incomplete,
+    Unknown,
 }
 
 pub type ReportLongRunning<'a> =
@@ -296,31 +323,11 @@ pub(crate) fn smt_check_assertion<'ctx>(
             let smt_data = context.smt_log.take_pipe_data();
             let smt_output = context.get_smt_process().send_commands(smt_data);
 
-            #[derive(PartialEq, Eq)]
-            enum SmtReasonUnknown {
-                Canceled,
-                Incomplete,
-                Unknown,
-            }
-
             let mut reason = None;
             for line in smt_output {
-                if context.solver.reason_unknown_canceled_strs().iter().any(|s| line == *s) {
+                if let Some(r) = context.solver.parse_reason_unknown(&line) {
                     assert!(reason == None);
-                    reason = Some(SmtReasonUnknown::Canceled);
-                } else if line == "(:reason-unknown \"unknown\")" {
-                    // it appears this sometimes happens when rlimit is exceeded
-                    assert!(reason == None);
-                    reason = Some(SmtReasonUnknown::Unknown);
-                } else if line.starts_with(context.solver.reason_unknown_incomplete_str()) {
-                    assert!(reason == None);
-                    reason = Some(SmtReasonUnknown::Incomplete);
-                } else if line
-                    == "(:reason-unknown \"smt tactic failed to show goal to be sat/unsat (incomplete quantifiers)\")"
-                {
-                    // longer message shows up when there's no push/pop around the query
-                    assert!(reason == None);
-                    reason = Some(SmtReasonUnknown::Incomplete);
+                    reason = Some(r);
                 } else if context.ignore_unexpected_smt {
                     diagnostics.report(&context.message_interface.bare(
                         crate::messages::MessageLevel::Warning,
