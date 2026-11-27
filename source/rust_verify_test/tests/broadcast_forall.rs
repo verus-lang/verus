@@ -692,3 +692,69 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] broadcast_group_member_less_visible_than_group_issue1642 verus_code! {
+        mod m1 {
+            use vstd::prelude::*;
+
+            pub closed spec fn foo(i: nat) -> bool { true }
+
+            pub broadcast group group_foo {
+                bar,
+            }
+
+            broadcast proof fn bar(i: nat)
+                ensures #[trigger] foo(i)
+            {}
+        }
+    } => Err(err) => assert_vir_error_msg(err, "broadcast group member `test_crate::m1::bar` is less visible than the group")
+}
+
+test_verify_one_file! {
+    #[test] broadcast_group_nested_group_less_visible_than_group_issue1642 verus_code! {
+        mod m1 {
+            use vstd::prelude::*;
+
+            pub closed spec fn foo(i: nat) -> bool { true }
+
+            pub broadcast proof fn bar(i: nat)
+                ensures #[trigger] foo(i)
+            {}
+
+            broadcast group inner { bar }
+
+            pub(crate) broadcast group outer { inner }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "broadcast group member `test_crate::m1::inner` is less visible than the group")
+}
+
+test_verify_one_file! {
+    #[test] broadcast_group_member_visibility_ok_issue1642 verus_code! {
+        mod m1 {
+            use vstd::prelude::*;
+
+            pub closed spec fn foo(i: nat) -> bool { true }
+
+            pub broadcast proof fn pub_lemma(i: nat) ensures #[trigger] foo(i) {}
+            broadcast proof fn priv_lemma(i: nat) ensures #[trigger] foo(i + 1) {}
+            pub(crate) broadcast proof fn crate_lemma(i: nat) ensures #[trigger] foo(i + 2) {}
+
+            broadcast group priv_group { priv_lemma, pub_lemma }
+            pub broadcast group pub_group { pub_lemma, vstd::seq::group_seq_axioms }
+            pub(crate) broadcast group crate_group { crate_lemma, pub_group }
+
+            proof fn use_priv(i: nat) ensures foo(i + 1) { broadcast use priv_group; }
+        }
+
+        mod m2 {
+            use vstd::prelude::*;
+
+            proof fn use_from_other_module(i: nat)
+                ensures crate::m1::foo(i), crate::m1::foo(i + 2)
+            {
+                broadcast use crate::m1::crate_group;
+            }
+        }
+    } => Ok(())
+}
