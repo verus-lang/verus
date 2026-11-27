@@ -403,6 +403,13 @@ impl Context {
                     self.set_solver_option_bool("incremental", true, true);
                 }
             }
+        } else if option == "cvc5_logic_only" && value {
+            if matches!(self.smt_encoding, SmtEncoding::Cvc5) {
+                self.smt_log.log_node(&node!((set-logic {str_to_node("ALL")})));
+            }
+            if matches!(self.solver, SmtSolver::Cvc5) {
+                self.set_solver_option_bool("incremental", true, true);
+            }
         } else if option == "single_check_query" && value {
             self.single_check_query = true;
             if write_to_logs {
