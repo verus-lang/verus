@@ -907,3 +907,37 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] async_fn_mut_param ["--edition 2024"] => verus_code! {
+        use vstd::prelude::*;
+        async fn f(mut a: u8) -> (r: u8)
+            ensures r == 2,
+        {
+            a = 1;
+            let b = &mut a;
+            *b = 2;
+            a
+        }
+        async fn g(mut a: Option<u8>) -> (r: bool)
+            ensures r == a is Some,
+        {
+            match a.as_mut() {
+                Some(x) => { *x = 1; true }
+                None => false,
+            }
+        }
+        async fn h(mut a: u8, b: u8) -> (r: u8)
+            ensures r == b,
+        {
+            a = b;
+            a
+        }
+        async fn wrong(mut a: u8) -> (r: u8)
+            ensures r == 2, // FAILS
+        {
+            a = 1;
+            a
+        }
+    } => Err(err) => assert_one_fails(err)
+}

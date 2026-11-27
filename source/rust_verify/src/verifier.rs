@@ -14,10 +14,11 @@ use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, SmtSolver, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
-use rustc_errors::{Diag, EmissionGuarantee};
+use rustc_driver::Compilation;
+use rustc_errors::Diag;
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
-use rustc_session::config::ErrorOutputType;
+use rustc_session::config::{ErrorOutputType, OutFileName, OutputType};
 use std::sync::Mutex;
 
 use vir::messages::{
@@ -51,6 +52,12 @@ use vir::prelude::PreludeConfig;
 const RLIMIT_PER_SECOND_Z3: f32 = 3000000f32;
 const RLIMIT_PER_SECOND_CVC5: f32 = 333333f32; // ~= 5s
 
+pub(crate) fn rename_first_pass_dep_info(path: &std::path::Path) -> std::path::PathBuf {
+    let mut renamed_path = path.to_path_buf();
+    renamed_path.as_mut_os_string().push("-verus");
+    renamed_path
+}
+
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub(crate) struct ProgressBarId(String);
 
@@ -62,7 +69,7 @@ trait Diagnostics: air::messages::Diagnostics {
 
 pub(crate) struct Reporter<'tcx> {
     spans: SpanContext,
-    compiler_diagnostics: &'tcx rustc_errors::DiagCtxt,
+    compiler_diagnostics: rustc_errors::DiagCtxtHandle<'tcx>,
     source_map: &'tcx rustc_span::source_map::SourceMap,
 }
 
@@ -70,7 +77,7 @@ impl<'tcx> Reporter<'tcx> {
     pub(crate) fn new(spans: &SpanContext, compiler: &'tcx Compiler) -> Self {
         Reporter {
             spans: spans.clone(),
-            compiler_diagnostics: &compiler.sess.dcx(),
+            compiler_diagnostics: compiler.sess.dcx(),
             source_map: compiler.sess.source_map(),
         }
     }
@@ -78,7 +85,7 @@ impl<'tcx> Reporter<'tcx> {
     pub(crate) fn new_from_tcx(spans: &SpanContext, tcx: TyCtxt<'tcx>) -> Self {
         Reporter {
             spans: spans.clone(),
-            compiler_diagnostics: &tcx.sess.dcx(),
+            compiler_diagnostics: tcx.sess.dcx(),
             source_map: tcx.sess.source_map(),
         }
     }
@@ -123,8 +130,8 @@ impl air::messages::Diagnostics for Reporter<'_> {
             }
         }
 
-        fn emit_with_diagnostic_details<'a, G: EmissionGuarantee>(
-            mut diag: Diag<'a, G>,
+        fn emit_with_diagnostic_details<'a>(
+            mut diag: Diag<'a>,
             multispan: MultiSpan,
             help: &[String],
         ) {
@@ -137,18 +144,17 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         match level {
             MessageLevel::Note => emit_with_diagnostic_details(
-                self.compiler_diagnostics.handle().struct_note(msg.note.clone()),
+                self.compiler_diagnostics.struct_note(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Warning => emit_with_diagnostic_details(
-                self.compiler_diagnostics.handle().struct_warn(msg.note.clone()),
+                self.compiler_diagnostics.struct_warn(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Error => emit_with_diagnostic_details(
                 self.compiler_diagnostics
-                    .handle()
                     .struct_err(replacement_error_note.clone().unwrap_or_else(|| msg.note.clone())),
                 multispan,
                 &msg.help,
@@ -330,6 +336,9 @@ pub struct Verifier {
 
     /// Details about each function
     pub func_details: Arc<Mutex<HashMap<Fun, FuncDetails>>>,
+    /// Each local function's path as rustc prints it (`def_path_str`), which, unlike the
+    /// name Verus reports, tells apart e.g. the methods of two impls of one trait for one type
+    pub func_def_paths: HashMap<Fun, String>,
     /// Errors to report after verification has run
     deferred_errors: Arc<Mutex<Vec<VirErr>>>,
 
@@ -413,10 +422,6 @@ pub fn module_name(module: &vir::ast::Path) -> String {
 mod util {
     pub(crate) struct PanicOnDropVec<T>(Option<Vec<T>>);
 
-    // For https://github.com/verus-lang/verus/issues/1044 :
-    pub(crate) static PANIC_ON_DROP_VEC: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(true);
-
     impl<T> PanicOnDropVec<T> {
         pub fn new(v: Vec<T>) -> Self {
             PanicOnDropVec(Some(v))
@@ -433,7 +438,9 @@ mod util {
 
     impl<T> Drop for PanicOnDropVec<T> {
         fn drop(&mut self) {
-            if self.0.is_some() && PANIC_ON_DROP_VEC.load(std::sync::atomic::Ordering::SeqCst) {
+            // Don't panic while unwinding from another panic: that would abort and hide the
+            // original error (https://github.com/verus-lang/verus/issues/1044)
+            if self.0.is_some() && !std::thread::panicking() {
                 panic!("dropped, expected call to `into_inner` instead");
             }
         }
@@ -496,6 +503,11 @@ impl CommandBatch {
 }
 
 impl Verifier {
+    /// Whether a second invocation of `rustc_driver::run_compiler` is necessary to generate code.
+    pub fn has_second_compile_pass(&self) -> bool {
+        self.compile || (!self.args.no_erasure_check && !self.args.no_lifetime)
+    }
+
     pub fn new(
         args: Args,
         via_cargo_args: Option<CargoVerusArgs>,
@@ -525,6 +537,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: Arc::new(Mutex::new(HashMap::new())),
+            func_def_paths: HashMap::new(),
             deferred_errors: Arc::new(Mutex::new(Vec::new())),
 
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
@@ -574,6 +587,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: Arc::new(Mutex::new(HashMap::new())),
+            func_def_paths: HashMap::new(),
             deferred_errors: Arc::new(Mutex::new(Vec::new())),
 
             via_cargo_args: self.via_cargo_args.clone(),
@@ -692,7 +706,6 @@ impl Verifier {
         match result {
             ValidityResult::Valid(air::context::UsageInfo::None) => {}
             ValidityResult::TypeError(err) => {
-                util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                 panic!("internal error: ill-typed AIR code: {}", err)
             }
             _ => panic!("internal error: decls should not generate queries ({:?})", result),
@@ -868,7 +881,6 @@ impl Verifier {
                     break;
                 }
                 ValidityResult::TypeError(err) => {
-                    util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
                 ValidityResult::Canceled => {
@@ -980,7 +992,6 @@ impl Verifier {
                     bucket_time.time_air += time1 - time0;
                 }
                 ValidityResult::UnexpectedOutput(err) => {
-                    util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                     panic!("unexpected output from solver: {} {}", context.span.as_string, err);
                 }
             }
@@ -2696,6 +2707,32 @@ impl Verifier {
             crate_ids.insert(id);
         }
 
+        // We identify the actual core and alloc crates by the lang items they define
+        // (see mk_crate_id), so ordinary crates must not define lang items.
+        // Only the standard library crates (verified with --is-core or
+        // --is-stdlib-outside-of-core) may do so.
+        // In fact, defining a lang_item would likely come with a number of assumptions
+        // that we do not currently check.
+        // Note: we check panic_impl in rust_to_vir_func.rs rather than here,
+        // in order to allow verifier::external panic handlers.
+        if !matches!(
+            self.args.vstd,
+            crate::config::Vstd::IsCore | crate::config::Vstd::ImportedViaCore
+        ) {
+            for (lang_item, def_id) in tcx.lang_items().iter() {
+                if def_id.is_local() && Some(def_id) != tcx.lang_items().panic_impl() {
+                    let err = vir::messages::error(
+                        &spans.to_air_span(tcx.def_span(def_id)),
+                        format!(
+                            "Verus does not support defining lang items (found `{}`)",
+                            lang_item.name()
+                        ),
+                    );
+                    return Err((vec![err], vec![], None));
+                }
+            }
+        }
+
         if !verus_items.name_to_id.contains_key(&VerusItem::ErasedGhostValue) {
             let err = crate::util::no_builtin_err(self.air_no_span.as_ref().unwrap());
             return Err((vec![err], vec![], None));
@@ -2804,6 +2841,17 @@ impl Verifier {
         }
 
         self.vir_crate = Some(merged_crate.clone());
+        if self.args.output_json {
+            let map = ctxt.name_def_id_map.borrow();
+            for function in merged_crate.functions.iter() {
+                let fun = &function.x.name;
+                if let Some(def_id) = map.get(&fun.path) {
+                    if def_id.is_local() {
+                        self.func_def_paths.insert(fun.clone(), tcx.def_path_str(*def_id));
+                    }
+                }
+            }
+        }
         self.warning_ctx = Some(query.get_updated_warning_ctx().map_err(map_query_err)?);
 
         /*if !self.args.no_lifetime {
@@ -2964,6 +3012,7 @@ fn check_no_opaque_types_in_trait<'tcx>(
 
 // TODO: move the callbacks into a different file, like driver.rs
 pub(crate) struct VerifierCallbacksEraseMacro {
+    pub first_pass_dep_info: Option<std::path::PathBuf>,
     pub(crate) verifier: Verifier,
     /// start time of the rustc compilation
     pub(crate) rust_start_time: Instant,
@@ -3116,6 +3165,24 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         }
 
         rustc_interface::passes::write_dep_info(tcx);
+        if tcx.sess.opts.output_types.contains_key(&OutputType::DepInfo) {
+            // Save the first pass's dep-info for the merge after the second pass.
+            if let OutFileName::Real(dep_info_path) =
+                tcx.output_filenames(()).path(OutputType::DepInfo)
+            {
+                let saved_dep_info_path = rename_first_pass_dep_info(&dep_info_path);
+                if let Err(err) = std::fs::rename(&dep_info_path, &saved_dep_info_path) {
+                    eprintln!(
+                        "error: failed to rename dep-info {} to {} due to {err}",
+                        dep_info_path.display(),
+                        saved_dep_info_path.display(),
+                    );
+                    self.verifier.encountered_error = true;
+                    return Compilation::Stop;
+                };
+                self.first_pass_dep_info = Some(dep_info_path);
+            }
+        }
         self.verifier.crate_id = Some(mk_crate_id(tcx, LOCAL_CRATE));
 
         let time_import0 = Instant::now();

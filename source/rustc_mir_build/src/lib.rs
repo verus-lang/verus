@@ -4,7 +4,6 @@
 #![feature(deref_patterns)]
 #![feature(try_blocks)]
 #![feature(rustc_private)]
-#![feature(never_type)]
 // tidy-alphabetical-end
 
 extern crate rustc_abi;
@@ -18,10 +17,10 @@ extern crate rustc_hir_typeck;
 extern crate rustc_index;
 extern crate rustc_infer;
 extern crate rustc_lint;
+extern crate rustc_lint_defs;
 extern crate rustc_macros;
 extern crate rustc_middle;
 extern crate rustc_pattern_analysis;
-extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_trait_selection;
 
@@ -43,10 +42,10 @@ pub mod verus_expr;
 #[path = "../../rustc_mir_build_additional_files/verus_time_travel_prevention.rs"]
 pub mod verus_time_travel_prevention;
 
-#[path = "../../rustc_hir_typeck/src/expr_use_visitor.rs"]
+#[path = "../../rustc_hir_typeck_closure_files/src/expr_use_visitor.rs"]
 pub mod expr_use_visitor;
 
-#[path = "../../rustc_hir_typeck/src/upvar.rs"]
+#[path = "../../rustc_hir_typeck_closure_files/src/upvar.rs"]
 pub mod upvar;
 
 use rustc_middle::util::Providers;

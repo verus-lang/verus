@@ -1,34 +1,48 @@
 //! For state machines marked `#![verifier::prophetic]`, prophetic expressions are only
 //! allowed in `require` and `assert` statements. To enforce this, before simplification,
-//! we wrap every other expression in a call to the `prophecy_disallowed` builtin,
+//! we wrap every other expression in a call to the `force_pure_and_nonprophetic` builtin,
 //! which is checked by Verus's mode checker.
 //!
 //! Note that this needs to happen *before* simplification, since some special statements
 //! (e.g., `add`, `remove`, `have`) lower to `require` or `assert` statements, and we want
 //! to disallow prophecy in those as well.
 
-use crate::ast::{MonoidElt, SpecialOp, SplitKind, SubIdx, TransitionStmt};
+use crate::ast::{MonoidElt, SM, ShardableType, SpecialOp, SplitKind, SubIdx, TransitionStmt};
 use verus_syn::Expr;
 use verus_syn::spanned::Spanned;
 
-pub fn disallow_prophecy(ts: &TransitionStmt) -> TransitionStmt {
+pub fn disallow_prophecy(sm: &SM, ts: &TransitionStmt) -> TransitionStmt {
     let mut ts = ts.clone();
-    disallow_prophecy_stmt(&mut ts);
+    disallow_prophecy_stmt(sm, &mut ts);
     ts
 }
 
 fn wrap(e: &mut Expr, reason: &str) {
     let span = e.span();
     *e = Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
-        #vstd::prelude::prophecy_disallowed(#reason, #e)
+        #vstd::prelude::force_pure_and_nonprophetic(#reason, #e)
     });
 }
 
-fn disallow_prophecy_stmt(ts: &mut TransitionStmt) {
+/// Like `wrap`, but supplies `nat` as an explicit type argument for cases where `nat` is expected.
+/// This makes type inference work better and prevents errors about "type annotations needed"
+/// from `spec_literal_integer`
+fn wrap_nat(e: &mut Expr, reason: &str, expect_nat: bool) {
+    if expect_nat {
+        let span = e.span();
+        *e = Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
+            #vstd::prelude::force_pure_and_nonprophetic::<#vstd::prelude::nat>(#reason, #e)
+        });
+    } else {
+        wrap(e, reason)
+    }
+}
+
+fn disallow_prophecy_stmt(sm: &SM, ts: &mut TransitionStmt) {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v.iter_mut() {
-                disallow_prophecy_stmt(t);
+                disallow_prophecy_stmt(sm, t);
             }
         }
         TransitionStmt::Split(_, split_kind, es) => {
@@ -47,12 +61,15 @@ fn disallow_prophecy_stmt(ts: &mut TransitionStmt) {
                         }
                     }
                 }
-                SplitKind::Special(_f, op, _proof, _pat_opt) => {
-                    disallow_prophecy_op(op);
+                SplitKind::Special(f, op, _proof, _pat_opt) => {
+                    let expect_nat = sm.fields.iter().find(|f0| f0.name == *f).is_some_and(|f| {
+                        matches!(f.stype, ShardableType::Count | ShardableType::PersistentCount)
+                    });
+                    disallow_prophecy_op(op, expect_nat);
                 }
             }
             for e in es.iter_mut() {
-                disallow_prophecy_stmt(e);
+                disallow_prophecy_stmt(sm, e);
             }
         }
         TransitionStmt::Require(..) | TransitionStmt::Assert(..) => {}
@@ -79,7 +96,7 @@ fn disallow_prophecy_stmt(ts: &mut TransitionStmt) {
     }
 }
 
-fn disallow_prophecy_op(op: &mut SpecialOp) {
+fn disallow_prophecy_op(op: &mut SpecialOp, expect_nat: bool) {
     let reason = format!("`{}` statement", op.stmt.name());
     match &mut op.elt {
         MonoidElt::True | MonoidElt::OptionSome(None) => {}
@@ -87,7 +104,7 @@ fn disallow_prophecy_op(op: &mut SpecialOp) {
         | MonoidElt::SingletonMultiset(e)
         | MonoidElt::SingletonSet(e)
         | MonoidElt::General(e) => {
-            wrap(e, &reason);
+            wrap_nat(e, &reason, expect_nat);
         }
         MonoidElt::SingletonKV(k, v_opt) => {
             wrap(k, &reason);

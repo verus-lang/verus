@@ -11,7 +11,6 @@ use rustc_errors::{
 use rustc_hir::def::{CtorOf, DefKind, Res};
 use rustc_hir::def_id::DefId;
 use rustc_hir::{self as hir, HirId};
-use rustc_middle::bug;
 use rustc_middle::ty::fast_reject::{TreatParams, simplify_type};
 use rustc_middle::ty::print::{PrintPolyTraitRefExt as _, PrintTraitRefExt as _};
 use rustc_middle::ty::{
@@ -20,7 +19,7 @@ use rustc_middle::ty::{
 };
 use rustc_session::diagnostics::feature_err;
 use rustc_span::edit_distance::find_best_match_for_name;
-use rustc_span::{BytePos, DUMMY_SP, Ident, Span, Symbol, kw, sym};
+use rustc_span::{BytePos, DUMMY_SP, Ident, Span, Symbol, bug, kw, sym};
 use rustc_trait_selection::error_reporting::traits::report_dyn_incompatibility;
 use rustc_trait_selection::traits::{
     FulfillmentError, dyn_compatibility_violations_for_assoc_item,
@@ -97,7 +96,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
             // Do not suggest the other syntax if we are in trait impl:
             // the desugaring would contain an associated type constraint.
             if !is_impl {
-                err.span_suggestion(
+                err.span_suggestion_verbose(
                     span,
                     "use parenthetical notation instead",
                     fn_trait_to_string(self.tcx(), trait_segment, true),
@@ -120,7 +119,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
         assoc_tag: ty::AssocTag,
         assoc_ident: Ident,
         span: Span,
-        constraint: Option<&hir::AssocItemConstraint<'tcx>>,
+        constraint: Option<&hir::AssocItemConstraint<'_>>,
     ) -> ErrorGuaranteed
     where
         I: Iterator<Item = ty::PolyTraitRef<'tcx>>,
@@ -200,8 +199,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
             .visible_traits()
             .filter(|trait_def_id| {
                 let viz = tcx.visibility(*trait_def_id);
-                let def_id = self.item_def_id();
-                viz.is_accessible_from(def_id, tcx)
+                viz.is_accessible_from(self.mod_id(), tcx)
             })
             .collect();
 
@@ -316,7 +314,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                                 Applicability::MaybeIncorrect,
                             );
                         }
-                        return err.emit();
+                        return err.emit_err();
                     }
                 }
                 return self.dcx().emit_err(err);
@@ -349,7 +347,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
         assoc_tag: ty::AssocTag,
         ident: Ident,
         span: Span,
-        constraint: Option<&hir::AssocItemConstraint<'tcx>>,
+        constraint: Option<&hir::AssocItemConstraint<'_>>,
     ) -> ErrorGuaranteed {
         let tcx = self.tcx();
 
@@ -372,7 +370,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
             && let Some(hir_ty) = constraint.ty()
             && let ty = self.lower_ty(hir_ty)
             && (ty.is_enum() || ty.references_error())
-            && tcx.features().min_generic_const_args()
+            && tcx.features().gca_min_const_items()
         {
             Some(diagnostics::AssocKindMismatchWrapInBracesSugg {
                 lo: hir_ty.span.shrink_to_lo(),
@@ -415,7 +413,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
         assoc_tag: ty::AssocTag,
         assoc_ident: Ident,
         span: Span,
-        constraint: Option<&hir::AssocItemConstraint<'tcx>>,
+        constraint: Option<&hir::AssocItemConstraint<'_>>,
     ) -> ErrorGuaranteed {
         let tcx = self.tcx();
 
@@ -481,11 +479,10 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                                             &item_segment,
                                             trait_ref.args,
                                         );
-                                        ty::AliasTerm::new_from_def_id(
-                                            tcx,
-                                            assoc_item.def_id,
-                                            alias_args,
-                                        )
+                                        let kind = ty::AliasTermKind::ProjectionConst {
+                                            def_id: assoc_item.def_id,
+                                        };
+                                        ty::AliasTerm::new_from_args(tcx, kind, alias_args)
                                     });
 
                                     // FIXME(mgca): code duplication with other places we lower
@@ -537,14 +534,14 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                 where_bounds.join(",\n"),
             ));
         }
-        err.emit()
+        err.emit_err()
     }
 
     pub(crate) fn report_missing_self_ty_for_resolved_path(
         &self,
         trait_def_id: DefId,
         span: Span,
-        item_segment: &hir::PathSegment<'tcx>,
+        item_segment: &hir::PathSegment<'_>,
         assoc_tag: ty::AssocTag,
     ) -> ErrorGuaranteed {
         let tcx = self.tcx();
@@ -570,7 +567,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                 .map(|impl_def_id| tcx.impl_trait_header(impl_def_id))
                 .filter(|header| {
                     // Consider only accessible traits
-                    tcx.visibility(trait_def_id).is_accessible_from(self.item_def_id(), tcx)
+                    tcx.visibility(trait_def_id).is_accessible_from(self.mod_id(), tcx)
                         && header.polarity != ty::ImplPolarity::Negative
                 })
                 .map(|header| header.trait_ref.instantiate_identity().skip_norm_wip().self_ty())
@@ -684,7 +681,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                 err.span_label(sp, format!("variant `{ident}` not found here"));
             }
 
-            err.emit()
+            err.emit_err()
         } else if let Err(reported) = self_ty.error_reported() {
             reported
         } else {
@@ -816,7 +813,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                 }
             }
         }
-        err.emit()
+        err.emit_err()
     }
 
     pub(crate) fn report_ambiguous_inherent_assoc_item(
@@ -833,7 +830,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
         );
         err.span_label(name.span, format!("multiple `{name}` found"));
         self.note_ambiguous_inherent_assoc_item(&mut err, candidates, span);
-        err.emit()
+        err.emit_err()
     }
 
     // FIXME(fmease): Heavily adapted from `rustc_hir_typeck::method::suggest`. Deduplicate.
@@ -943,7 +940,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                 "the associated {assoc_tag_str} was found for\n{type_candidates}{additional_types}",
             ));
             add_def_label(&mut err);
-            return err.emit();
+            return err.emit_err();
         }
 
         let mut bound_spans: SortedMap<Span, Vec<String>> = Default::default();
@@ -1051,7 +1048,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
             err.span_label(span, msg);
         }
         add_def_label(&mut err);
-        err.emit()
+        err.emit_err()
     }
 
     /// If there are any missing associated items, emit an error instructing the user to provide
@@ -1103,7 +1100,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                     trait_ref.def_id(),
                     &violations,
                 )
-                .emit());
+                .emit_err());
             }
 
             names.entry(trait_ref).or_default().push(assoc_item.name());
@@ -1343,7 +1340,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
             }
         }
 
-        Err(err.emit())
+        Err(err.emit_err())
     }
 
     /// On ambiguous associated type, look for an associated function whose name matches the
@@ -1395,7 +1392,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                     name,
                     Applicability::MaybeIncorrect,
                 )
-                .emit())
+                .emit_err())
         } else {
             Ok(())
         }
@@ -1480,12 +1477,12 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
             err.span_label(span, format!("not allowed on {what}"));
         }
         generics_args_err_extend(self.tcx(), segments.into_iter(), &mut err, err_extend);
-        err.emit()
+        err.emit_err()
     }
 
     pub fn report_trait_object_addition_traits(
         &self,
-        regular_traits: &Vec<(ty::PolyTraitPredicate<'tcx>, SmallVec<[Span; 1]>)>,
+        regular_traits: &Vec<(ty::PolyTraitClause<'tcx>, SmallVec<[Span; 1]>)>,
     ) -> ErrorGuaranteed {
         // we use the last span to point at the traits themselves,
         // and all other preceding spans are trait alias expansions.
@@ -1523,7 +1520,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
              for more information on them, visit \
              <https://doc.rust-lang.org/reference/special-types-and-traits.html#auto-traits>",
         );
-        err.emit()
+        err.emit_err()
     }
 
     pub fn report_trait_object_with_no_traits(
@@ -1718,7 +1715,7 @@ pub fn prohibit_assoc_item_constraint(
         }
     }
 
-    err.emit()
+    err.emit_err()
 }
 
 pub(crate) fn fn_trait_to_string(
@@ -2007,12 +2004,12 @@ pub(super) struct AmbiguityBetweenVariantAndAssocItem<'tcx> {
     pub(super) mode: super::LowerTypeRelativePathMode,
 }
 
-impl<'a, 'tcx> rustc_errors::Diagnostic<'a, ()> for AmbiguityBetweenVariantAndAssocItem<'tcx> {
+impl<'a, 'tcx> rustc_errors::Diagnostic<'a> for AmbiguityBetweenVariantAndAssocItem<'tcx> {
     fn into_diag(
         self,
         dcx: rustc_errors::DiagCtxtHandle<'a>,
         level: rustc_errors::Level,
-    ) -> Diag<'a, ()> {
+    ) -> Diag<'a> {
         let Self {
             variant_def_id,
             item_def_id,
@@ -2038,7 +2035,7 @@ impl<'a, 'tcx> rustc_errors::Diagnostic<'a, ()> for AmbiguityBetweenVariantAndAs
         could_refer_to(DefKind::Variant, variant_def_id, "");
         could_refer_to(mode.def_kind_for_diagnostics(), item_def_id, " also");
 
-        lint.span_suggestion(
+        lint.span_suggestion_verbose(
             span,
             "use fully-qualified syntax",
             format!("<{} as {}>::{}", self_ty, tcx.item_name(bound_def_id), segment_ident),
@@ -2054,4 +2051,22 @@ fn assoc_tag_str(assoc_tag: ty::AssocTag) -> &'static str {
         ty::AssocTag::Const => "constant",
         ty::AssocTag::Type => "type",
     }
+}
+
+/// Computes the `pat.between(ty)` span for the "use `=`" suggestion on `let pat: ty`.
+/// Returns `None` if `pat` and `ty` are in incompatible macro contexts (e.g. `pat` is a
+/// metavariable from the call site while `ty` lives in the macro body), in which case no
+/// suggestion is emitted.
+pub(crate) fn eq_ctxt_suggestion_span(pat: Span, ty: Span) -> Option<Span> {
+    if let Some(ty2) = ty.find_ancestor_in_same_ctxt(pat)
+        && pat.hi() <= ty2.lo()
+    {
+        return Some(pat.between(ty2));
+    }
+    if let Some(pat2) = pat.find_ancestor_in_same_ctxt(ty)
+        && pat2.hi() <= ty.lo()
+    {
+        return Some(pat2.between(ty));
+    }
+    None
 }
