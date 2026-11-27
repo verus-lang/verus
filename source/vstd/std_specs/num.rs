@@ -534,6 +534,34 @@ macro_rules! num_specs {
                     }
                 )
                 no_unwind;
+
+            #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
+            pub assume_specification[<$iN>::saturating_add](x: $iN, y: $iN) -> $iN
+                returns (
+                    if x + y > <$iN>::MAX {
+                        <$iN>::MAX
+                    } else if x + y < <$iN>::MIN {
+                        <$iN>::MIN
+                    } else {
+                        (x + y) as $iN
+                    }
+                )
+                no_unwind;
+
+            #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
+            pub assume_specification[<$iN>::saturating_sub](x: $iN, y: $iN) -> $iN
+                returns (
+                    if x - y > <$iN>::MAX {
+                        <$iN>::MAX
+                    } else if x - y < <$iN>::MIN {
+                        <$iN>::MIN
+                    } else {
+                        (x - y) as $iN
+                    }
+                )
+                no_unwind;
         }
 
         }
