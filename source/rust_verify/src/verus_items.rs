@@ -72,7 +72,13 @@ pub(crate) fn def_id_to_stable_rust_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId)
                     return None;
                 }
                 one_impl_block_in_path = true;
-                let self_ty = tcx.type_of(tcx.parent(def_id)).skip_binder();
+                // The impl is not always tcx.parent(def_id): def_id may be nested deeper,
+                // such as in a module inside one of the impl's methods.
+                let mut impl_id = def_id;
+                while !matches!(tcx.def_kind(impl_id), rustc_hir::def::DefKind::Impl { .. }) {
+                    impl_id = tcx.parent(impl_id);
+                }
+                let self_ty = tcx.type_of(impl_id).skip_binder();
                 let path = ty_to_stable_string_partial(tcx, &self_ty)?;
                 segments.clear();
                 segments.push(path);
