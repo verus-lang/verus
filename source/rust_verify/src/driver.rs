@@ -180,7 +180,92 @@ pub struct Stats {
     pub time_compile: Duration,
 }
 
+pub const ERASE_DRIVER_ARG: &'static str = "--internal-erase-compile-driver";
+
+fn vstd_to_str(vstd: Vstd) -> &'static str {
+    match vstd {
+        Vstd::IsVstd => "IsVstd",
+        Vstd::NoVstd => "NoVstd",
+        Vstd::Imported => "Imported",
+        Vstd::IsCore => "IsCore",
+        Vstd::ImportedViaCore => "ImportedViaCore",
+    }
+}
+
+/// The environment variable that names the file in which the subprocess spawned by
+/// `run_with_erase_macro_compile` records the path of the dep-info file it wrote, if any
+const ERASE_DEP_INFO_OUT_VAR: &str = "VERUS_ERASE_DEP_INFO_OUT";
+
+/// Entry point of the subprocess spawned by `run_with_erase_macro_compile`:
+/// `verus ERASE_DRIVER_ARG <do_compile 0|1> <vstd> <rustc args...>`.
+pub fn erase_compile_driver(args: &[String]) -> ! {
+    let do_compile = args[0] == "1";
+    let vstd = match args[1].as_str() {
+        "IsVstd" => Vstd::IsVstd,
+        "NoVstd" => Vstd::NoVstd,
+        "Imported" => Vstd::Imported,
+        "IsCore" => Vstd::IsCore,
+        "ImportedViaCore" => Vstd::ImportedViaCore,
+        other => panic!("erase_compile_driver: unknown vstd mode {other}"),
+    };
+    let rustc_args = args[2..].to_vec();
+    let r = run_with_erase_macro_compile_in_process(rustc_args, do_compile, vstd);
+    if let (Ok(Some(dep_info)), Ok(out)) = (&r, std::env::var(ERASE_DEP_INFO_OUT_VAR)) {
+        if std::fs::write(&out, dep_info.as_os_str().as_encoded_bytes()).is_err() {
+            std::process::exit(1);
+        }
+    }
+    std::process::exit(if r.is_ok() { 0 } else { 1 })
+}
+
+/// The erased compilation re-expands every macro. Proc macros may keep global state between
+/// invocations (enum_dispatch records trait and enum definitions, for example), and in the
+/// process that just ran the verification pass that state is no longer fresh, so the second
+/// expansion could differ from the first. Running the pass in a new process gives it the
+/// same starting state as the verification pass (and as a plain `rustc` run).
+/// `VERUS_ERASE_IN_PROCESS=1` restores the old in-process behaviour.
 pub(crate) fn run_with_erase_macro_compile(
+    rustc_args: Vec<String>,
+    do_compile: bool,
+    vstd: Vstd,
+) -> Result<Option<std::path::PathBuf>, ()> {
+    if std::env::var("VERUS_ERASE_IN_PROCESS").as_deref() == Ok("1") {
+        return run_with_erase_macro_compile_in_process(rustc_args, do_compile, vstd);
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return run_with_erase_macro_compile_in_process(rustc_args, do_compile, vstd);
+    };
+    // the subprocess writes the path of its dep-info file (if it wrote one) to this file
+    let dep_info_out = std::env::temp_dir().join(format!(
+        "verus-erase-dep-info-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let status = std::process::Command::new(exe)
+        .arg(ERASE_DRIVER_ARG)
+        .arg(if do_compile { "1" } else { "0" })
+        .arg(vstd_to_str(vstd))
+        .args(&rustc_args)
+        .env(ERASE_DEP_INFO_OUT_VAR, &dep_info_out)
+        .status();
+    let dep_info = std::fs::read(&dep_info_out).ok();
+    let _ = std::fs::remove_file(&dep_info_out);
+    match status {
+        Ok(s) if s.success() => Ok(dep_info.map(|bytes| {
+            // SAFETY: the bytes were written by `erase_compile_driver` with `as_encoded_bytes`,
+            // on the same platform
+            std::path::PathBuf::from(unsafe {
+                std::ffi::OsString::from_encoded_bytes_unchecked(bytes)
+            })
+        })),
+        _ => Err(()),
+    }
+}
+
+fn run_with_erase_macro_compile_in_process(
     mut rustc_args: Vec<String>,
     do_compile: bool,
     vstd: Vstd,
