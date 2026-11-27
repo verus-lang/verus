@@ -715,9 +715,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 }
             }
             if let Some(tr) = ctxt.trait_map.get(&b) {
-                // For assoc_type_trait_bounds_to_air, reach typ_bounds and assoc_typs_bounds
+                // For assoc_type_trait_bounds_to_air, reach typ_bounds and the assoc types' bounds
                 traverse_generic_bounds(ctxt, state, &tr.x.typ_bounds, true);
-                traverse_generic_bounds(ctxt, state, &tr.x.assoc_typs_bounds, true);
+                for assoc_typ in tr.x.assoc_typs.iter() {
+                    traverse_generic_bounds(ctxt, state, &assoc_typ.typ_bounds, true);
+                    traverse_generic_bounds(ctxt, state, &assoc_typ.item_bounds, true);
+                }
             }
             continue;
         }
@@ -741,10 +744,10 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             for t in typs {
                 reach_assoc_type_impl(ctxt, state, &(t.clone(), a.clone()));
             }
-            // assoc_type_trait_bounds_to_air needs typ_bounds and assoc_typs_bounds, so reach them.
+            // assoc_type_trait_bounds_to_air needs all of the trait's bounds, so reach them.
             // We could be more precise and reach only the bounds relevant to a,
             // but this is probably not worth the complexity.
-            // Instead, just have reach_bound_trait reach all of typ_bounds and assoc_typs_bounds.
+            // Instead, just have reach_bound_trait reach all of the trait's bounds.
             reach_bound_trait(ctxt, state, &a.0);
             continue;
         }
@@ -752,6 +755,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if let Some(assoc_impls) = ctxt.assoc_type_impl_map.get(&assoc_group) {
                 for assoc_impl in assoc_impls {
                     traverse_generic_bounds(ctxt, state, &assoc_impl.x.typ_bounds, false);
+                    traverse_generic_bounds(ctxt, state, &assoc_impl.x.assoc_typ_bounds, false);
                     crate::ast_visitor::map_assoc_type_impl_visitor_env(&assoc_impl, state, &ft)
                         .unwrap();
                 }
@@ -1326,22 +1330,18 @@ pub fn prune_krate_for_module_or_krate(
 
     for tr in krate.traits.iter() {
         let traitx = tr.x.clone();
+        // Reaching an associated type also reaches the trait as a bound trait,
+        // so the bounds of every retained associated type have been traversed
         let assoc_typs = traitx
             .assoc_typs
             .iter()
-            .filter(|a| state.reached_assoc_type_decls.contains(&traitx.prune_name(a)))
+            .filter(|assoc_typ| {
+                state.reached_assoc_type_decls.contains(&traitx.prune_name(&assoc_typ.name))
+            })
             .cloned()
             .collect();
         let assoc_typs = Arc::new(assoc_typs);
-        let assoc_typs_bounds = if state.reached_bound_traits.contains(&tr.x.name) {
-            traitx.assoc_typs_bounds
-        } else {
-            Arc::new(vec![])
-        };
-        traits.push(Spanned::new(
-            tr.span.clone(),
-            TraitX { assoc_typs, assoc_typs_bounds, ..traitx },
-        ));
+        traits.push(Spanned::new(tr.span.clone(), TraitX { assoc_typs, ..traitx }));
     }
 
     let modules: Vec<Module> = krate

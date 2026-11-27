@@ -253,16 +253,19 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
                 trait_typ_args: trait_typ_args1,
                 trait_path: trait_path1,
                 name: name1,
+                assoc_typ_args: assoc_typ_args1,
             },
             TypX::Projection {
                 trait_typ_args: trait_typ_args2,
                 trait_path: trait_path2,
                 name: name2,
+                assoc_typ_args: assoc_typ_args2,
             },
         ) => {
             n_types_equal(trait_typ_args1, trait_typ_args2)
                 && trait_path1 == trait_path2
                 && name1 == name2
+                && n_types_equal(assoc_typ_args1, assoc_typ_args2)
         }
         (TypX::TypeId, TypX::TypeId) => true,
         (TypX::ConstInt(i1), TypX::ConstInt(i2)) => i1 == i2,
@@ -354,6 +357,16 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
             _,
         ) => false,
     }
+}
+
+pub fn n_generic_bounds_equal(bs1: &GenericBounds, bs2: &GenericBounds) -> bool {
+    bs1.len() == bs2.len()
+        && bs1.iter().zip(bs2.iter()).all(|(b1, b2)| generic_bounds_equal(b1, b2))
+}
+
+pub fn assoc_typ_generics_equal(assoc_typ1: &AssocTypDecl, assoc_typ2: &AssocTypDecl) -> bool {
+    assoc_typ1.typ_params == assoc_typ2.typ_params
+        && n_generic_bounds_equal(&assoc_typ1.typ_bounds, &assoc_typ2.typ_bounds)
 }
 
 pub fn undecorate_typ(typ: &Typ) -> Typ {
@@ -913,6 +926,28 @@ impl TraitX {
         }
         typ_params
     }
+
+    /// typ_bounds and the bounds declared by the associated types
+    pub fn all_bounds(&self) -> Vec<GenericBound> {
+        let mut bounds: Vec<GenericBound> = Vec::new();
+        bounds.extend(self.typ_bounds.iter().cloned());
+        for assoc_typ in self.assoc_typs.iter() {
+            bounds.extend(assoc_typ.typ_bounds.iter().cloned());
+            bounds.extend(assoc_typ.item_bounds.iter().cloned());
+        }
+        bounds
+    }
+
+    /// The item bounds of the associated types that have no type parameters of their own
+    pub fn non_generic_assoc_typs_bounds(&self) -> GenericBounds {
+        let mut bounds: Vec<GenericBound> = Vec::new();
+        for assoc_typ in self.assoc_typs.iter() {
+            if assoc_typ.typ_params.len() == 0 {
+                bounds.extend(assoc_typ.item_bounds.iter().cloned());
+            }
+        }
+        Arc::new(bounds)
+    }
 }
 
 pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
@@ -1138,13 +1173,18 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         }
         TypX::Boxed(typ) => typ_to_diagnostic_str(typ),
         TypX::TypParam(ident) => (&**ident).into(),
-        TypX::Projection { trait_typ_args, trait_path, name } => {
+        TypX::Projection { trait_typ_args, trait_path, name, assoc_typ_args } => {
             let self_typ = typ_to_diagnostic_str(&trait_typ_args[0]);
             format!(
-                "<{self_typ} as {}{}>::{name}",
+                "<{self_typ} as {}{}>::{name}{}",
                 path_as_friendly_rust_name(trait_path),
                 if trait_typ_args.len() > 1 {
                     format!("<{}>", typs_to_comma_separated_str(&trait_typ_args[1..]))
+                } else {
+                    format!("")
+                },
+                if assoc_typ_args.len() > 0 {
+                    format!("<{}>", typs_to_comma_separated_str(assoc_typ_args))
                 } else {
                     format!("")
                 }

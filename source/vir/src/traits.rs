@@ -1,8 +1,8 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, CrateId, Expr, ExprX, Fun, Function, FunctionKind, FunctionX,
-    GenericBound, GenericBoundX, GenericBounds, Ident, Idents, ImplPath, ImplPaths, Krate, Mode,
-    Path, Place, Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitImplX, TraitX, Typ, TypX,
-    Typs, VirErr, Visibility,
+    AssocTypDecl, CallTarget, CallTargetKind, CrateId, Expr, ExprX, Fun, Function, FunctionKind,
+    FunctionX, GenericBound, GenericBoundX, GenericBounds, Ident, Idents, ImplPath, ImplPaths,
+    Krate, Mode, Path, Place, Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitImplX,
+    TraitX, Typ, TypX, Typs, VirErr, Visibility,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -372,11 +372,14 @@ pub fn rewrite_one_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> 
             let fun = rewrite_fun(from_path, to_path, fun);
             Arc::new(TypX::FnDef(fun, typs.clone(), None))
         }
-        TypX::Projection { trait_typ_args, trait_path, name } if trait_path == from_path => {
+        TypX::Projection { trait_typ_args, trait_path, name, assoc_typ_args }
+            if trait_path == from_path =>
+        {
             Arc::new(TypX::Projection {
                 trait_typ_args: trait_typ_args.clone(),
                 trait_path: to_path.clone(),
                 name: name.clone(),
+                assoc_typ_args: assoc_typ_args.clone(),
             })
         }
         _ => typ.clone(),
@@ -449,7 +452,9 @@ pub fn rewrite_external_bounds(
             GenericBoundX::TypEquality(path, ts, x, t)
                 if path == to_path
                     && (match &**t {
-                        TypX::Projection { trait_typ_args, trait_path, name } => {
+                        // Generic associated types are rejected in external trait specifications,
+                        // so the projection has no associated type arguments to compare
+                        TypX::Projection { trait_typ_args, trait_path, name, .. } => {
                             name == x
                                 && crate::ast_util::n_types_equal(trait_typ_args, ts)
                                 && trait_path == from_path
@@ -1244,9 +1249,10 @@ pub fn trait_decls_to_air(ctx: &Ctx, krate: &crate::sst::KrateSst) -> Commands {
 pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
     // forall typ_params. #[trigger] tr_bound%T(typ_params) ==> typ_bounds
     // Example:
-    //   trait T<A: U> where Self: Q<A> {}
+    //   trait T<A: U> where Self: Q<A> { type X<V: B>: D<A>; }
     // -->
     //   forall Self, A. tr_bound%T(Self, A) ==> tr_bound%U(A) && tr_bound%Q(Self, A)
+    //     && (forall V. tr_bound%B(V) ==> tr_bound%D(#[trigger] proj%T./X(Self, A, V), A))
     let mut commands: Vec<Command> = Vec::new();
     for tr in traits {
         let typ_params = tr.x.typ_param_names_with_self();
@@ -1255,9 +1261,10 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
         if let Some(tr_bound) =
             trait_bound_to_air(ctx, &TraitId::Path(tr.x.name.clone()), &Arc::new(typ_args))
         {
-            let all_bounds =
-                tr.x.typ_bounds.iter().chain(tr.x.assoc_typs_bounds.iter()).cloned().collect();
-            let typ_bounds = trait_bounds_to_air(ctx, &Arc::new(all_bounds));
+            let mut typ_bounds = trait_bounds_to_air(ctx, &tr.x.typ_bounds);
+            for assoc_typ in tr.x.assoc_typs.iter() {
+                typ_bounds.extend(assoc_typ_bounds_to_air(ctx, tr, assoc_typ));
+            }
             let qname = format!(
                 "{}_{}",
                 path_as_friendly_rust_name(&tr.x.name),
@@ -1279,6 +1286,75 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
         }
     }
     Arc::new(commands)
+}
+
+fn assoc_typ_bounds_to_air(ctx: &Ctx, tr: &Trait, assoc_typ: &AssocTypDecl) -> Vec<air::ast::Expr> {
+    // The bounds of an associated type without type parameters join the outer conjunction directly.
+    // The bounds of a generic associated type quantify over its own type parameters,
+    // so they get a forall of their own, nested in the trait's bound axiom.
+    // Example:
+    //   trait T<A> { type X<U: B>: D<A>; }
+    // -->
+    //   (axiom (forall ((Self%&. Dcr) (Self%& Type) (A&. Dcr) (A& Type)) (!
+    //      (=>
+    //       (tr_bound%T. Self%&. Self%& A&. A&)
+    //       (forall ((U&. Dcr) (U& Type)) (!
+    //          (=>
+    //           (tr_bound%B. U&. U&)
+    //           (tr_bound%D.
+    //            (proj%%T./X Self%&. Self%& A&. A& U&. U&)
+    //            (proj%T./X Self%&. Self%& A&. A& U&. U&)
+    //            A&. A&)
+    //          )
+    //          :pattern ((proj%%T./X Self%&. Self%& A&. A& U&. U&))
+    //          :pattern ((proj%T./X Self%&. Self%& A&. A& U&. U&))
+    //       ))
+    //      )
+    //      :pattern ((tr_bound%T. Self%&. Self%& A&. A&))
+    //   )))
+    use crate::ast_util::LowerUniqueVar;
+    use air::ast::{BindX, Quant};
+    use air::ast_util::ident_binder;
+    let item_bounds = trait_bounds_to_air(ctx, &assoc_typ.item_bounds);
+    if assoc_typ.typ_params.len() == 0 || item_bounds.len() == 0 {
+        return item_bounds;
+    }
+    let typ_params = tr.x.typ_param_names_with_self();
+    let trait_typ_args = typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
+    let assoc_typ_args =
+        assoc_typ.typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
+    let projection = Arc::new(TypX::Projection {
+        trait_typ_args: Arc::new(trait_typ_args),
+        trait_path: tr.x.name.clone(),
+        name: assoc_typ.name.clone(),
+        assoc_typ_args: Arc::new(assoc_typ_args),
+    });
+    // the trait's type parameters are bound by the enclosing forall
+    let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
+    for typ_param in assoc_typ.typ_params.iter() {
+        for (x, t) in crate::def::suffix_typ_param_ids_types(typ_param) {
+            binders.push(ident_binder(&x.lower(), &str_typ(t)));
+        }
+    }
+    // one trigger for each of the decorated and undecorated projections
+    let mut triggers: Vec<air::ast::Trigger> = Vec::new();
+    for id in typ_to_ids(ctx, &projection) {
+        triggers.push(Arc::new(vec![id]));
+    }
+    let qid = crate::def::new_internal_qid(
+        ctx,
+        format!(
+            "{}_{}_{}",
+            path_as_friendly_rust_name(&tr.x.name),
+            assoc_typ.name,
+            crate::def::QID_ASSOC_TYPE_BOUND
+        ),
+    );
+    let bind = Arc::new(BindX::Quant(Quant::Forall, Arc::new(binders), Arc::new(triggers), qid));
+    let typ_bounds = trait_bounds_to_air(ctx, &assoc_typ.typ_bounds);
+    let imply =
+        mk_implies(&air::ast_util::mk_and(&typ_bounds), &air::ast_util::mk_and(&item_bounds));
+    vec![mk_bind_expr(&bind, &imply)]
 }
 
 pub(crate) fn dyn_spec_fn_axiom(
@@ -1453,7 +1529,9 @@ pub(crate) fn fix_missing_trigger_params(
             candidates.iter().find(|(_, a, _)| !candidate_free_vars.contains(a))
         {
             let (trait_path, trait_typ_args, name) = g.clone();
-            let a_typ = Arc::new(TypX::Projection { trait_typ_args, trait_path, name });
+            let assoc_typ_args = Arc::new(vec![]);
+            let a_typ =
+                Arc::new(TypX::Projection { trait_typ_args, trait_path, name, assoc_typ_args });
 
             // Substitute to eliminate A
             Arc::make_mut(typ_params).retain(|p| p != a);
@@ -1622,7 +1700,7 @@ pub fn merge_external_traits(
     krate: &Krate,
     other_crates: &[Krate],
 ) -> Result<MergedTraits, VirErr> {
-    use crate::ast_util::generic_bounds_equal;
+    use crate::ast_util::{assoc_typ_generics_equal, generic_bounds_equal};
     use crate::well_formed::trait_conflict_error;
     let mut traits: Vec<Trait> = Vec::new();
     let mut prev_trait_index: HashMap<Path, usize> = HashMap::new();
@@ -1638,7 +1716,6 @@ pub fn merge_external_traits(
                     typ_params,
                     typ_bounds,
                     assoc_typs,
-                    assoc_typs_bounds,
                     mut methods,
                     is_unsafe,
                     dyn_compatible,
@@ -1653,7 +1730,27 @@ pub fn merge_external_traits(
                 }
                 let mut assoc_typs = (*assoc_typs).clone();
                 for assoc_typ in t.x.assoc_typs.iter() {
-                    if !assoc_typs.contains(assoc_typ) {
+                    if let Some(prev_assoc_typ) =
+                        assoc_typs.iter_mut().find(|prev| prev.name == assoc_typ.name)
+                    {
+                        if !assoc_typ_generics_equal(prev_assoc_typ, assoc_typ) {
+                            return Err(trait_conflict_error(
+                                prev,
+                                t,
+                                &format!(
+                                    "mismatched generics for associated type {}",
+                                    prev_assoc_typ.name
+                                ),
+                            ));
+                        }
+                        let mut item_bounds = (*prev_assoc_typ.item_bounds).clone();
+                        for b in assoc_typ.item_bounds.iter() {
+                            if !item_bounds.iter().any(|b2| generic_bounds_equal(b, b2)) {
+                                item_bounds.push(b.clone());
+                            }
+                        }
+                        Arc::make_mut(prev_assoc_typ).item_bounds = Arc::new(item_bounds);
+                    } else {
                         assoc_typs.push(assoc_typ.clone());
                     }
                 }
@@ -1665,13 +1762,6 @@ pub fn merge_external_traits(
                     }
                 }
                 let typ_bounds = Arc::new(typ_bounds);
-                let mut assoc_typs_bounds = (*assoc_typs_bounds).clone();
-                for b in t.x.assoc_typs_bounds.iter() {
-                    if !assoc_typs_bounds.iter().any(|b2| generic_bounds_equal(b, b2)) {
-                        assoc_typs_bounds.push(b.clone());
-                    }
-                }
-                let assoc_typs_bounds = Arc::new(assoc_typs_bounds);
                 for m in t.x.methods.iter() {
                     if methods.iter().any(|m2| m == m2) {
                         return Err(trait_conflict_error(
@@ -1692,7 +1782,6 @@ pub fn merge_external_traits(
                     typ_params,
                     typ_bounds,
                     assoc_typs,
-                    assoc_typs_bounds,
                     methods,
                     is_unsafe,
                     dyn_compatible: dyn_compatible.clone(),
@@ -1991,6 +2080,14 @@ fn compute_dyn_compatibility(
                     }
                 }
             }
+        }
+    }
+    for assoc_typ in tr.x.assoc_typs.iter() {
+        if assoc_typ.typ_params.len() != 0 {
+            // rustc allows these only with `where Self: Sized`, which dyn T can never satisfy
+            let reason =
+                format!("generic associated type {} is not supported with dyn", assoc_typ.name);
+            return Arc::new(DynCompatible::Reject { reason });
         }
     }
     'method: for fun in tr.x.methods.iter() {

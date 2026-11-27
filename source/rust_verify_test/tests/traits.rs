@@ -4959,6 +4959,34 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // an impl of a trait outside verus! whose associated type has a type parameter
+    #[test] test_gat_impl_no_panic code! {
+        use vstd::prelude::*;
+        pub trait T {
+            type X<U>;
+        }
+        verus! {
+            pub struct S;
+            impl T for S {
+                type X<U> = Vec<U>;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_lifetime_gat_impl_where_clause verus_code! {
+        trait T {
+            type X<'a> where Self: 'a;
+        }
+        struct S;
+        impl T for S {
+            type X<'a> = &'a u8 where Self: 'a;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] renamed_method_typ_param_issue3117 verus_code! {
         trait Tag {
             spec fn tag() -> int;

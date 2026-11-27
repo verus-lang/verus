@@ -387,9 +387,9 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
         TypX::TypParam(x) => {
             suffix_typ_param_ids(x).iter().map(|x| ident_var(&x.lower())).collect()
         }
-        TypX::Projection { trait_typ_args, trait_path, name } => {
+        TypX::Projection { trait_typ_args, trait_path, name, assoc_typ_args } => {
             let mut args: Vec<Expr> = Vec::new();
-            for t in trait_typ_args.iter() {
+            for t in trait_typ_args.iter().chain(assoc_typ_args.iter()) {
                 args.extend(typ_to_ids(ctx, t));
             }
             let pd = ident_apply(&ctx.name_ctxt.projection(true, trait_path, name), &args);

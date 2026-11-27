@@ -10,7 +10,10 @@ use crate::util::{err_span, err_span_vec, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::{ConstItemRhs, ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
-use rustc_middle::ty::{AssocKind, GenericArgKind, PseudoCanonicalInput, TypingEnv};
+use rustc_middle::ty::{
+    AssocKind, Clause, GenericArgKind, GenericArgs, GenericArgsRef, ParamEnv, PseudoCanonicalInput,
+    TyCtxt, TypingEnv, TypingMode,
+};
 use rustc_span::def_id::DefId;
 use rustc_span::hygiene::MacroKind;
 use rustc_span::{ExpnKind, Span, sym};
@@ -165,6 +168,7 @@ fn translate_assoc_type<'tcx>(
     impll_generics_span: Span,
     impll_generics: Option<&'tcx rustc_hir::Generics<'tcx>>,
     impl_item_span: Span,
+    impl_item_generics: Option<&'tcx rustc_hir::Generics<'tcx>>,
     impl_item_id: DefId,
     impl_def_id: DefId,
     trait_path: Path,
@@ -182,31 +186,35 @@ fn translate_assoc_type<'tcx>(
         impl_def_id,
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
+    crate::rust_to_vir_base::check_assoc_type_generics(ctxt.tcx, impl_item_id, impl_item_span)?;
+    let (assoc_typ_params, assoc_typ_bounds) =
+        crate::rust_to_vir_base::check_generics_bounds_no_polarity(
+            ctxt.tcx,
+            &ctxt.verus_items,
+            impl_item_span,
+            impl_item_generics,
+            impl_item_id,
+            Some(&mut *ctxt.diagnostics.borrow_mut()),
+        )?;
 
     let ai = ctxt.tcx.associated_item(impl_item_id);
     let assoc_def_id = ai.trait_item_def_id().unwrap();
     let bounds = ctxt.tcx.item_bounds(assoc_def_id);
-    let assoc_generics = ctxt.tcx.generics_of(assoc_def_id);
-    let mut assoc_args: Vec<rustc_middle::ty::GenericArg> = ctxt
+    let trait_args = ctxt
         .tcx
         .normalize_erasing_regions(
             TypingEnv::post_analysis(ctxt.tcx, impl_item_id),
             trait_ref.instantiate_identity(),
         )
-        .args
-        .into_iter()
-        .collect();
-    for p in &assoc_generics.own_params {
-        let e = rustc_middle::ty::EarlyParamRegion {
-            //def_id: p.def_id,
-            index: assoc_generics.param_def_id_to_index(ctxt.tcx, p.def_id).expect("param_def"),
-            name: p.name,
-        };
-        let r = rustc_middle::ty::Region::new_early_param(ctxt.tcx, e);
-        assoc_args.push(rustc_middle::ty::GenericArg::from(r));
-    }
-    let inst_bounds = bounds.instantiate(ctxt.tcx, &*assoc_args);
-    let typing_env = TypingEnv::post_analysis(ctxt.tcx, impl_item_id);
+        .args;
+    // The trait's arguments followed by the impl item's own parameters
+    let assoc_args = GenericArgs::identity_for_item(ctxt.tcx, impl_item_id).rebase_onto(
+        ctxt.tcx,
+        impl_def_id,
+        trait_args,
+    );
+    let inst_bounds = bounds.instantiate(ctxt.tcx, assoc_args);
+    let typing_env = assoc_type_impl_typing_env(ctxt.tcx, impl_item_id, assoc_def_id, assoc_args);
     let inst_bounds = ctxt.tcx.normalize_erasing_regions(typing_env, inst_bounds);
 
     // Include the instantiated bounds of selected impls, not just the impls themselves.
@@ -224,12 +232,30 @@ fn translate_assoc_type<'tcx>(
         impl_path: impl_path.clone(),
         typ_params,
         typ_bounds,
+        assoc_typ_params,
+        assoc_typ_bounds,
         trait_path,
         trait_typ_args,
         typ,
         impl_paths,
     };
     Ok(ctxt.spanned_new(impl_item_span, assocx))
+}
+
+/// The impl item's environment plus the trait's where clauses on the associated type's own
+/// parameters, so that `<S as T>::X<A>` also normalizes for an impl that omits them
+fn assoc_type_impl_typing_env<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    impl_item_id: DefId,
+    assoc_def_id: DefId,
+    assoc_args: GenericArgsRef<'tcx>,
+) -> TypingEnv<'tcx> {
+    let typing_env = TypingEnv::post_analysis(tcx, impl_item_id);
+    let mut clauses: Vec<Clause<'tcx>> = typing_env.param_env.caller_bounds().collect();
+    for (clause, _) in tcx.clauses_of(assoc_def_id).instantiate_own(tcx, assoc_args) {
+        clauses.push(clause.skip_norm_wip());
+    }
+    TypingEnv::new(ParamEnv::new(tcx, clauses), TypingMode::PostAnalysis)
 }
 
 /// A trait default method declared with `#[verus_spec(with ...)]` becomes two trait methods:
@@ -714,11 +740,6 @@ pub(crate) fn translate_impl_item<'tcx>(
             }
         }
         AssocKind::Type { .. } => {
-            if impl_item.generics.predicates.len() != 0
-                || impl_item.generics.has_where_clause_predicates
-            {
-                unsupported_err!(item.span, "generic associated types", impl_item_id);
-            }
             if let ImplItemKind::Type(_ty) = impl_item.kind {
                 if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
                     let name = Arc::new(impl_item.ident.to_string());
@@ -728,6 +749,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                         impll.generics.span,
                         Some(&impll.generics),
                         impl_item.span,
+                        Some(&impl_item.generics),
                         impl_item.owner_id.to_def_id(),
                         impl_def_id,
                         trait_path,
@@ -930,7 +952,10 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                 match assoc_item.kind {
                     rustc_middle::ty::AssocKind::Type { .. } => {
                         let name = Arc::new(assoc_item.ident(tcx).to_string());
-                        if !trait_map[&trait_path].iter().any(|t| t.x.assoc_typs.contains(&name)) {
+                        if !trait_map[&trait_path]
+                            .iter()
+                            .any(|t| t.x.assoc_typs.iter().any(|assoc_typ| assoc_typ.name == name))
+                        {
                             continue;
                         }
                         if !crate::rust_to_vir_base::mid_ty_filter_for_external_impls(
@@ -946,6 +971,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                             span,
                             None,
                             span,
+                            None,
                             assoc_item.def_id,
                             impl_def_id,
                             trait_path.clone(),

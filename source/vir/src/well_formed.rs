@@ -211,9 +211,14 @@ fn check_one_typ(
             }
             Ok(())
         }
-        TypX::Projection { trait_typ_args: _, trait_path, name } => {
+        TypX::Projection { trait_typ_args: _, trait_path, name, assoc_typ_args } => {
             if let Some(tr) = ctxt.lookup.merged_traits.trait_map.get(trait_path) {
-                if tr.x.assoc_typs.iter().any(|n| n == name) {
+                if let Some(assoc_typ) =
+                    tr.x.assoc_typs.iter().find(|assoc_typ| &assoc_typ.name == name)
+                {
+                    if assoc_typ.typ_params.len() != assoc_typ_args.len() {
+                        internal_err!(span.clone(), "wrong number of associated type arguments");
+                    }
                     Ok(())
                 } else {
                     Err(error(
