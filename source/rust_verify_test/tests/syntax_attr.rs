@@ -2259,3 +2259,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_proof_with_unbound_ghost_output_used code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(with Ghost(g): Ghost<u8> -> out: Ghost<u8>)]
+        fn two(x: u8) -> u8 { proof_with!{|= Ghost(g)} x }
+
+        #[verus_spec]
+        fn call() {
+            let s = { proof_with!{Ghost(5u8)} two(9) };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "a call with unbound ghost outputs can only be returned or discarded")
+}

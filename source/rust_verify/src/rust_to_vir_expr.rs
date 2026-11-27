@@ -1440,11 +1440,37 @@ pub(crate) fn check_proof_with_callee<'tcx>(
         }
         break;
     }
-    let compiled_args = compiled_args.fold_with(&mut MapClosureTypes { tcx, map });
+    let mut map_closures = MapClosureTypes { tcx, map };
+    let compiled_args = compiled_args.fold_with(&mut map_closures);
     if compiled_args != ver_args {
         return err(format!(
             "in the compiled program, this call to `{expected}` has different type arguments than in the verified program"
         ));
+    }
+
+    let ver_ty = bctx.types.expr_ty(verified);
+    if ver_ty != bctx.types.expr_ty(compiled_call).fold_with(&mut map_closures) {
+        let mut id = marker.hir_id;
+        let discarded_or_returned = loop {
+            let parent = tcx.parent_hir_id(id);
+            match tcx.hir_node(parent) {
+                Node::Stmt(Stmt { kind: StmtKind::Semi(_), .. }) => break true,
+                Node::Block(_) | Node::Expr(Expr { kind: ExprKind::Block(..), .. }) => {}
+                node if node.fn_sig().is_some() => {
+                    let sig = tcx.fn_sig(parent.owner).skip_binder();
+                    let ret = tcx.instantiate_bound_regions_with_erased(sig).output();
+                    break tcx.erase_and_anonymize_regions(ret) == ver_ty;
+                }
+                _ => break false,
+            }
+            id = parent;
+        };
+        if !discarded_or_returned {
+            return err_span(
+                marker.span,
+                "a call with unbound ghost outputs can only be returned or discarded",
+            );
+        }
     }
     Ok(())
 }
