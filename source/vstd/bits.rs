@@ -8,6 +8,7 @@ use super::arithmetic::power::pow;
 #[cfg(verus_keep_ghost)]
 use super::arithmetic::power2::{
     pow2,
+    is_pow2,
     lemma_pow2_unfold,
     lemma_pow2_adds,
     lemma_pow2_pos,
@@ -46,6 +47,48 @@ pub proof fn lemma_unsigned_int_max_is_pow2_minus_1()
     assert(0x1_0000_0000 == pow2(32)) by (compute);
     assert(0x1_0000_0000_0000_0000 == pow2(64)) by (compute);
     assert(0x1_0000_0000_0000_0000_0000_0000_0000_0000 == pow2(128)) by (compute);
+}
+
+/// The number of 1 bits in the binary representation of `n`.
+pub open spec fn nat_count_ones(n: nat) -> nat
+    decreases n,
+{
+    if n < 2 {
+        n
+    } else {
+        n % 2 + nat_count_ones(n / 2)
+    }
+}
+
+/// Proof that a positive number has at least one 1 bit.
+pub proof fn lemma_nat_count_ones_pos(n: nat)
+    requires
+        n >= 1,
+    ensures
+        nat_count_ones(n) >= 1,
+    decreases n,
+{
+    if n >= 2 {
+        lemma_nat_count_ones_pos(n / 2);
+    }
+}
+
+/// Proof that `n` has exactly one 1 bit if and only if `n` is a power of 2.
+pub broadcast proof fn lemma_nat_count_ones_is_pow2(n: nat)
+    ensures
+        #![trigger nat_count_ones(n)]
+        #![trigger is_pow2(n as int)]
+        nat_count_ones(n) == 1 <==> is_pow2(n as int),
+    decreases n,
+{
+    reveal(is_pow2);
+    if n >= 2 {
+        assert((n / 2) as int == (n as int) / 2);
+        lemma_nat_count_ones_is_pow2(n / 2);
+        if n % 2 == 1 {
+            lemma_nat_count_ones_pos(n / 2);
+        }
+    }
 }
 
 } // verus!

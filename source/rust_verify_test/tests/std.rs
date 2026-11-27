@@ -2931,7 +2931,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] count_ones_values verus_code! {
         use vstd::prelude::*;
-        use vstd::std_specs::bits::nat_count_ones;
+        use vstd::bits::nat_count_ones;
 
         fn test_small_values() {
             assert(1u32.count_ones() == 1);

@@ -5,7 +5,7 @@ verus! {
 #[cfg(verus_keep_ghost)]
 use super::super::arithmetic::power2::{pow2, lemma_pow2_unfold, lemma2_to64};
 #[cfg(verus_keep_ghost)]
-use super::super::bits::lemma_unsigned_int_max_is_pow2_minus_1;
+use super::super::bits::{lemma_unsigned_int_max_is_pow2_minus_1, nat_count_ones};
 #[cfg(verus_keep_ghost)]
 use super::super::layout::unsigned_int_max_values;
 
@@ -1016,17 +1016,6 @@ pub broadcast proof fn axiom_usize_leading_zeros(i: usize)
 
 ///////////////////////////
 /////////////////////////// count_ones for all unsigned types
-/// The number of 1 bits in the binary representation of `n`.
-pub open spec fn nat_count_ones(n: nat) -> nat
-    decreases n,
-{
-    if n < 2 {
-        n
-    } else {
-        n % 2 + nat_count_ones(n / 2)
-    }
-}
-
 proof fn lemma_nat_count_ones_bound(n: nat, k: nat)
     requires
         n < pow2(k),
