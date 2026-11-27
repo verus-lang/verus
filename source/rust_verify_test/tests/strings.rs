@@ -1393,3 +1393,65 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_string_add_str verus_code! {
+        use vstd::prelude::*;
+        fn f(a: &str) -> (r: String)
+            ensures r@ == "-march=rv"@ + a@,
+        {
+            "-march=rv".to_owned() + a
+        }
+        fn g(s: String, a: &str) -> (r: String)
+            ensures r@ == s@ + a@ + a@,
+        {
+            let mut t = s;
+            t += a;
+            t + a
+        }
+        fn wrong(a: &str) -> (r: String)
+            ensures r@ == a@, // FAILS
+        {
+            "x".to_owned() + a
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_string_reserve verus_code! {
+        use vstd::prelude::*;
+        fn f(s: &mut String, a: &str)
+            ensures final(s)@ == old(s)@ + a@,
+        {
+            s.reserve(a.unicode_len());
+            s.push_str(a);
+        }
+        fn wrong(s: &mut String) {
+            s.reserve(1);
+            assert(s@.len() > 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // `str::repeat`: the result is the string repeated, so its length is the product; the
+    // product must fit in usize (std panics otherwise)
+    #[test] test_str_repeat verus_code! {
+        use vstd::prelude::*;
+        use vstd::string::*;
+        fn ok(depth: usize) -> (r: String)
+            requires depth <= 100,
+            ensures r@.len() == depth,
+        {
+            let tab = "\t";
+            proof {
+                reveal_strlit("\t");
+                is_ascii_spec_bytes(tab);
+            }
+            tab.repeat(depth)
+        }
+        fn bad(n: usize) -> String {
+            "ab".repeat(n) // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

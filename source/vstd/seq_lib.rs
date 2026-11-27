@@ -31,6 +31,34 @@ impl<A> Seq<A> {
         Seq::new(self.len(), |i: int| f(self[i]))
     }
 
+    /// The sequence repeated `n` times
+    pub open spec fn repeat(self, n: nat) -> Seq<A>
+        decreases n,
+    {
+        if n == 0 {
+            Seq::empty()
+        } else {
+            self.repeat((n - 1) as nat) + self
+        }
+    }
+
+    pub broadcast proof fn lemma_repeat_len(self, n: nat)
+        ensures
+            #[trigger] self.repeat(n).len() == self.len() * n,
+        decreases n,
+    {
+        if n > 0 {
+            let m = (n - 1) as nat;
+            self.lemma_repeat_len(m);
+            assert(self.len() * n == self.len() * m + self.len()) by (nonlinear_arith)
+                requires
+                    n == m + 1,
+            ;
+        } else {
+            assert(self.len() * 0 == 0) by (nonlinear_arith);
+        }
+    }
+
     /// Applies the function `f` to each element of the sequence,
     /// producing a sequence of sequences, and then concatenates (flattens)
     /// those into a single flat sequence of `B`.
@@ -3913,6 +3941,7 @@ pub broadcast group group_seq_lib_default {
     Seq::lemma_fold_right_split,
     Seq::lemma_fold_left_split,
     Seq::lemma_as_ref_index,
+    Seq::lemma_repeat_len,
 }
 
 pub broadcast group group_to_multiset_ensures {
