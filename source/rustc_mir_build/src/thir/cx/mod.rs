@@ -8,9 +8,9 @@ use rustc_hir::attrs::lang_items::LangItem;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::{self as hir, HirId, find_attr};
-use rustc_middle::bug;
 use rustc_middle::thir::*;
 use rustc_middle::ty::{self, TyCtxt};
+use rustc_span::bug;
 
 /// Query implementation for [`TyCtxt::thir_body`].
 pub(crate) fn thir_body<'tcx>(
@@ -36,7 +36,14 @@ fn thir_body_inner<'tcx>(
     owner_def: LocalDefId,
     full_erasure: Option<std::sync::Arc<crate::verus::FullErasureCtxt>>,
 ) -> Result<(Thir<'tcx>, ExprId), ErrorGuaranteed> {
-    debug_assert!(!tcx.is_type_const(owner_def.to_def_id()), "thir_body queried for type_const");
+    if cfg!(debug_assertions)
+        && matches!(tcx.def_kind(owner_def), DefKind::Const | DefKind::AssocConst)
+    {
+        debug_assert!(
+            tcx.const_of_item(owner_def.to_def_id()).is_none(),
+            "thir_body queried for directly represented const item: {owner_def:?}"
+        );
+    }
 
     let is_full_erasure = full_erasure.is_some();
     if !is_full_erasure {

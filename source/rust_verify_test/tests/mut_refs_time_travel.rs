@@ -1944,3 +1944,23 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_spec_borrowed(err, "v")
 }
+
+test_verify_one_file! {
+    #[test] spec_closure_in_exec_closure_with_ghost_capture_issue3567 verus_code! {
+        use vstd::prelude::*;
+        fn test() {
+            let mut g: Ghost<int> = Ghost(0);
+            let r = &mut g;
+            let f = || -> (z: Ghost<int>)
+                ensures
+                    z@ == g@,
+            {
+                let ghost h = |u: int| g@;
+                Ghost(h(0))
+            };
+            let z = f();
+            *r = Ghost(z@ + 1);
+            assert(false);
+        }
+    } => Err(err) => assert_spec_borrowed(err, "g")
+}

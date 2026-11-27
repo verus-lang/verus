@@ -55,6 +55,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             .enumerate()
             .filter_map(|(index, stmt)| {
                 let hir_id = stmt.hir_id;
+                let verus_ghost = crate::verus::ghost_enter_stmt(self, stmt);
                 let thir_stmt = match stmt.kind {
                     hir::StmtKind::Expr(expr) | hir::StmtKind::Semi(expr) => {
                         let stmt = Stmt {
@@ -123,12 +124,14 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     }
                 };
 
-                match thir_stmt {
+                let thir_stmts = match thir_stmt {
                     None => None,
                     Some(thir_stmt) => Some(crate::verus_time_travel_prevention::expand_stmt(
                         self, stmt, thir_stmt, block_id, index,
                     )),
-                }
+                };
+                crate::verus::ghost_exit(self, verus_ghost);
+                thir_stmts
             })
             .flatten()
             .collect()

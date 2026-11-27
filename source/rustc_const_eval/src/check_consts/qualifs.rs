@@ -5,12 +5,13 @@
 // FIXME(const_trait_impl): This API should be really reworked. It's dangerously general for
 // having basically only two use-cases that act in different ways.
 
+use rustc_attr_ir::lang_items::LangItem;
 use rustc_errors::ErrorGuaranteed;
-use rustc_hir::attrs::lang_items::LangItem;
 use rustc_infer::infer::TyCtxtInferExt;
+use rustc_middle::mir;
 use rustc_middle::mir::*;
 use rustc_middle::ty::{self, AdtDef, Ty, TypingMode};
-use rustc_middle::{bug, mir};
+use rustc_span::bug;
 use rustc_trait_selection::traits::{Obligation, ObligationCause, ObligationCtxt};
 use tracing::instrument;
 
@@ -45,10 +46,10 @@ pub trait Qualif {
     const ANALYSIS_NAME: &'static str;
 
     /// Whether this `Qualif` is cleared when a local is moved from.
-    const IS_CLEARED_ON_MOVE: bool = false;
+    const IS_CLEARED_ON_MOVE: bool;
 
     /// Whether this `Qualif` might be evaluated after the promotion and can encounter a promoted.
-    const ALLOW_PROMOTED: bool = false;
+    const ALLOW_PROMOTED: bool;
 
     /// Extracts the field of `ConstQualifs` that corresponds to this `Qualif`.
     fn in_qualifs(qualifs: &ConstQualifs) -> bool;
@@ -79,6 +80,8 @@ pub struct HasMutInterior;
 
 impl Qualif for HasMutInterior {
     const ANALYSIS_NAME: &'static str = "flow_has_mut_interior";
+    const IS_CLEARED_ON_MOVE: bool = false;
+    const ALLOW_PROMOTED: bool = false;
 
     fn in_qualifs(qualifs: &ConstQualifs) -> bool {
         qualifs.has_mut_interior
@@ -290,6 +293,7 @@ where
             ProjectionElem::Index(index) if in_local(index) => return true,
 
             ProjectionElem::Deref
+            | ProjectionElem::PhantomDeref
             | ProjectionElem::Field(_, _)
             | ProjectionElem::OpaqueCast(_)
             | ProjectionElem::ConstantIndex { .. }

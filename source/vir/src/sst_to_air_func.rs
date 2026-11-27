@@ -427,6 +427,8 @@ fn req_ens_to_air(
     is_trait_default_ensures: bool,
     inherit_from: Option<(bool, Ident, Typs)>,
     filter: Option<Ident>,
+    // Whether a clause's `msg` / `proof_note` label goes into the axiom
+    label_clauses: bool,
 ) -> Result<bool, VirErr> {
     let specs: Vec<(bool, crate::sst::Exp)> = regular_specs
         .iter()
@@ -501,7 +503,7 @@ fn req_ens_to_air(
                     is_custom_err: label.is_custom_err,
                 }));
             }
-            let labeled_expr = if labels.is_empty() {
+            let labeled_expr = if labels.is_empty() || !label_clauses {
                 expr
             } else {
                 Arc::new(ExprX::LabeledAxiom(labels, filter.clone(), expr))
@@ -664,6 +666,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             false,
             None,
             Some(fun_to_air_ident(&ctx.name_ctxt, &function.x.name)),
+            true,
         )?;
     }
 
@@ -687,6 +690,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
                 false,
                 None,
                 None,
+                true,
             );
         }
     }
@@ -709,6 +713,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             false,
             None,
             None,
+            true,
         );
     }
 
@@ -758,6 +763,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             is_trait_default,
             inherit_fn_ens,
             None,
+            false,
         )?
     };
     ctx.funcs_with_ensure_predicate.insert(function.x.name.clone(), has_ens_pred);

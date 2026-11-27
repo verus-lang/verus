@@ -9717,3 +9717,99 @@ test_verify_one_file! {
         }}
     } => Err(err) => assert_vir_error_msg(err, "prophetic expression not allowed in `guard` statement")
 }
+
+test_verify_one_file! {
+    #[test] mut_let_in_transition IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X {
+            fields { pub x: int }
+            transition!{ tr() {
+                let mut a: int = 1;
+                if true {
+                    let b: int = { a = 2; 0 };
+                }
+                assert(a == 2);
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "mutable bindings are not allowed in transition definitions")
+}
+
+test_verify_one_file! {
+    #[test] assign_to_immutable_binding_in_transition IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X {
+            fields { pub x: int }
+            transition!{ tr() {
+                let a: int = 1;
+                if true {
+                    let b: int = { a = 2; 0 };
+                }
+                assert(a == 2);
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "assignment is not allowed inside pure context")
+}
+
+test_verify_one_file! {
+    #[test] forge_instance_in_normal_fn IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub v: int,
+            }
+
+            #[invariant]
+            pub spec fn inv(&self) -> bool { false }
+
+            property!{ boom() { assert(false); } }
+
+            pub proof fn forge() -> (tracked i: Instance) {
+                Instance { send_sync: arbitrary(), state: None, location: 0 }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: constructor for an opaque datatype")
+}
+
+test_verify_one_file! {
+    #[test] forge_token_in_normal_fn IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(persistent_option)] pub p: Option<int>,
+            }
+
+            #[invariant]
+            pub spec fn inv(&self) -> bool { true }
+
+            pub proof fn forge(tracked i: Instance) -> (tracked t: p) {
+                p { dummy_instance: i }
+            }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: constructor for an opaque datatype")
+}
+
+test_verify_one_file! {
+    #[test] use_in_transition_expr IMPORTS.to_string() + verus_code_str! {
+        pub mod sh {
+            #[allow(non_upper_case_globals)]
+            pub const pre: u64 = 5;
+        }
+        tokenized_state_machine!{ M {
+            fields { #[sharding(variable)] pub y: u64 }
+            transition!{ tr() {
+                update y = { use crate::sh::*; pre };
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "this kind of item is not allowed in a transition expression")
+}
+
+test_verify_one_file! {
+    #[test] stmt_macro_in_transition_expr IMPORTS.to_string() + verus_code_str! {
+        macro_rules! mk_pre { () => {
+            #[allow(non_upper_case_globals)]
+            const pre: u64 = 5;
+        } }
+        tokenized_state_machine!{ M {
+            fields { #[sharding(variable)] pub y: u64 }
+            transition!{ tr() {
+                update y = { mk_pre!(); pre };
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "macro not allowed in transition expression")
+}
