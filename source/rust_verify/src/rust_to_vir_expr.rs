@@ -617,11 +617,31 @@ fn patexpr_unsupported_type_err<'tcx>(
     pat: &Pat<'tcx>,
 ) -> Result<(), VirErr> {
     let pat_ty = bctx.types.node_type(pat.hir_id);
-    // Besides the types that `ty_has_smt_equality` admits: `&str`. Rust compares a `&str`
-    // against a literal or const pattern by its characters, and SMT equality agrees, because a
-    // `str` is determined by its characters (vstd's `axiom_str_view_injective`).
-    let is_str = matches!(pat_ty.peel_refs().kind(), TyKind::Str);
-    if !is_str && !crate::rust_to_vir_base::ty_has_smt_equality(bctx, span, pat_ty)? {
+    // Besides the types that `ty_has_smt_equality` admits: `&str`, and slices and arrays of
+    // admitted elements (`b"TALB"`, `[1, 2]`). Rust compares these against a literal or const
+    // pattern by their characters or elements, and SMT equality agrees, because a `str` is
+    // determined by its characters and a slice or array by its elements (vstd's
+    // `axiom_str_view_injective`, `axiom_slice_ext_equal`, `axiom_array_ext_equal`).
+    fn admitted<'tcx>(
+        bctx: &BodyCtxt<'tcx>,
+        span: Span,
+        ty: rustc_middle::ty::Ty<'tcx>,
+    ) -> Result<bool, VirErr> {
+        match ty.kind() {
+            TyKind::Str => Ok(true),
+            TyKind::Slice(t) | TyKind::Array(t, _) => admitted(bctx, span, *t),
+            TyKind::Ref(_, t, rustc_ast::Mutability::Not)
+                if matches!(
+                    t.peel_refs().kind(),
+                    TyKind::Str | TyKind::Slice(_) | TyKind::Array(..)
+                ) =>
+            {
+                admitted(bctx, span, *t)
+            }
+            _ => crate::rust_to_vir_base::ty_has_smt_equality(bctx, span, ty),
+        }
+    }
+    if !admitted(bctx, span, pat_ty)? {
         unsupported_err!(span, format!("equality-testing this type in a pattern: {:?}", pat_ty));
     }
     Ok(())
@@ -638,6 +658,52 @@ pub(crate) fn patexpr_to_vir<'tcx>(
     match pat_expr.kind {
         PatExprKind::Lit { lit, negated } => {
             patexpr_unsupported_type_err(bctx, span, pat)?;
+            // A byte-string literal pattern has the scrutinee's type, which may be a slice
+            // (`match name { b"TALB" => .. }` with `name: &[u8]`), while Verus encodes a
+            // byte-string literal as an array. So compare against `array_as_slice(literal)`,
+            // as for the unsizing coercion of an array to a slice.
+            if let rustc_ast::LitKind::ByteStr(bs, _) = &lit.node
+                && let TypX::Primitive(Primitive::Slice, ts) = &*undecorate_typ(pat_typ)
+                && ts.len() == 1
+            {
+                if bctx.ctxt.no_vstd {
+                    return err_span(
+                        span,
+                        "byte-string patterns of slice type are not supported with `--no-vstd`",
+                    );
+                }
+                let elem = ts[0].clone();
+                let n = bs.as_byte_str().len();
+                let len_typ = Arc::new(TypX::ConstInt(num_bigint::BigInt::from(n)));
+                let arr_typ = Arc::new(TypX::Primitive(
+                    Primitive::Array,
+                    Arc::new(vec![elem.clone(), len_typ.clone()]),
+                ));
+                let ref_arr_typ = Arc::new(TypX::Decorate(TypDecoration::Ref, None, arr_typ));
+                let c = Constant::ByteStr(Arc::new(bs.as_byte_str().to_vec()));
+                let arr = bctx.spanned_typed_new(span, &ref_arr_typ, ExprX::Const(c));
+                let fun = vir::fun!(CrateId::Vstd => "array"; "array_as_slice");
+                let autospec =
+                    if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                let call_target = CallTarget::Fun(
+                    vir::ast::CallTargetKind::Static,
+                    fun,
+                    Arc::new(vec![elem, len_typ]),
+                    Arc::new(vec![]),
+                    vir::ast::CallTargetAttrs {
+                        autospec,
+                        const_var: false,
+                        assume_external_allowed: false,
+                    },
+                );
+                let x = ExprX::Call {
+                    target: call_target,
+                    args: Arc::new(vec![arr]),
+                    post_args: None,
+                    body: None,
+                };
+                return Ok(PatternX::Expr(bctx.spanned_typed_new(span, pat_typ, x)));
+            }
             Ok(PatternX::Expr(lit_to_vir(bctx, span, lit, negated, pat_typ, None)?))
         }
         PatExprKind::Path(qpath) => {

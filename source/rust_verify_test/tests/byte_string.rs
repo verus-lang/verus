@@ -271,3 +271,124 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] byte_string_patterns verus_code! {
+        use vstd::array::spec_array_as_slice;
+        use vstd::prelude::*;
+
+        // a byte-string literal pattern of slice type (mp3-metadata's `match frame_name`)
+        fn on_slice(name: &[u8]) -> (r: u8)
+            ensures
+                name@ == b"TALB"@ ==> r == 1,
+                name@ == b"TIT2"@ ==> r == 2,
+                r == 1 ==> name@ == b"TALB"@,
+        {
+            proof {
+                if name@ == b"TALB"@ {
+                    assert(name =~= spec_array_as_slice(b"TALB"));
+                }
+                if name@ == b"TIT2"@ {
+                    assert(name =~= spec_array_as_slice(b"TIT2"));
+                    // the literals differ in their contents
+                    reveal_byteslit(b"TALB");
+                    reveal_byteslit(b"TIT2");
+                    assert(name@[1] != b"TALB"@[1]);
+                }
+            }
+            match name {
+                b"TALB" => 1,
+                b"TIT" | b"TIT2" => 2,
+                _ => 0,
+            }
+        }
+
+        fn concrete() {
+            proof {
+                reveal_byteslit(b"TALB");
+            }
+            let v: [u8; 4] = [84, 65, 76, 66];
+            assert(v@ =~= b"TALB"@);
+            let r = on_slice(&v);
+            assert(r == 1);
+        }
+
+        fn in_loop(buf: &[u8]) -> (r: u8)
+            ensures r == 0 || r == 1,
+        {
+            let mut pos = 0usize;
+            let mut r = 0u8;
+            while buf.len() - pos >= 4
+                invariant
+                    pos <= buf.len(),
+                    r == 0 || r == 1,
+                decreases buf.len() - pos,
+            {
+                let name = &buf[pos..pos + 4];
+                pos = pos + 4;
+                match name {
+                    b"TALB" => {
+                        r = 1;
+                    }
+                    _ => {}
+                }
+            }
+            r
+        }
+
+        // a byte-string literal pattern of array type
+        fn on_array(name: &[u8; 4]) -> (r: bool)
+            ensures r == (name@ == b"TALB"@),
+        {
+            proof {
+                if name@ == b"TALB"@ {
+                    assert(*name =~= *b"TALB");
+                }
+            }
+            match name {
+                b"TALB" => true,
+                _ => false,
+            }
+        }
+
+        spec fn spec_on_slice(name: &[u8]) -> bool {
+            match name {
+                b"TALB" => true,
+                _ => false,
+            }
+        }
+
+        proof fn spec_match(name: &[u8])
+            requires name@ == b"TALB"@,
+            ensures spec_on_slice(name),
+        {
+            assert(name =~= spec_array_as_slice(b"TALB"));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] byte_string_patterns_fails verus_code! {
+        use vstd::prelude::*;
+
+        // the arms are reachable
+        fn reachable(name: &[u8]) -> u8 {
+            match name {
+                b"TALB" => {
+                    assert(false); // FAILS
+                    1
+                }
+                _ => 0,
+            }
+        }
+
+        fn length_is_not_enough(name: &[u8]) -> (r: u8)
+            ensures name@.len() == 4 ==> r == 1, // FAILS
+        {
+            match name {
+                b"TALB" => 1,
+                _ => 0,
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
