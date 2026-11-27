@@ -123,18 +123,6 @@ pub assume_specification[ str::to_owned ](s: &str) -> (res: String)
         s@ == res@,
 ;
 
-/// `s` repeated `n` times
-#[cfg(not(verus_verify_core))]
-pub open spec fn seq_repeat<A>(s: Seq<A>, n: nat) -> Seq<A>
-    decreases n,
-{
-    if n == 0 {
-        Seq::empty()
-    } else {
-        seq_repeat(s, (n - 1) as nat) + s
-    }
-}
-
 /// `str::repeat` panics ("capacity overflow") when `s.len() * n` overflows `usize`.
 /// The first disjunct is implied by the second (`n <= usize::MAX`); it is stated so that a
 /// string of at most one byte (`"\t".repeat(n)`) needs no reasoning about the product, which
@@ -144,29 +132,8 @@ pub assume_specification[ str::repeat ](s: &str, n: usize) -> (res: String)
     requires
         s.spec_bytes().len() <= 1 || s.spec_bytes().len() * n <= usize::MAX,
     ensures
-        res@ == seq_repeat(s@, n as nat),
+        res@ == s@.repeat(n as nat),
 ;
-
-#[cfg(not(verus_verify_core))]
-pub broadcast proof fn lemma_seq_repeat_len<A>(s: Seq<A>, n: nat)
-    ensures
-        #[trigger] seq_repeat(s, n).len() == s.len() * n,
-    decreases n,
-{
-    if n > 0 {
-        lemma_seq_repeat_len(s, (n - 1) as nat);
-        let m = (n - 1) as nat;
-        assert(s.len() * n == s.len() * m + s.len()) by (nonlinear_arith)
-            requires
-                n == m + 1,
-        ;
-        assert(seq_repeat(s, n) == seq_repeat(s, m) + s);
-        assert((seq_repeat(s, m) + s).len() == seq_repeat(s, m).len() + s.len());
-    } else {
-        assert(seq_repeat(s, 0).len() == 0);
-        assert(s.len() * 0 == 0) by (nonlinear_arith);
-    }
-}
 
 #[cfg(not(verus_verify_core))]
 pub assume_specification[ str::as_bytes ](s: &str) -> (b: &[u8])
@@ -376,7 +343,6 @@ pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
 
 #[cfg(all(not(feature = "alloc"), not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
-    lemma_seq_repeat_len,
     axiom_new_strlit_view_id,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
@@ -386,7 +352,6 @@ pub broadcast group group_string_axioms {
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
-    lemma_seq_repeat_len,
     axiom_new_strlit_view_id,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
@@ -503,9 +468,7 @@ impl<'a> super::std_specs::ops::AddSpecImpl<&'a str> for String {
         true
     }
 
-    open spec fn add_spec(self, rhs: &'a str) -> String {
-        arbitrary()
-    }
+    uninterp spec fn add_spec(self, rhs: &'a str) -> String;
 }
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
@@ -527,9 +490,7 @@ impl<'a> super::std_specs::ops::AddAssignSpecImpl<&'a str> for String {
         true
     }
 
-    open spec fn add_assign_spec(&self, rhs: &'a str) -> &Self {
-        arbitrary()
-    }
+    uninterp spec fn add_assign_spec(&self, rhs: &'a str) -> &Self;
 }
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]

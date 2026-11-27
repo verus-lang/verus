@@ -1448,9 +1448,7 @@ test_verify_one_file! {
                 reveal_strlit("\t");
                 is_ascii_spec_bytes(tab);
             }
-            let r = tab.repeat(depth);
-            proof { lemma_seq_repeat_len(tab@, depth as nat); }
-            r
+            tab.repeat(depth)
         }
         fn bad(n: usize) -> String {
             "ab".repeat(n) // FAILS
