@@ -1,0 +1,16 @@
+[package]
+name = "vstd-kani"
+version = "0.0.0"
+edition = "2021"
+description = "Kani harnesses that check vstd assume_specification contracts against the real Rust std. See README.md."
+publish = false
+
+# No dependencies: harnesses call std directly and re-implement the vstd spec
+# postconditions as executable Rust, then check them against real std behaviour.
+[dependencies]
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
