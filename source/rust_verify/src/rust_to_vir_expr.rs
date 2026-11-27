@@ -617,7 +617,11 @@ fn patexpr_unsupported_type_err<'tcx>(
     pat: &Pat<'tcx>,
 ) -> Result<(), VirErr> {
     let pat_ty = bctx.types.node_type(pat.hir_id);
-    if !crate::rust_to_vir_base::ty_has_smt_equality(bctx, span, pat_ty)? {
+    // Besides the types that `ty_has_smt_equality` admits: `&str`. Rust compares a `&str`
+    // against a literal or const pattern by its characters, and SMT equality agrees, because a
+    // `str` is determined by its characters (vstd's `axiom_str_view_injective`).
+    let is_str = matches!(pat_ty.peel_refs().kind(), TyKind::Str);
+    if !is_str && !crate::rust_to_vir_base::ty_has_smt_equality(bctx, span, pat_ty)? {
         unsupported_err!(span, format!("equality-testing this type in a pattern: {:?}", pat_ty));
     }
     Ok(())
