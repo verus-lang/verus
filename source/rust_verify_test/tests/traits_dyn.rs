@@ -585,14 +585,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] dyn_unsupported1 verus_code! {
-        trait T {}
-        fn test(d: &(dyn T + Send)) {
-        }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support dyn with more than one trait")
-}
-
-test_verify_one_file! {
     #[test] dyn_unsupported2 verus_code! {
         trait T {}
         fn test(d: &dyn Fn() -> ()) {
@@ -970,4 +962,233 @@ test_verify_crates! {
             fn test() {}
         },
     ] => Err(err) => assert_vir_error_msg(err, "crate `b` makes trait `t::T` not Verus dyn-compatible (specification of function t::T::all_same uses Self outside of the receiver), but crate `a` already treats `t::T` as Verus dyn-compatible")
+}
+
+test_verify_one_file! {
+    #[test] dyn_auto_traits verus_code! {
+        use vstd::prelude::*;
+        trait Animal {
+            spec fn spec_legs(&self) -> u64;
+            fn legs(&self) -> (r: u64) ensures r == self.spec_legs();
+        }
+        struct Dog;
+        impl Animal for Dog {
+            spec fn spec_legs(&self) -> u64 { 4 }
+            fn legs(&self) -> (r: u64) ensures r == self.spec_legs() { 4 }
+        }
+        // auto-trait bounds carry no verification content and are accepted
+        fn count(a: &(dyn Animal + Send + Sync)) -> (r: u64)
+            ensures r == a.spec_legs()
+        {
+            a.legs()
+        }
+        // dropping the auto trait is an identity coercion: facts survive it
+        fn count_plain(a: &(dyn Animal + Send)) -> (r: u64)
+            ensures r == a.spec_legs()
+        {
+            let b: &dyn Animal = a;
+            b.legs()
+        }
+        fn total(zoo: &Vec<Box<dyn Animal + Send + Sync>>) -> (r: u64)
+            requires zoo.len() == 2,
+            ensures r == zoo[0].spec_legs() + zoo[1].spec_legs(),
+        {
+            let a = zoo[0].legs();
+            let b = zoo[1].legs();
+            assume(a + b <= u64::MAX);
+            a + b
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] dyn_auto_traits_fails verus_code! {
+        use vstd::prelude::*;
+        trait Animal {
+            spec fn spec_legs(&self) -> u64;
+            fn legs(&self) -> (r: u64) ensures r == self.spec_legs();
+        }
+        fn wrong(a: &(dyn Animal + Send)) -> (r: u64)
+            ensures r == a.spec_legs() + 1 // FAILS
+        {
+            a.legs()
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] dyn_auto_traits_coercions verus_code! {
+        use vstd::prelude::*;
+        trait Animal {
+            spec fn spec_legs(&self) -> u64;
+            fn legs(&self) -> (r: u64) ensures r == self.spec_legs();
+        }
+        struct Dog;
+        impl Animal for Dog {
+            spec fn spec_legs(&self) -> u64 { 4 }
+            fn legs(&self) -> (r: u64) ensures r == self.spec_legs() { 4 }
+        }
+        fn count(a: &(dyn Animal + Send + Sync)) -> (r: u64)
+            ensures r == a.spec_legs()
+        {
+            a.legs()
+        }
+        // the order of the auto traits does not matter
+        fn count_reordered(a: &(dyn Animal + Sync + Send)) -> (r: u64)
+            ensures r == a.spec_legs()
+        {
+            count(a)
+        }
+        // facts about a concrete value survive the coercion to dyn T + Send
+        fn make() -> (r: Box<dyn Animal + Send>)
+            ensures r.spec_legs() == 4
+        {
+            Box::new(Dog)
+        }
+        // and the coercions that drop auto traits
+        fn drop_auto() {
+            let a: Box<dyn Animal + Send + Sync> = Box::new(Dog);
+            assert(a.spec_legs() == 4);
+            let b: Box<dyn Animal + Send> = a;
+            assert(b.spec_legs() == 4);
+            let c: Box<dyn Animal> = b;
+            assert(c.spec_legs() == 4);
+            let l = c.legs();
+            assert(l == 4);
+        }
+        // dyn T + Send meets Send bounds and T bounds
+        fn needs_send<X: Send + ?Sized>(x: &X) {}
+        fn generic<X: Animal + ?Sized>(x: &X) -> (r: u64)
+            ensures r == x.spec_legs()
+        {
+            x.legs()
+        }
+        fn use_bounds(a: &(dyn Animal + Send)) -> (r: u64)
+            ensures r == a.spec_legs()
+        {
+            needs_send(a);
+            generic(a)
+        }
+        // generic traits
+        trait Scale<A> {
+            spec fn scale(&self, a: A) -> int;
+            fn exec_scale(&self, a: A) -> (r: u64) ensures r == self.scale(a);
+        }
+        struct S;
+        impl Scale<u16> for S {
+            spec fn scale(&self, a: u16) -> int { a as int }
+            fn exec_scale(&self, a: u16) -> (r: u64) { a as u64 }
+        }
+        fn scale(x: &(dyn Scale<u16> + Send), a: u16) -> (r: u64)
+            ensures r == x.scale(a)
+        {
+            let y: &dyn Scale<u16> = x;
+            y.exec_scale(a)
+        }
+        fn scale_concrete() {
+            let x: Box<dyn Scale<u16> + Sync> = Box::new(S);
+            assert(x.scale(7u16) == 7);
+            let s = S;
+            let r = scale(&s, 5);
+            assert(r == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] dyn_auto_traits_coercions_fails verus_code! {
+        use vstd::prelude::*;
+        trait Animal {
+            spec fn spec_legs(&self) -> u64;
+        }
+        struct Dog;
+        impl Animal for Dog {
+            spec fn spec_legs(&self) -> u64 { 4 }
+        }
+        fn test() {
+            let a: Box<dyn Animal + Send> = Box::new(Dog);
+            let b: Box<dyn Animal> = a;
+            assert(b.spec_legs() == 5); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+// `dyn T` and `dyn T + Send` are different types, which may have different impls
+// (example from https://github.com/verus-lang/verus/pull/3534)
+const DYN_AUTO_TRAIT_IMPLS: &str = verus_code_str! {
+    trait T {}
+
+    trait U {
+        spec fn f() -> int;
+    }
+
+    impl U for dyn T {
+        spec fn f() -> int { 3 }
+    }
+
+    impl U for dyn T + Send {
+        spec fn f() -> int { 4 }
+    }
+
+    impl U for dyn T + Send + Sync {
+        spec fn f() -> int { 5 }
+    }
+
+    impl U for &dyn T {
+        spec fn f() -> int { 6 }
+    }
+
+    impl U for &(dyn T + Send) {
+        spec fn f() -> int { 7 }
+    }
+
+    proof fn test()
+        ensures false // FAILS
+    {
+        assert(<dyn T as U>::f() == 3);
+        assert(<dyn T + Send as U>::f() == 4);
+        assert(<dyn T + Sync + Send as U>::f() == 5);
+        assert(<&dyn T as U>::f() == 6);
+        assert(<&(dyn T + Send) as U>::f() == 7);
+    }
+};
+
+test_verify_one_file! {
+    #[test] dyn_auto_traits_distinct_impls DYN_AUTO_TRAIT_IMPLS.to_string() => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] dyn_auto_traits_distinct_impls_no_conflict_check ["--no-trait-conflicts"] => DYN_AUTO_TRAIT_IMPLS.to_string() => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] dyn_auto_traits_spec_fn_agreement verus_code! {
+        // spec methods of T agree on dyn T and dyn T + Send, but impls of other traits need not
+        trait T {
+            spec fn g(&self) -> int;
+        }
+        trait U {
+            spec fn f(&self) -> int;
+        }
+        impl U for dyn T {
+            spec fn f(&self) -> int { 3 }
+        }
+        impl U for dyn T + Send {
+            spec fn f(&self) -> int { 4 }
+        }
+        fn test(x: &(dyn T + Send))
+            ensures false // FAILS
+        {
+            let y: &dyn T = x;
+            assert(x.g() == y.g());
+            assert(U::f(x) == 4);
+            assert(U::f(y) == 3);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] dyn_auto_traits_unsupported verus_code! {
+        fn test(x: &(dyn Send + Sync)) {}
+    } => Err(err) => assert_vir_error_msg(err, "dyn without a principal trait")
 }

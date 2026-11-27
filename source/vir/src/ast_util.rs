@@ -360,6 +360,15 @@ pub fn undecorate_typ(typ: &Typ) -> Typ {
     if let TypX::Decorate(_, _, t) = &**typ { undecorate_typ(t) } else { typ.clone() }
 }
 
+/// A trait object's type without its auto-trait bounds (`dyn T + Send` to `dyn T`)
+pub fn undecorate_auto_traits(typ: &Typ) -> Typ {
+    if let TypX::Decorate(TypDecoration::AutoTrait(_), _, t) = &**typ {
+        undecorate_auto_traits(t)
+    } else {
+        typ.clone()
+    }
+}
+
 pub fn allowed_bitvector_type(typ: &Typ) -> Option<Typ> {
     let u = undecorate_typ(typ);
     match &*u {
@@ -1108,6 +1117,9 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         ),
         TypX::Decorate(TypDecoration::Ref, _, typ) => {
             format!("&{}", typ_to_diagnostic_str(typ))
+        }
+        TypX::Decorate(TypDecoration::AutoTrait(a), _, typ) => {
+            format!("{} + {:?}", typ_to_diagnostic_str(typ), a)
         }
         TypX::Decorate(TypDecoration::ConstPtr, _, typ) => match &**typ {
             TypX::Primitive(crate::ast::Primitive::Ptr, typs) => {

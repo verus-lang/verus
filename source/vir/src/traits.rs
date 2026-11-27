@@ -1354,6 +1354,105 @@ pub(crate) fn dyn_spec_fn_axiom(
     decl_commands.push(Arc::new(CommandX::Global(def_axiom)));
 }
 
+pub(crate) fn dyn_auto_trait_spec_fn_axioms(
+    ctx: &Ctx,
+    decl_commands: &mut Vec<Command>,
+    dyn_trait_path: &Path,
+    function: &crate::sst::FunctionSst,
+) {
+    // The auto-trait bounds of a trait object do not change its spec methods:
+    // a `dyn T + Send` value is a `dyn T` value with the same vtable, and Rust rejects
+    // user impls of T (or of a supertrait of T) for `dyn T + ...` (E0371),
+    // so the spec methods of T agree on `dyn T` with and without auto-trait decorations
+    // (see TypDecoration::AutoTrait):
+    //   trait T<A1..Am> { spec fn f<C1..Cj>(self, x1..xk) }
+    // ==>
+    //   for each auto trait X:
+    //   (axiom (forall (d A1..Am C1..Cj (self! Poly) x1..xk) (!
+    //      (=
+    //       (T.f.? (AUTO_X d) (DYN%T. A1..Am) A1..Am C1..Cj self! x1..xk)
+    //       (T.f.? d          (DYN%T. A1..Am) A1..Am C1..Cj self! x1..xk)
+    //      )
+    //   )))
+    // The dyn types are (d, DYN%T. A1..Am) with d = $dyn decorated by sorted auto traits,
+    // and these are the only types that Verus encodes with a decoration of the form (AUTO_X d).
+    // Other types with DYN%T. A1..Am (such as &dyn T) do not have the form (AUTO_X d),
+    // so the axiom says nothing about their impls (which may be user impls).
+    // Note: we don't need anything for exec/proof functions,
+    // because dyn T just uses T's requires/ensures.
+    use crate::ast::AutoTrait;
+    use crate::ast_util::LowerUniqueVar;
+    use air::ast::{BindX, Quant};
+    use air::ast_util::{ident_binder, str_apply};
+    if !crate::context::DECORATE {
+        return;
+    }
+    let FunctionKind::TraitMethodDecl { trait_path, .. } = &function.x.kind else {
+        panic!("dyn_auto_trait_spec_fn_axioms expects TraitMethodDecl");
+    };
+    let Some(tr) = ctx.trait_map.get(trait_path) else { return };
+    // function.x.typ_params = Self A1..Am C1..Cj
+    let n_trait = tr.x.typ_params.len();
+    let typ_params = &function.x.typ_params;
+    assert!(typ_params.len() > n_trait);
+    let typ_args: Vec<Typ> =
+        typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
+    let dyn_typ = Arc::new(TypX::Dyn(
+        dyn_trait_path.clone(),
+        Arc::new(typ_args[1..1 + n_trait].to_vec()),
+        Arc::new(vec![]),
+    ));
+    let dyn_ids = typ_to_ids(ctx, &dyn_typ);
+    assert!(dyn_ids.len() == 2);
+
+    let self_ids = crate::def::suffix_typ_param_ids_types(&typ_params[0]);
+    let (d_name, d_typ) = &self_ids[0];
+    let d = ident_var(&d_name.lower());
+    let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
+    binders.push(ident_binder(&d_name.lower(), &str_typ(d_typ)));
+    for typ_param in typ_params.iter().skip(1) {
+        for (x, t) in crate::def::suffix_typ_param_ids_types(typ_param) {
+            binders.push(ident_binder(&x.lower(), &str_typ(t)));
+        }
+    }
+    for param in function.x.pars.iter() {
+        let typ = crate::sst_to_air::typ_to_air(ctx, &param.x.typ);
+        binders.push(ident_binder(&param.x.name.lower(), &typ));
+    }
+    let binders = Arc::new(binders);
+    let mut other_args: Vec<air::ast::Expr> =
+        typ_args[1..].iter().flat_map(|t| typ_to_ids(ctx, t)).collect();
+    other_args.extend(function.x.pars.iter().map(|p| ident_var(&p.x.name.lower())));
+    let name = crate::def::suffix_global_id(&crate::sst_to_air::fun_to_air_ident(
+        &ctx.name_ctxt,
+        &function.x.name,
+    ));
+    let app = |dcr: air::ast::Expr| {
+        let mut args = vec![dcr, dyn_ids[1].clone()];
+        args.extend(other_args.iter().cloned());
+        ident_apply(&name, &Arc::new(args))
+    };
+    use AutoTrait::*;
+    for a in [Send, Sync, Unpin, UnwindSafe, RefUnwindSafe] {
+        let dx = str_apply(crate::def::decorate_auto_trait(a), &vec![d.clone()]);
+        let lhs = app(dx);
+        let rhs = app(d.clone());
+        let f_eq = Arc::new(air::ast::ExprX::Binary(air::ast::BinaryOp::Eq, lhs.clone(), rhs));
+        let qid = crate::def::new_internal_qid(
+            ctx,
+            format!("{name}_dyn_{}", crate::def::decorate_auto_trait(a)),
+        );
+        let bind = Arc::new(BindX::Quant(
+            Quant::Forall,
+            binders.clone(),
+            Arc::new(vec![Arc::new(vec![lhs])]),
+            qid,
+        ));
+        let e_forall = mk_bind_expr(&bind, &f_eq);
+        decl_commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(e_forall))));
+    }
+}
+
 // For a trait method impl, return the type arguments that instantiate the trait method:
 // trait_typ_args (Self and the trait generics) followed by the impl method's own generics.
 // The trait method declares [Self, trait generics..., method generics...],

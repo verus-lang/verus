@@ -2186,6 +2186,27 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 }
                 _ => remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2),
             };
+            // A `dyn Trait + Send` to `dyn Trait` coercion drops only auto-trait bounds: the
+            // value is the same, and only the type changes (the auto-trait decorations, see
+            // `TypDecoration::AutoTrait`). Emitting `ToDyn` here would re-box an already-boxed
+            // value and lose every fact about it (cf. the no-op case above); the spec functions
+            // of `Trait` agree on the two types (`traits::dyn_auto_trait_spec_fn_axioms`).
+            if let (TyKind::Dynamic(_, _), TyKind::Dynamic(_, _)) = (tyr1.kind(), tyr2.kind()) {
+                let v1 = bctx.mid_ty_to_vir(expr.span, &tyr1)?;
+                let v2 = bctx.mid_ty_to_vir(expr.span, &tyr2)?;
+                if vir::ast_util::types_equal(
+                    &vir::ast_util::undecorate_auto_traits(&v1),
+                    &vir::ast_util::undecorate_auto_traits(&v2),
+                ) {
+                    let e = arg.consume(bctx, ty1);
+                    let typ = bctx.mid_ty_to_vir(expr.span, &ty2)?;
+                    return Ok(ExprOrPlace::Expr(vir::ast::SpannedTyped::new(
+                        &e.span,
+                        &typ,
+                        e.x.clone(),
+                    )));
+                }
+            }
             let op = match (tyr1.kind(), tyr2.kind()) {
                 (_, TyKind::Dynamic(preds, _)) => {
                     let vir_ty = bctx.mid_ty_to_vir(expr.span, &tyr1)?;

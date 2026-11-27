@@ -50,6 +50,11 @@ enum TypNum {
     Never,
     ConstPtr,
     Global,
+    AutoSend,
+    AutoSync,
+    AutoUnpin,
+    AutoUnwindSafe,
+    AutoRefUnwindSafe,
 }
 
 fn gen_num_typ(n: TypNum, ts: Vec<Typ>) -> Typ {
@@ -142,6 +147,13 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
                 TypDecoration::Tracked => TypNum::Tracked,
                 TypDecoration::Never => TypNum::Never,
                 TypDecoration::ConstPtr => TypNum::ConstPtr,
+                TypDecoration::AutoTrait(a) => match a {
+                    vir::ast::AutoTrait::Send => TypNum::AutoSend,
+                    vir::ast::AutoTrait::Sync => TypNum::AutoSync,
+                    vir::ast::AutoTrait::Unpin => TypNum::AutoUnpin,
+                    vir::ast::AutoTrait::UnwindSafe => TypNum::AutoUnwindSafe,
+                    vir::ast::AutoTrait::RefUnwindSafe => TypNum::AutoRefUnwindSafe,
+                },
             };
             let mut ts = vec![t.clone()];
             match targ {

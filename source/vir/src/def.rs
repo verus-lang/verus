@@ -204,6 +204,23 @@ pub const DECORATE_GHOST: &str = "GHOST";
 pub const DECORATE_TRACKED: &str = "TRACKED";
 pub const DECORATE_NEVER: &str = "NEVER";
 pub const DECORATE_CONST_PTR: &str = "CONST_PTR";
+pub const DECORATE_AUTO_SEND: &str = "AUTO_SEND";
+pub const DECORATE_AUTO_SYNC: &str = "AUTO_SYNC";
+pub const DECORATE_AUTO_UNPIN: &str = "AUTO_UNPIN";
+pub const DECORATE_AUTO_UNWIND_SAFE: &str = "AUTO_UNWIND_SAFE";
+pub const DECORATE_AUTO_REF_UNWIND_SAFE: &str = "AUTO_REF_UNWIND_SAFE";
+
+/// The decoration of a trait object's auto-trait bound (see `TypDecoration::AutoTrait`)
+pub fn decorate_auto_trait(a: crate::ast::AutoTrait) -> &'static str {
+    use crate::ast::AutoTrait::*;
+    match a {
+        Send => DECORATE_AUTO_SEND,
+        Sync => DECORATE_AUTO_SYNC,
+        Unpin => DECORATE_AUTO_UNPIN,
+        UnwindSafe => DECORATE_AUTO_UNWIND_SAFE,
+        RefUnwindSafe => DECORATE_AUTO_REF_UNWIND_SAFE,
+    }
+}
 pub const TYPE_ID_ARRAY: &str = "ARRAY";
 pub const TYPE_ID_SLICE: &str = "SLICE";
 pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
@@ -851,7 +868,7 @@ impl NameCtxt {
         internal_path(format!(
             "{}{}{}{}{}",
             MONOTYPE_DECORATE,
-            dec as u32,
+            dec.code(),
             MONOTYPE_APP_BEGIN,
             self.path_to_string(path),
             MONOTYPE_APP_END
@@ -862,7 +879,7 @@ impl NameCtxt {
         internal_path(format!(
             "{}{}{}{}{}",
             MONOTYPE_DECORATE,
-            dec as u32,
+            dec.code(),
             MONOTYPE_APP_BEGIN,
             vec_map(args, |x| self.path_to_string(x)).join(PATHS_SEPARATOR),
             MONOTYPE_APP_END
