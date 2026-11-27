@@ -21,7 +21,7 @@ V@[bit_expr] ::= V@[spec_expr]  &  V@[spec_expr]
 
 **`&`, `|`, and `^`**.
 
-These have the usual meaning: bitwise-OR, bitwise-AND, and bitwise-XOR. Verus, like Rust, requires the input operands to be the same
+These have the usual meaning: bitwise-AND, bitwise-OR, and bitwise-XOR. Verus, like Rust, requires the input operands to be the same
 type, even in specification code.
 However, as binary operators defined over the integers,
 &#x2124; x &#x2124; &#x2192; &#x2124;,
@@ -35,7 +35,7 @@ Verus specifications (like Rust's) do not require the left and right sides of a 
 to be the same type. Shift is unspecified when the right-hand side is negative.
 Unlike in executable code, however, there is no _upper_ bound on the right-hand side.
 
-`a << b` and and `a >> b` both have the same type as `a`.
+`a << b` and `a >> b` both have the same type as `a`.
 
 Right shifts can be defined over the integers 
 &#x2124; x &#x2124; &#x2192; &#x2124; independently of the input bitwidth.

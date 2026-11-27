@@ -5,12 +5,16 @@ verified code to call unverified code. To do this, we need to make Verus
 aware of the unverified code, and we need to tell Verus what it should
 **assume without proof**.
 
+The mechanisms below (`external_body`, `assume_specification`) introduce unverified assumptions,
+so they are rejected under [no-cheating mode](./tcb.md#no-cheating-mode) unless the containing
+function is (directly or indirectly) [annotated as trusted](./tcb.md).
+
 ## Specifications without proof
 
 One way to apply an assumption to an unverified function is to use the `#[verifier::external_body]` attribute.
 This tells Verus to process the _specification_ of a function, without verifying or processing its body.
 Thus, it causes Verus to assume the specification without proof. Obviously, this should be used with care,
-with wrong specifications can subvert Verus's guarantees!
+as wrong specifications can subvert Verus's guarantees!
 
 ```rust
 #[verifier::external_body]
@@ -59,7 +63,7 @@ fn wrapper_swap<T>(a: &mut T, b: &mut T)
 }
 ```
 
-However, this may be incovenient, because now you need to call `wrapper_swap` instead of
+However, this may be inconvenient, because now you need to call `wrapper_swap` instead of
 the more familiar `std::mem::swap`. If you want to apply the specification to
 `std::mem::swap` itself, so that you can call it from verified code, you can
 use the [`assume_specification` directive](./reference-assume-specification.md), which goes at the item level (like functions).
@@ -91,7 +95,7 @@ you can also add an `assume_specification` to your own crate.
 Sometimes, Verus will complain that it doesn't recognize a type; for this, you just need
 to make Verus aware of it. For this, you can use the `#[verifier::external_type_specification]` attribute.
 
-This will make Verus aware of the `SomeStruct`:
+This will make Verus aware of `SomeStruct`:
 
 ```rust
 #[verifier::external_type_specification]
@@ -102,6 +106,13 @@ It should have exactly this form, with the parentheses and semicolon. The `ExSom
 anywhere else.
 
 This declaration makes Verus aware of the type `SomeStruct` and all its fields (and for an enum, all its variants). If you don't want Verus to be aware of the fields/variants, you can also mark it `#[verifier::external_body]`.
+
+> [!CAUTION]
+> Due to limitations in Verus, Verus assumes that no type has a destructor which can panic.
+> Users of `#[verifier::external_type_specification]` are required to ensure this property is
+> upheld.
+>
+> We intend to remove this requirement in the future.
 
 ## Adding specifications for external traits
 

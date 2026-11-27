@@ -23,7 +23,7 @@ Before you finish, run the cheat checker to make sure you haven't cheated.
 
 ## Use a Coding Agent
 
-**Why a coding agent?** Writing code and writing proofs about code have many similarities. Both require a good understanding of the existing code base and both can beneift from tool support, such as testing tools for code synthesis and verifiers for proof synthesis. Practice has shown that state-of-the-art LLMs work best when they can explore the code base, run tools, and iterate at their own pace, which is well supported by existing coding agents like [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli).
+**Why a coding agent?** Writing code and writing proofs about code have many similarities. Both require a good understanding of the existing code base and both can benefit from tool support, such as testing tools for code synthesis and verifiers for proof synthesis. Practice has shown that state-of-the-art LLMs work best when they can explore the code base, run tools, and iterate at their own pace, which is well supported by existing coding agents like [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli).
 
 **Practical tips:**
 - We recommend running the agent in a secure container or sandbox, so that you can safely give it the freedom to run Verus and other available tools, without requiring repeated human intervention, e.g., via `--allow-all-tools` (Copilot CLI) or similar options.
@@ -123,6 +123,8 @@ There are many ways that LLMs cheat. Here are just some typical cheating methods
 | Changing executable code | Changes Rust code to make verification easier, which may change program semantics, reduce performance, or harm code readability |
 
 A simple tool that compares the model's output against the original file can catch most of these. The first three cheating methods can be easily identified by searching for strings like ```assume```, ```admit```, ```external_body```, and ```axiom```, in the added content of LLMs. Precisely checking specification or executable code changes would require parser support.
+
+Verus can also enforce the first three automatically: running with [no-cheating mode](./tcb.md#no-cheating-mode) rejects `assume`, `admit`, `external_body`, `assume_specification`, and similar constructs unless they appear in explicitly code [annotated as trusted](./tcb.md).
 
 
 ## Understand Model Capabilities and Costs
@@ -242,4 +244,3 @@ For verified system development, an LLM is a powerful assistant but not a replac
 | Start with Sonnet 4.5 if budget allows | Highest success rate |
 | Expect verbose proofs | LLMs over-explain; can be trimmed later |
 | Human + LLM collaboration | Combine human insight with LLM thoroughness |
-

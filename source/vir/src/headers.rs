@@ -40,6 +40,15 @@ impl HeaderAllows {
         }
     }
 
+    fn opens_invariants(&self) -> bool {
+        match self {
+            HeaderAllows::All => true,
+            HeaderAllows::Loop => false,
+            HeaderAllows::Closure => true,
+            HeaderAllows::Some(_) => false,
+        }
+    }
+
     fn loops(&self) -> bool {
         match self {
             HeaderAllows::All => true,
@@ -218,6 +227,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         if invariant_mask.is_some() {
                             return Err(error(&stmt.span, "only one invariant mask spec allowed"));
                         }
+                        allowed = allows.opens_invariants();
                         invariant_mask = Some(mask_spec.clone());
                     }
                     HeaderExprX::AtomicSpec(e) => {
@@ -338,7 +348,7 @@ pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, Vir
                             if let StmtX::Expr(e) = &s.x {
                                 if let ExprX::Header(_h) = &e.x {
                                     block.push(s.clone());
-                                    nested_header_block = NestedHeaderBlock::Yes;
+                                    nested_header_block.join(NestedHeaderBlock::Yes);
                                 } else {
                                     nested_header_block.join(NestedHeaderBlock::No);
                                 }
@@ -349,6 +359,8 @@ pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, Vir
                         if let Some(e) = &e {
                             if let ExprX::Header(_h) = &e.x {
                                 nested_header_block = NestedHeaderBlock::Conflict;
+                            } else {
+                                nested_header_block.join(NestedHeaderBlock::No);
                             }
                         }
                     } else {

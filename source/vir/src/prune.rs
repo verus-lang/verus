@@ -17,6 +17,7 @@ use crate::def::*;
 use crate::poly::MonoTyp;
 use crate::resolve_axioms::{ResolvableType, ResolvedTypeCollection};
 use air::scope_map::ScopeMap;
+use indexmap::IndexSet;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -91,13 +92,13 @@ struct Ctxt {
 
 #[derive(Default)]
 struct State {
-    reached_functions: HashSet<Fun>,
-    reached_types: HashSet<ReachedType>,
-    reached_bound_traits: HashSet<TraitName>,
-    reached_trait_impls: HashSet<ImplName>,
-    reached_assoc_type_decls: HashSet<(Path, Ident)>,
-    reached_assoc_type_impls: HashSet<AssocTypeGroup>,
-    reached_opaque_types: HashSet<OpaqueTyName>,
+    reached_functions: IndexSet<Fun>,
+    reached_types: IndexSet<ReachedType>,
+    reached_bound_traits: IndexSet<TraitName>,
+    reached_trait_impls: IndexSet<ImplName>,
+    reached_assoc_type_decls: IndexSet<(Path, Ident)>,
+    reached_assoc_type_impls: IndexSet<AssocTypeGroup>,
+    reached_opaque_types: IndexSet<OpaqueTyName>,
     worklist_functions: Vec<Fun>,
     worklist_reveal_groups: Vec<Fun>,
     worklist_types: Vec<ReachedType>,
@@ -173,7 +174,7 @@ fn record_datatype(ctxt: &Ctxt, state: &mut State, typ: &Typ, dt: &Dt) {
 }
 
 fn reach<A: std::hash::Hash + std::cmp::Eq + Clone>(
-    reached: &mut HashSet<A>,
+    reached: &mut IndexSet<A>,
     worklist: &mut Vec<A>,
     id: &A,
 ) {
@@ -432,6 +433,7 @@ fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
     reach_function(ctxt, state, &fn_au_output());
     reach_function(ctxt, state, &fn_au_inner_mask());
     reach_function(ctxt, state, &fn_au_outer_mask());
+    reach_function(ctxt, state, &fn_resolution_atomic_update());
     reach_function(ctxt, state, &fn_pred_args());
     reach_function(ctxt, state, &fn_branch_bool());
     reach_set_ops(state, &ctxt);
@@ -453,6 +455,12 @@ fn maybe_reach_set_ops_for_call(
         if !caller_mask.is_all() && !callee_mask.is_none() {
             reach_set_ops(state, ctxt);
         }
+    } else {
+        // A mask can be missing only before trait demotion (the first, whole-crate pruning):
+        // a trait impl function whose trait declaration is not in the map, e.g. an impl of
+        // `Drop` or of an external trait. After trait demotion every trait impl function is
+        // paired with its declaration. The mask check may still need the set operations.
+        reach_set_ops(state, ctxt);
     }
 }
 
@@ -488,6 +496,26 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 reach_atomic_update_ops(state, ctxt);
             }
 
+            // ast_to_sst uses these for async ensures and .await (local or imported async fns)
+            if function.x.attrs.is_async {
+                reach_function(
+                    ctxt,
+                    state,
+                    &crate::fun!(CrateId::Vstd => "future", "FutureSpec"; "obeys_future_laws"),
+                );
+                reach_function(
+                    ctxt,
+                    state,
+                    &crate::fun!(CrateId::Vstd => "future", "FutureSpec"; "view"),
+                );
+                reach_function(
+                    ctxt,
+                    state,
+                    &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "awaited"),
+                );
+                reach_function(ctxt, state, &crate::fun!(CrateId::Vstd => "future"; "exec_await"));
+            }
+
             // note: the types in typ_bounds are handled below by map_function_visitor_env
             traverse_generic_bounds(ctxt, state, &function.x.typ_bounds, false);
             let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
@@ -515,7 +543,10 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         }
                         maybe_reach_set_ops_for_call(state, name, &ctxt, function);
                     }
-                    ExprX::OpenInvariant(_, _, _, atomicity) => {
+                    ExprX::NonSpecClosure { proof_fn_modes: Some(_), .. } => {
+                        reach_set_ops(state, ctxt);
+                    }
+                    ExprX::OpenInvariant(_, _, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
                         // references to these particular names.
                         reach_function(ctxt, state, &fn_inv_name(*atomicity));
@@ -1099,27 +1130,6 @@ pub fn prune_krate_for_module_or_krate(
             if is_root_function(f) {
                 // our function
                 reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
-
-                // an async function, we need to include async related functions
-                if f.x.attrs.is_async {
-                    reach(
-                        &mut state.reached_functions,
-                        &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "view"),
-                    );
-
-                    reach(
-                        &mut state.reached_functions,
-                        &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "awaited"),
-                    );
-
-                    reach(
-                        &mut state.reached_functions,
-                        &mut state.worklist_functions,
-                        &crate::fun!(CrateId::Vstd => "future", "exec_await"),
-                    );
-                }
             }
             continue;
         }

@@ -97,8 +97,8 @@ impl<'a, T> IteratorSpecImpl for VecIterator<'a, T> {
         self.v@[self.i..self.j].as_ref()
     }
 
-    closed spec fn will_return_none(&self) -> bool {
-        true
+    closed spec fn produces(&self) -> Seq<bool> {
+        Seq::new(self.elts_remaining().len(), |_i: int| true)
     }
 
     closed spec fn decrease(&self) -> Option<nat> {
@@ -309,7 +309,10 @@ impl IteratorSpecImpl for IterCtr {
         Seq::new(self.len@.value(), |i:int| ((i + self.count) % (u64::MAX as int + 1)) as u64)
     }
 
-    open spec fn will_return_none(&self) -> bool { false }
+    #[verifier::prophetic]
+    closed spec fn produces(&self) -> Seq<bool> {
+        Seq::new(self.len@.value(), |_i: int| true)
+    }
 
     open spec fn decrease(&self) -> Option<nat> { None }
 
@@ -405,7 +408,10 @@ impl IteratorSpecImpl for Iter42_43 {
         seq_42_43(self.front@.value(), self.back@.value())
     }
 
-    open spec fn will_return_none(&self) -> bool { false }
+    #[verifier::prophetic]
+    closed spec fn produces(&self) -> Seq<bool> {
+        Seq::new((self.front@.value() + self.back@.value()) as nat, |_i: int| true)
+    }
 
     open spec fn decrease(&self) -> Option<nat> { None }
 

@@ -69,6 +69,9 @@ pub(crate) fn mirror_expr_pre<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx Expr<'tcx>,
 ) -> Option<rustc_middle::thir::ExprKind<'tcx>> {
+    if cx.verus_ctxt.full_erasure.is_some() {
+        return crate::verus::full_erasure_mirror_expr_pre(cx, expr);
+    }
     match expr.kind {
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
             let (call_erasure, _) = handle_call(&cx.verus_ctxt, expr);
@@ -104,6 +107,9 @@ pub(crate) fn mirror_expr_post<'tcx>(
                 if let thir::ExprKind::Call { fun, .. } = kind {
                     cx.verus_ctxt.extra_thir.force_treat_inhabited.insert(fun);
                 }
+            }
+            if let CallErasure::ShrRefStructWrap = call_erasure {
+                return crate::verus::shr_ref_struct_wrap(cx, &erasure_ctxt, expr, kind);
             }
             if call_erasure.should_erase() { erase_node_unadjusted(cx, expr, kind) } else { kind }
         }

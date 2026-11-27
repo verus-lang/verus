@@ -13,7 +13,7 @@ via two builtin spec functions: `call_requires` and `call_ensures`.
     It takes two arguments: the function object and arguments
     as a tuple. If it returns true, then it is possible to call `f` with the given args.
  * `call_ensures(f, args, output)` represents the postcondition.
-    It takes takes _three_ arguments: the function object, arguments, and return vaue.
+    It takes _three_ arguments: the function object, arguments, and return value.
     It represents the valid input-output pairs for `f`.
 
 The `vstd` library also [provides aliases](https://verus-lang.github.io/verus/verusdoc/vstd/pervasive/trait.FnWithRequiresEnsures.html), `f.requires(args)` and `f.ensures(args, output)`.
@@ -76,7 +76,7 @@ The above examples show the idiomatic way to constrain the preconditions and pos
 of a function argument. Observe that `call_requires` is used in a _positive_ position,
 i.e., "`call_requires` holds for this value".
 Meanwhile `call_ensures` is used in a _negative_ position, i.e., on the left hand side
-of an implication: "if `call_ensures` holds for a given value, this is satisfies this particular constraint".
+of an implication: "if `call_ensures` holds for a given value, it satisfies this particular constraint".
 
 It is very common to need a guarantee that `f(args)` will return one specific value,
 say `expected_return_value`.
@@ -93,7 +93,7 @@ says that `expected_return_value` is a _possible_ return value of `f(args)`;
 however, it says nothing about _other_ possible return values.
 In general, `f` may be nondeterministic!
 Just because `expected_return_value` is one possible return
-value does not mean it is only one.
+value does not mean it is the only one.
 
 When faced with this situation, **what you really want is to write**:
 
@@ -112,7 +112,7 @@ next example.
 Let's take what we learned and write a simple function, `vec_map`, which applies a given
 function to each element of a vector and returns a new vector.
 
-The key challenge is to determine the right specfication to use.
+The key challenge is to determine the right specification to use.
 
 The signature we want is:
 

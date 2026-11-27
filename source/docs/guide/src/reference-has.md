@@ -9,7 +9,7 @@ V@[has_expr] ::= V@[spec_expr]  has V@[spec_expr]
 
 ### Desugaring
 
-In spec code, the expression `expr1 has expr2` desguars to `expr1.spec_has(expr2)`, which is resolved as normal via Rust's standard [method resolution](https://doc.rust-lang.org/reference/expressions/method-call-expr.html).
+In spec code, the expression `expr1 has expr2` desugars to `expr1.spec_has(expr2)`, which is resolved as normal via Rust's standard [method resolution](https://doc.rust-lang.org/reference/expressions/method-call-expr.html).
 
 Likewise, the expression `expr1 !has expr2` desugars to `!expr1.spec_has(expr2)`.
 

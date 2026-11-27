@@ -8,10 +8,11 @@ edition = "2018"
 # Note: do not add any dependencies on rustc -- AIR deliberately abstracts away from rustc's internals
 [dependencies]
 sise = { workspace = true }
-getopts = { workspace = true }
+clap = { workspace = true }
 smt-scope = { workspace = true }
 petgraph = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 indexmap = { workspace = true }
 yansi = { workspace = true }
 

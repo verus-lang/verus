@@ -11,8 +11,8 @@ use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
 use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemId, TraitItemKind};
 use rustc_middle::ty::{
-    AliasTyKind, ClauseKind, TraitPredicate, TraitRef, Ty, TyCtxt, TyKind, TypeFoldable,
-    TypeFolder, TypeSuperFoldable, TypingEnv,
+    AliasTyKind, ClauseKind, TraitClause, TraitRef, Ty, TyCtxt, TyKind, TypeFoldable, TypeFolder,
+    TypeSuperFoldable, TypingEnv,
 };
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -99,8 +99,10 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
                             let vattrs = ctxt.get_verifier_attrs(attrs)?;
                             if let Some((spec, imp)) = vattrs.external_trait_extension {
                                 let path = ctxt.def_id_to_vir_path(trait_def_id);
-                                let spec = path.replace_last(Arc::new(spec.clone()));
-                                let imp = path.replace_last(Arc::new(imp.clone()));
+                                let spec = path
+                                    .replace_last(vir::ast::Segment::T(Arc::new(spec.clone()), 0));
+                                let imp = path
+                                    .replace_last(vir::ast::Segment::T(Arc::new(imp.clone()), 0));
                                 let m = &mut external_info.external_trait_extension_impl_map;
                                 assert!(!m.contains_key(&imp));
                                 m.insert(imp, spec);
@@ -134,9 +136,9 @@ pub(crate) fn external_trait_specification_of<'tcx>(
                         .skip_binder();
                     for (bound, _) in bounds {
                         match bound.kind().skip_binder() {
-                            ClauseKind::Trait(TraitPredicate {
+                            ClauseKind::Trait(TraitClause {
                                 trait_ref,
-                                polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                                polarity: rustc_middle::ty::ClausePolarity::Positive,
                             }) => {
                                 let trait_def_id = trait_ref.def_id;
                                 if Some(trait_def_id) == tcx.lang_items().sized_trait() {
@@ -333,8 +335,12 @@ pub(crate) fn translate_trait<'tcx>(
         }
 
         let item_path = ctxt.def_id_to_vir_path(owner_id.to_def_id());
-        let is_verus_spec =
-            item_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
+        let is_verus_spec = item_path
+            .segments
+            .last()
+            .expect("segment.last")
+            .name()
+            .is_some_and(|name| name.starts_with(VERUS_SPEC));
         let attrs = tcx.hir_attrs(trait_item.hir_id());
         let ex_item_id_for = if let Some(ex_trait_id_for) = ex_trait_id_for {
             match kind {
@@ -357,17 +363,8 @@ pub(crate) fn translate_trait<'tcx>(
             );
             if mode == Mode::Spec {
                 if external_trait_extension.is_some() {
-                    if let TraitItemKind::Fn(_, TraitFn::Provided(_)) = kind {
-                        if !is_verus_spec {
-                            return err_span(
-                                *span,
-                                "Verus does not currently support default bodies in external spec extensions",
-                            );
-                        }
-                        // TODO: support defaults
-                        // (they would currently just get dropped here if we didn't return an error)
-                    }
                     // spec functions live in extension trait, not in our trait
+                    // (including any default bodies, which are copied to the extension trait)
                     no_erasure_needed.push(owner_id.to_def_id());
                     continue;
                 } else if !is_verus_spec && ex_assoc_item.is_none() {
@@ -604,8 +601,8 @@ pub(crate) fn translate_trait<'tcx>(
     };
     state.external_info.local_trait_ids.push(target_trait_id);
     let external_trait_extension = if let Some((spec, imp)) = external_trait_extension {
-        let spec = orig_trait_path.replace_last(Arc::new(spec.clone()));
-        let imp = orig_trait_path.replace_last(Arc::new(imp.clone()));
+        let spec = orig_trait_path.replace_last(vir::ast::Segment::T(Arc::new(spec.clone()), 0));
+        let imp = orig_trait_path.replace_last(vir::ast::Segment::T(Arc::new(imp.clone()), 0));
         Some((spec, imp))
     } else {
         None
@@ -804,6 +801,7 @@ fn make_trait_decl<'tcx>(
     Ok(FunctionInfo {
         function: vir::def::Spanned::new(method.span.clone(), methodx),
         function_for_autospec: None,
+        autoderive_aux_function: None,
         pre_header: spec_method_info.pre_header.clone(),
         def_id: spec_method_info.def_id,
         body_id: spec_method_info.body_id.clone(),

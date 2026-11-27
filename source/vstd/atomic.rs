@@ -780,6 +780,9 @@ impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
     /// Once the atomic update has been committed using the [`try_open_atomic_update`] macro, we learn that `au.resolves()` is `true`.
     ///
     /// We must be able to prove that `au.resolves()` when the logically atomic function exits.
+    ///
+    /// See also [`Resolution::agree()`] for a way to prove resolution using ghost state.
+    #[verifier::prophetic]
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::resolves"]
     pub uninterp spec fn resolves(self) -> bool;
 
@@ -787,6 +790,9 @@ impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
     ///
     /// When the atomic update is committed, this variable is resolved to the input value of the atomic update.
     /// This variable is used internally in the (private) postcondition of the logically atomic function.
+    ///
+    /// See also [`Resolution::input()`] for a non-prophetic version of this function.
+    #[verifier::prophetic]
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::input"]
     pub uninterp spec fn input(self) -> X;
 
@@ -794,6 +800,9 @@ impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
     ///
     /// When the atomic update is committed, this variable is resolved to the output value of the atomic update.
     /// This variable is used internally in the (private) postcondition of the logically atomic function.
+    ///
+    /// See also [`Resolution::output()`] for a non-prophetic version of this function.
+    #[verifier::prophetic]
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::output"]
     pub uninterp spec fn output(self) -> Y;
 }
@@ -818,6 +827,54 @@ impl<X, Y, Pred: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, Pred> {
     pub open spec fn inner_mask(self) -> ISet<int> {
         self.pred().inner_mask()
     }
+}
+
+/// The resolution of an atomic update.
+///
+/// This ghost state acts as a certificate than an [`AtomicUpdate`] has been resolved successfully.
+/// It is constructed and returned by [`try_open_atomic_update`] in the success case and can be used to prove that an atomic update `resolves`,
+/// or to reason about the `input` and `output` of an atomic update (see [`Resolution::agree`]).
+///
+/// Since this object is constructed after the atomic update has been resolved,
+/// it provides access to the prophecy variables of the atomic update without being prophetic itself.
+/// This can be helpful for more advanced data structures,
+/// where the atomic update is passed around between threads before it is resolved.
+///
+/// Note that this object is helpful, but not necessary, for proving that an atomic update resolves.
+/// In the vast majority of cases, this object can safely be discarded.
+#[verifier::reject_recursive_types(X)]
+#[verifier::reject_recursive_types(Y)]
+#[verifier::reject_recursive_types(Pred)]
+pub struct Resolution<X, Y, Pred> {
+    _inner: Ghost<AtomicUpdate<X, Y, Pred>>,
+}
+
+impl<X, Y, Pred> Resolution<X, Y, Pred> {
+    /// A view of the atomic update that has been resolved.
+    #[rustc_diagnostic_item = "verus::vstd::atomic::Resolution::atomic_update"]
+    pub uninterp spec fn atomic_update(self) -> AtomicUpdate<X, Y, Pred>;
+
+    pub open spec fn is_for(self, atomic_update: AtomicUpdate<X, Y, Pred>) -> bool {
+        self.atomic_update() == atomic_update
+    }
+
+    /// A non-prophetic view of [`AtomicUpdate::input()`].
+    pub uninterp spec fn input(self) -> X;
+
+    /// A non-prophetic view of [`AtomicUpdate::output()`].
+    pub uninterp spec fn output(self) -> Y;
+
+    /// The atomic update agrees with its own resolution.
+    ///
+    /// This proves than an [`AtomicUpdate::resolves()`],
+    /// and also makes sure that the [`input`](fn@Self::input) and [`output`](fn@Self::output)
+    /// of the resolution agree with the atomic update.
+    pub axiom fn agree(&self)
+        ensures
+            self.atomic_update().resolves() == true,
+            self.atomic_update().input() == self.input(),
+            self.atomic_update().output() == self.output(),
+    ;
 }
 
 #[cfg(verus_keep_ghost)]
@@ -964,7 +1021,7 @@ pub open spec fn branch_bool<T: UpdateTry>(this: T) -> bool {
 #[verifier::external]
 pub fn atomically<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
     _body: impl FnOnce(fn (X) -> Y, Ghost<AtomicUpdate<X, Y, P>>),
-) -> AtomicUpdate<X, Y, P> {
+) -> Tracked<AtomicUpdate<X, Y, P>> {
     arbitrary()
 }
 
@@ -1000,7 +1057,7 @@ pub fn try_open_atomic_update_begin<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
 pub fn try_open_atomic_update_end<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
     _guard: BlockGuard<AtomicUpdate<X, Y, P>>,
     _y: Tracked<Y>,
-) -> Tracked<Result<(), AtomicUpdate<X, Y, P>>> {
+) -> Tracked<Result<Resolution<X, Y, P>, AtomicUpdate<X, Y, P>>> {
     unimplemented!()
 }
 
@@ -1009,7 +1066,7 @@ pub fn try_open_atomic_update_end<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
 macro_rules! open_atomic_update {
     ($($tail:tt)*) => {
         {
-            let _ = ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+            let _ = $crate::vstd::prelude::verus_exec_open_au_macro_exprs!(
                 $crate::atomic::try_open_atomic_update_internal!(
                     $($tail)*, @EXEC, au_commit_wrap_exec
                 )
@@ -1022,7 +1079,7 @@ macro_rules! open_atomic_update {
 macro_rules! open_atomic_update_in_proof {
     ($($tail:tt)*) => {
         {
-            let _ = ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+            let _ = $crate::vstd::prelude::verus_ghost_open_au_macro_exprs!(
                 $crate::atomic::try_open_atomic_update_internal!(
                     $($tail)*, @PROOF, au_commit_wrap_proof
                 )
@@ -1036,7 +1093,7 @@ macro_rules! peek_atomic_update {
     ($($tail:tt)*) => {
         {
             #[verifier::exec]
-            let err_au = ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+            let err_au = $crate::vstd::prelude::verus_exec_open_au_macro_exprs!(
                 $crate::atomic::try_open_atomic_update_internal!(
                     $($tail)*, @EXEC, au_abort_wrap_exec
                 )
@@ -1047,7 +1104,7 @@ macro_rules! peek_atomic_update {
                 _ => $crate::atomic::au_abort_unwrap_exec(err_au),
 
                 #[cfg(not(verus_keep_ghost_body))]
-                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+                _ => $crate::vstd::prelude::Tracked::assume_new_fallback(|| ::core::unreachable!()),
             }
         }
     };
@@ -1058,7 +1115,7 @@ macro_rules! peek_atomic_update_in_proof {
     ($($tail:tt)*) => {
         {
             #[verifier::proof]
-            let err_au = ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+            let err_au = $crate::vstd::prelude::verus_ghost_open_au_macro_exprs!(
                 $crate::atomic::try_open_atomic_update_internal!(
                     $($tail)*, @PROOF, au_abort_wrap_proof
                 )
@@ -1069,7 +1126,7 @@ macro_rules! peek_atomic_update_in_proof {
                 _ => $crate::atomic::au_abort_unwrap_proof(err_au),
 
                 #[cfg(not(verus_keep_ghost_body))]
-                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+                _ => $crate::vstd::prelude::Tracked::assume_new_fallback(|| ::core::unreachable!()),
             }
         }
     };
@@ -1078,7 +1135,7 @@ macro_rules! peek_atomic_update_in_proof {
 #[macro_export]
 macro_rules! try_open_atomic_update {
     ($($tail:tt)*) => {
-        ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+        $crate::vstd::prelude::verus_exec_open_au_macro_exprs!(
             $crate::atomic::try_open_atomic_update_internal!($($tail)*)
         )
     };
@@ -1087,7 +1144,7 @@ macro_rules! try_open_atomic_update {
 #[macro_export]
 macro_rules! try_open_atomic_update_in_proof {
     ($($tail:tt)*) => {
-        ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+        $crate::vstd::prelude::verus_ghost_open_au_macro_exprs!(
             $crate::atomic::try_open_atomic_update_internal!($($tail)*)
         )
     };
@@ -1105,7 +1162,7 @@ macro_rules! try_open_atomic_update_internal {
                 _ => $crate::atomic::$wrap_fn(v),
 
                 #[cfg(not(verus_keep_ghost_body))]
-                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+                _ => $crate::vstd::prelude::Tracked::assume_new_fallback(|| ::core::unreachable!()),
             }
         })
     };
@@ -1120,7 +1177,7 @@ macro_rules! try_open_atomic_update_internal {
                 _ => $crate::atomic::$wrap_fn(v),
 
                 #[cfg(not(verus_keep_ghost_body))]
-                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+                _ => $crate::vstd::prelude::Tracked::assume_new_fallback(|| ::core::unreachable!()),
             }
         })
     };
@@ -1138,7 +1195,7 @@ macro_rules! try_open_atomic_update_internal {
                 res => $crate::atomic::try_open_atomic_update_end(guard, res),
 
                 #[cfg(not(verus_keep_ghost_body))]
-                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+                _ => $crate::vstd::prelude::Tracked::assume_new_fallback(|| ::core::unreachable!()),
             }
         }
     };

@@ -10,7 +10,7 @@ This enables us to call such a function using an atomic invariant.
 
 To make the ideas in this section a bit more concrete, we will consider two simple logically atomic example functions: `reset` and `increment`.
 The former sets a `PAtomicU64` to zero, the latter increases its value by one using a compare-and-swap loop.
-These two function can be implemented in Rust as follows:
+These two functions can be implemented in Rust as follows:
 
 ```rs
 use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
@@ -32,13 +32,13 @@ fn increment(var: &AtomicU64) -> u64 {
 
 The latter example is particularly interesting, as the `increment` function internally performs multiple atomic operations, and even repeats one of them in an unbounded loop, yet from the outside, the function is observationally equivalent to a single atomic operation.
 
-The `reset` function on the other hand is actually physically atomic, since it only contains a single `exec`-mode operation (`store`), which it itself physically atomic.
+The `reset` function on the other hand is actually physically atomic, since it only contains a single `exec`-mode operation (`store`), which is itself physically atomic.
 This means, instead of proving logical atomicity, we could annotate the function with [`#[verifier::atomic]`](reference-attributes.html#verifieratomic) to make Verus treat it as physically atomic.
 
 ## Main concepts
 
 The two functions above are logically atomic, because they have a **linearization point (LP)**, that is, a single atomic step which updates the state of the program.
-In the `increment` function, for example, the LP occurs when the `compare_exchange_weak` operations runs successfully.
+In the `increment` function, for example, the LP occurs when the `compare_exchange_weak` operation runs successfully.
 Identifying the LP in a function is the first important step in proving it is logically atomic.
 
 We can then specify the behavior of such a function using an *atomic* pre- and postcondition.
@@ -84,7 +84,7 @@ This approach has been applied in Verus to verify CapybaraKV ([LeBlanc et al. OS
 
 While this approach has the advantage of being fully verified in Verus, it comes with significant downsides to ergonomics and flexibility.
 In particular, this encoding of logical atomicity is inherently higher-order and cumbersome to reason about.
-It requires a significant amount of boilerplate code, both for the library/callee but also for the client/caller, to define the auxilary types and trait implementations requires for this encoding.
+It requires a significant amount of boilerplate code, both for the library/callee but also for the client/caller, to define the auxiliary types and trait implementations required for this encoding.
 All this buries the function specification in layers of abstraction.
 Finally, this approach only allows ghost state to be updated at the LP, making this approach too weak to verify either of our two running examples without awkward workarounds.
 

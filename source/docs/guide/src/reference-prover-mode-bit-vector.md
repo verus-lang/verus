@@ -12,13 +12,13 @@ The `bit_vector` solver can be invoked via an [`assert-by` statement](./referenc
 assert(Q) by(bit_vector);
 ```
 
-Proves `Q` via the the `bit_vector` solver.
+Proves `Q` via the `bit_vector` solver.
 
 ```
 assert(Q) by(bit_vector) requires P;
 ```
 
-Proves `P ==> Q` via the the `bit_vector` solver.
+Proves `P ==> Q` via the `bit_vector` solver.
 
 **As a proof function.**
 The `bit_vector` solver can be invoked with a `by(bit_vector)` on a [proof function](./reference-proof-signature.md).
@@ -54,9 +54,9 @@ because of the fact that Verus has to choose a fixed bitwidth for any given expr
 
 Note that, although the bitvector solver cannot handle free variables of type
 `int` or `nat`, it _can_ handle some expressions that are typed `int` or `nat` provided
-Verus can bound the the bitwidth needed to represent the number.
+Verus can bound the bitwidth needed to represent the number.
 For example, if `x` and `y` have type `u64`, then `x + y` has type `int`,
-but the Verus knows that `x + y` is representable with 65 bits.
+but Verus knows that `x + y` is representable with 65 bits.
 
 ### Handling `usize` and `isize`
 

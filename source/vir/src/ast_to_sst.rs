@@ -2,10 +2,10 @@ use crate::ast::{
     ArithOp, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
     BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr,
     Fun, Function, Ident, IntRange, IntegerTypeBoundKind, InvAtomicity, Label, LogicalOp,
-    LoopInvariantKind, MaskSpec, Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX,
-    SignedDivEdgeCaseBehavior, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr,
-    UninterpretedFloatBinaryOp, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
-    VarIdentDisambiguate, VariantCheck, VirErr,
+    LoopInvariantKind, LoopSource, MaskSpec, Mode, OverflowBehavior, PatternBinding, PatternX,
+    Place, PlaceX, SignedDivEdgeCaseBehavior, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, UninterpretedFloatBinaryOp, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders,
+    VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{
@@ -1015,6 +1015,30 @@ fn expr_get_call(
                     return Ok(None);
                 }
 
+                let func_is_atomic = function.x.atomic_update.is_some();
+                let call_is_atomic = args.last().is_some_and(|expr| {
+                    // atomically block was replaced by init dummy
+                    matches!(expr.x, ExprX::AtomicUpdateInitDummy)
+                });
+
+                match (func_is_atomic, call_is_atomic) {
+                    (true, false) => {
+                        return Err(error_with_label(
+                            &expr.span,
+                            "invalid call to logically atomic function",
+                            "expected atomic function call here",
+                        ));
+                    }
+                    (false, true) => {
+                        return Err(error_with_label(
+                            &expr.span,
+                            "invalid atomic function call",
+                            "unexpected atomic function call here",
+                        ));
+                    }
+                    _ => {}
+                }
+
                 let (stms, all_obligations, exps, body) = get_call_args(
                     ctx,
                     state,
@@ -1761,6 +1785,7 @@ pub(crate) fn expr_to_stm_opt(
             let f = match bsf {
                 BuiltinSpecFun::ClosureReq => InternalFun::ClosureReq,
                 BuiltinSpecFun::ClosureEns => InternalFun::ClosureEns,
+                BuiltinSpecFun::ClosureOpensInvariants => InternalFun::ClosureOpensInvariants,
                 BuiltinSpecFun::DefaultEns => InternalFun::DefaultEns,
             };
             Ok((
@@ -2139,10 +2164,11 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::NonSpecClosure {
             params,
-            proof_fn_modes: _,
+            proof_fn_modes,
             body,
             requires,
             ensures,
+            mask_spec,
             ret,
             external_spec,
         } => {
@@ -2151,8 +2177,17 @@ pub(crate) fn expr_to_stm_opt(
             // Emit the internals of the closure (ClosureInner behaves like a dead-end)
             // This includes assuming the requires, asserting the ensures, everything else
 
-            let (inner_stms, typ_inv_vars) =
-                exec_closure_body_stms(ctx, state, params, ret, body, requires, ensures)?;
+            let (inner_stms, typ_inv_vars) = exec_closure_body_stms(
+                ctx,
+                state,
+                params,
+                ret,
+                body,
+                requires,
+                ensures,
+                mask_spec,
+                proof_fn_modes.is_some(),
+            )?;
             let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_stms)));
             let clos =
                 Spanned::new(expr.span.clone(), StmX::ClosureInner { body: block, typ_inv_vars });
@@ -2659,6 +2694,8 @@ pub(crate) fn expr_to_stm_opt(
             invs,
             decrease,
             atomic_call,
+            known_no_back_edge,
+            source,
         } => {
             let is_for_loop = *is_for_loop;
             let produces_value =
@@ -2697,7 +2734,13 @@ pub(crate) fn expr_to_stm_opt(
                 // in the same query
                 return Err(error(
                     &expr.span,
-                    "loop with `loop_isolation(false)` contains `break` statement inside a nested loop with `loop_isolation(true)`",
+                    format!(
+                        "{:} contains `break` statement inside a nested loop with `loop_isolation(true)`",
+                        match source {
+                            LoopSource::Loop => "loop with `loop_isolation(false)`",
+                            LoopSource::BreakableBlock => "breakable block",
+                        }
+                    ),
                 ));
             }
             let has_user_break = num_breaks > if is_for_loop { 1 } else { 0 };
@@ -2889,6 +2932,7 @@ pub(crate) fn expr_to_stm_opt(
                     modified_vars: None,
                     pre_modified_params_incl: None,
                     pre_modified_params_excl: None,
+                    known_no_back_edge: *known_no_back_edge,
                 },
             );
 
@@ -2915,7 +2959,8 @@ pub(crate) fn expr_to_stm_opt(
                 Ok((stms, Maybe::Never))
             }
         }
-        ExprX::OpenInvariant(inv, binder, body, atomicity) => {
+        ExprX::OpenInvariant(credit, inv, binder, body, atomicity) => {
+            // credit;
             // let inv_tmp = inv;
             // OpenInvariantBlock(inv_tmp.namespace(), {
             //   let mut inner = inner_tmp;
@@ -2926,8 +2971,12 @@ pub(crate) fn expr_to_stm_opt(
             //   assert(inv_tmp.inv(inner));
             // });
 
+            let (mut stms0, credit_exp) = expr_to_stm_opt(ctx, state, credit)?;
+            let _credit_exp = to_exp_or_return_never!(credit_exp, stms0);
+
             // Evaluate `inv`
-            let (mut stms0, big_inv_exp) = expr_to_stm_opt(ctx, state, inv)?;
+            let (stms_inv, big_inv_exp) = expr_to_stm_opt(ctx, state, inv)?;
+            stms0.extend(stms_inv);
             let big_inv_exp = to_exp_or_return_never!(big_inv_exp, stms0);
 
             // Assign it to a constant tmp variable to ensure it is constant
@@ -3019,23 +3068,25 @@ pub(crate) fn expr_to_stm_opt(
             // let au = $au_expr;
             // let x = new existential;
             //
-            // assume(req(au, x));
-            // assert(outer_mask(au) ⊆ state.mask);
+            // assume(au.req(x));
+            // assert(au.outer_mask() ⊆ state.mask);
             //
             // let y;
-            // with state.mask = inner_mask(au) {
+            // with state.mask = au.inner_mask() {
             //     let $mut $x = x;
             //     y = $body;
             // }
             //
-            // assert(ens(au, x, y));
+            // assert(au.ens(x, y));
             //
             // if branch_bool(y) {
-            //     assume(input(au, x));
-            //     assume(output(au, y));
-            //     assume(resolves(au));
+            //     assume(au.input() == x);
+            //     assume(au.output() == y);
+            //     assume(au.resolves());
             //
-            //     Ok(())
+            //     let resolution = new existential;
+            //     assume(resolution.atomic_update() == au);
+            //     Ok(resolution)
             // } else {
             //     Err(au)
             // }
@@ -3167,7 +3218,15 @@ pub(crate) fn expr_to_stm_opt(
 
             // generate condition
 
-            let res_dt = Dt::Path(def::result_type_path());
+            let expr_typ = undecorate_typ(&expr.typ);
+            let TypX::Datatype(res_dt, res_ty_args, _) = expr_typ.as_ref() else {
+                panic!("Result should be a datatype");
+            };
+
+            let [resolution_typ, _au_typ] = res_ty_args.as_slice() else {
+                panic!("Result should have two type arguments");
+            };
+
             let ok_variant = Arc::new("Ok".to_owned());
             let err_variant = Arc::new("Err".to_owned());
             let variant_field = Arc::new("0".to_owned());
@@ -3196,14 +3255,29 @@ pub(crate) fn expr_to_stm_opt(
                     &mut stms,
                 );
 
-                let unit_typ = crate::ast_util::mk_tuple_typ(&Default::default());
-                let (unit_var_id, unit_var_exp) = state.declare_temp_var_stm(
+                let (resolution_var_id, resolution_var_exp) = state.declare_temp_var_stm(
                     &expr.span,
-                    &unit_typ,
+                    &resolution_typ,
                     PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic)),
                 );
 
-                stms.push(assume_has_typ(&unit_var_id, &unit_typ, &expr.span));
+                stms.push(assume_has_typ(&resolution_var_id, &resolution_typ, &expr.span));
+                stms.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assume(sst_equal(
+                        &expr.span,
+                        &SpannedTyped::new(
+                            &expr.span,
+                            &au_typ,
+                            ExpX::Call(
+                                CallFun::Fun(def::fn_resolution_atomic_update(), None),
+                                typ_args.clone(),
+                                Arc::new(vec![resolution_var_exp.clone()]),
+                            ),
+                        ),
+                        &au_var_exp,
+                    )),
+                ));
 
                 let out_exp = SpannedTyped::new(
                     &expr.span,
@@ -3213,7 +3287,7 @@ pub(crate) fn expr_to_stm_opt(
                         ok_variant.clone(),
                         Arc::new(vec![Arc::new(BinderX {
                             name: variant_field.clone(),
-                            a: unit_var_exp,
+                            a: resolution_var_exp,
                         })]),
                     ),
                 );
@@ -3794,7 +3868,7 @@ pub(crate) fn expr_to_stm_opt(
                 ExprX::Call {
                     target: CallTarget::Fun(
                         crate::ast::CallTargetKind::Static,
-                        fun!(CrateId::Vstd => "future", "exec_await"),
+                        fun!(CrateId::Vstd => "future"; "exec_await"),
                         Arc::new(vec![e.typ.clone()]),
                         Arc::new(vec![]),
                         attrs,
@@ -3847,6 +3921,7 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, Maybe::Some(Value::Exp(exp1))))
         }
         ExprX::Old(e) => expr_to_stm_opt(ctx, state, e),
+        ExprX::ForcePureAndNonProphetic(_, e) => expr_to_stm_opt(ctx, state, e),
         ExprX::MatchGuardFreeze(scrutinee, body) => {
             let (stms, e) = expr_to_stm_opt(ctx, state, body)?;
             let (stms0, scrutinee) = place_to_exp_pair(ctx, state, scrutinee)?;
@@ -3990,6 +4065,23 @@ fn binary_op_exp(
             assume_fp_postcondition(&var_ident, e1, e2, op, &e1.typ, typ, span),
         ];
         return (stms, exp);
+    } else if let BinaryOp::BoolInequality(ineq_op) = op {
+        // (a < b) == (!a && b)
+        let (neg_l, neg_r, bin_op) = match ineq_op {
+            crate::ast::InequalityOp::Lt => (Some(UnaryOp::Not), None, sst::BinaryOp::And),
+            crate::ast::InequalityOp::Gt => (None, Some(UnaryOp::Not), sst::BinaryOp::And),
+            crate::ast::InequalityOp::Le => (Some(UnaryOp::Not), None, sst::BinaryOp::Or),
+            crate::ast::InequalityOp::Ge => (None, Some(UnaryOp::Not), sst::BinaryOp::Or),
+        };
+        let l = match neg_l {
+            Some(op) => SpannedTyped::new(&e1.span, &bool_typ(), ExpX::Unary(op, e1.clone())),
+            None => e1.clone(),
+        };
+        let r = match neg_r {
+            Some(op) => SpannedTyped::new(&e2.span, &bool_typ(), ExpX::Unary(op, e2.clone())),
+            None => e2.clone(),
+        };
+        SpannedTyped::new(span, &bool_typ(), ExpX::Binary(bin_op, l, r))
     } else {
         let pure_op = match op {
             // Ops with side-effects are turned into sst ops without side-effects
@@ -4009,6 +4101,7 @@ fn binary_op_exp(
             BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => unreachable!(),
             BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => unreachable!(),
             BinaryOp::UninterpretedFloat(..) => unreachable!(),
+            BinaryOp::BoolInequality(..) => unreachable!(),
 
             // Pure ops
             BinaryOp::BoolOrNoSC => sst::BinaryOp::Or,
@@ -4319,6 +4412,9 @@ fn mut_ref_to_dyn_sst(
 struct Obligation {
     fun: Fun,
     exp: Exp,
+    /// The field of `exp` the mutable reference goes into, if it is a field of a struct
+    /// (one-variant datatype): `field` of `exp`, with nothing else of `exp` borrowed
+    field: Option<FieldOpr>,
 }
 
 /// Compute the place expression and read from the place
@@ -4460,7 +4556,13 @@ fn place_to_exp_pair_rec(
     match &place.x {
         PlaceX::Field(field_opr, p) => {
             let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
-            let (e1, e2, obligations, mut wf) = unwrap_or_return_never!(exps, stms);
+            let (e1, e2, mut obligations, mut wf) = unwrap_or_return_never!(exps, stms);
+            if matches!(&p.x, PlaceX::UserDefinedTypInvariantObligation(..)) {
+                // the obligation `p` pushed last is about the datatype this field belongs to
+                if let Some(o) = obligations.last_mut() {
+                    o.field = Some(field_opr.clone());
+                }
+            }
 
             let check = match field_opr.check {
                 VariantCheck::Union => {
@@ -4576,7 +4678,7 @@ fn place_to_exp_pair_rec(
         PlaceX::UserDefinedTypInvariantObligation(p, fun) => {
             let (stms, mut exps) = place_to_exp_pair_rec(ctx, state, p)?;
             if let Maybe::Some((_e1, e2, obligations, _wf)) = &mut exps {
-                obligations.push(Obligation { fun: fun.clone(), exp: e2.clone() });
+                obligations.push(Obligation { fun: fun.clone(), exp: e2.clone(), field: None });
             }
             Ok((stms, exps))
         }
@@ -4614,6 +4716,7 @@ fn stmt_to_stm(
                     by_ref: ByRef::No,
                     typ,
                     copy: _,
+                    move_exec_to_proof_okay: _,
                 }) => (name, typ),
                 _ => panic!("internal error: Decl should have been simplified by ast_simplify"),
             };
@@ -4725,15 +4828,12 @@ fn exec_closure_body_stms(
     body: &Expr,
     requires: &Exprs,
     ensures: &Exprs,
+    mask_spec: &Option<MaskSpec>,
+    is_proof: bool,
 ) -> Result<(Vec<Stm>, Arc<Vec<(UniqueIdent, Typ)>>), VirErr> {
     let mut typ_inv_vars = vec![];
 
     state.push_scope();
-
-    // Right now there is no way to specify an invariant mask on a closure function
-    // All closure funcs are assumed to have mask set 'full'
-    let mut mask = Some(MaskSet::full(&body.span));
-    std::mem::swap(&mut state.mask, &mut mask);
 
     let mut param_set = HashSet::<VarIdent>::new();
 
@@ -4753,6 +4853,26 @@ fn exec_closure_body_stms(
         let stm = Spanned::new(req.span.clone(), StmX::Assume(exp));
         stms.push(stm);
     }
+
+    // Inv mask
+    let mut mask = if is_proof {
+        if let Some(mask_spec) = mask_spec {
+            let mask_sst = mask_spec.map_to_sst(&mut |expr| {
+                let (check_stms, exp) = expr_to_pure_exp_check(ctx, state, expr)?;
+                stms.extend(check_stms);
+                Ok(exp)
+            })?;
+            Some(mask_sst)
+        } else {
+            Some(MaskSet::empty(&body.span))
+        }
+    } else {
+        // Right now there is no way to specify an invariant mask on an exec closure function
+        // All exec closure funcs are assumed to have mask set 'full'
+        assert!(mask_spec.is_none());
+        Some(MaskSet::full(&body.span))
+    };
+    std::mem::swap(&mut state.mask, &mut mask);
 
     let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ExecClosureRet));
     state.declare_var_stm(&ret.name, &ret.a, kind, false);
@@ -4848,6 +4968,56 @@ fn call_namespace(_ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicit
     SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
 }
 
+/// Whether the type invariant `inv` may depend on field `f` of its argument: false only if the
+/// datatype is a struct (one variant) and every use of the parameter in the invariant's body is
+/// a read of another field of it (so a call that passes the parameter on, matches on it or
+/// reads it whole counts as a read of every field). Conservatively true without a body.
+fn typ_inv_may_read_field(ctx: &Ctx, inv: &Fun, f: &FieldOpr) -> bool {
+    let one_variant = ctx.datatype_map.get(&f.datatype).map_or(false, |d| d.x.variants.len() == 1);
+    let Some(function) = ctx.func_map.get(inv) else { return true };
+    let (Some(body), Some(param)) = (&function.x.body, function.x.params.first()) else {
+        return true;
+    };
+    if !one_variant {
+        return true;
+    }
+    let param = param.x.name.clone();
+    let other_field = |opr: &FieldOpr| opr.datatype == f.datatype && opr.field != f.field;
+    let mut counts = (0usize, 0usize); // (uses of the parameter, reads of other fields)
+    let _ = crate::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
+        body,
+        &mut counts,
+        &mut |c: &mut (usize, usize), _, e: &Expr| {
+            match &e.x {
+                ExprX::Var(x) if *x == param => c.0 += 1,
+                ExprX::UnaryOpr(crate::ast::UnaryOpr::Field(opr), inner)
+                    if matches!(&inner.x, ExprX::Var(x) if *x == param) && other_field(opr) =>
+                {
+                    c.1 += 1
+                }
+                _ => {}
+            }
+            Ok(())
+        },
+        &mut |_, _, _| Ok(()),
+        &mut |_, _, _| Ok(()),
+        &mut |_, _, _, _| Ok(()),
+        &mut |c: &mut (usize, usize), _, pl: &Place| {
+            match &pl.x {
+                PlaceX::Local(x) if *x == param => c.0 += 1,
+                PlaceX::Field(opr, inner)
+                    if matches!(&inner.x, PlaceX::Local(x) if *x == param) && other_field(opr) =>
+                {
+                    c.1 += 1
+                }
+                _ => {}
+            }
+            Ok(())
+        },
+    );
+    counts.0 != counts.1
+}
+
 #[derive(PartialEq, Eq, Clone)]
 enum TypInv {
     UnwindError,
@@ -4866,7 +5036,15 @@ fn typ_inv_obligations(
     typ_inv: TypInv,
 ) -> Result<(), VirErr> {
     for obligation in obligations.into_iter().rev() {
-        let Obligation { fun, exp } = obligation;
+        let Obligation { fun, exp, field } = obligation;
+        // A call that may unwind leaves the datatype with whatever the callee wrote into the
+        // borrowed field. When the invariant cannot read that field, the rest of the value is
+        // unchanged and the invariant still holds, so there is nothing to check.
+        if typ_inv == TypInv::UnwindError
+            && field.as_ref().is_some_and(|f| !typ_inv_may_read_field(ctx, &fun, f))
+        {
+            continue;
+        }
         assert_assume_satisfies_user_defined_type_invariant(
             ctx,
             state,

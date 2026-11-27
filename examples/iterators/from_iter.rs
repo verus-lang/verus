@@ -9,8 +9,8 @@ pub struct Collected<A> {
 }
 
 impl<A> FromIteratorSpecImpl<A> for Collected<A> {
-    open spec fn from_iter_ensures(remaining: Seq<A>, will_return_none: bool, s: Self) -> bool {
-        will_return_none && remaining == s.values@
+    open spec fn from_iter_ensures(remaining: Seq<A>, produces: Seq<bool>, s: Self) -> bool {
+        produces.len() == remaining.len() && produces.all(|p: bool| p) && remaining == s.values@
     }
 }
 
@@ -26,19 +26,36 @@ impl<A> core::iter::FromIterator<A> for Collected<A> {
             invariant
                 call_ensures(T::into_iter, (src,), initial),
                 iter.obeys_prophetic_iter_laws() == initial.obeys_prophetic_iter_laws(),
-                initial.obeys_prophetic_iter_laws() ==> iter.will_return_none()
-                    == initial.will_return_none(),
+                initial.obeys_prophetic_iter_laws() ==> iter.produces()
+                    == initial.produces().skip(values.len() as int),
+                initial.obeys_prophetic_iter_laws() ==> initial.produces().take(
+                    values.len() as int,
+                ).all(|p: bool| p),
                 initial.obeys_prophetic_iter_laws() ==> initial.remaining() == values@
                     + iter.remaining(),
+                initial.obeys_prophetic_iter_laws() && values.len() > 0 ==>
+                    initial.produces().len() == initial.remaining().len(),
         {
             match iter.next() {
                 Some(x) => {
                     values.push(x);
+                    proof {
+                        if initial.obeys_prophetic_iter_laws() {
+                            assert(iter.produces() =~= initial.produces().skip(values.len() as int));
+                        }
+                    }
                 },
                 None => {
                     let s = Collected { values };
+                    proof {
+                        if initial.obeys_prophetic_iter_laws() {
+                            assert(initial.produces().len() == initial.remaining().len());
+                            assert(initial.produces().take(s.values.len() as int) =~= initial.produces());
+                        }
+                    }
                     assert(initial.obeys_prophetic_iter_laws() ==> initial.remaining() == s.values@
-                        && initial.will_return_none());
+                        && initial.produces().len() == initial.remaining().len()
+                        && initial.produces().all(|p: bool| p));
                     return s;
                 },
             }
@@ -62,7 +79,7 @@ fn generic_collection<A, I: Iterator<Item = A>, B: core::iter::FromIterator<A>>(
     ensures
         iter.obeys_prophetic_iter_laws() ==> <B as FromIteratorSpec<A>>::from_iter_ensures(
             iter.remaining(),
-            iter.will_return_none(),
+            iter.produces(),
             out,
         ),
 {

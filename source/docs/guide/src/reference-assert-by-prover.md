@@ -37,7 +37,7 @@ Specifically, for a statement
 <code>assert ( Q ) by ( V@[assert_by_solver_mode] )</code>,
 Verus tries to prove `Q` using the solver, and then assumes `Q` for the subsequent code.
 
-If a `requires P` clause is additionally provides, then Verus:
+If a `requires P` clause is additionally provided, then Verus:
 
  * Proves `P` using the default solver (with full context available)
  * Proves `P ==> Q` using the specified solver (in isolation)

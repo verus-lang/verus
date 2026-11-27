@@ -9,11 +9,11 @@ use crate::ast_to_sst::{
     expr_to_pure_exp_check_with_typ_substs, expr_to_pure_exp_skip_checks, expr_to_stm_opt,
     expr_to_stm_or_error, stms_to_one_stm,
 };
-use crate::ast_util::{is_body_visible_to, unit_typ};
+use crate::ast_util::{conjoin, is_body_visible_to, mk_implies, unit_typ};
 use crate::context::{Ctx, FunctionCtx};
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
-use crate::messages::{Message, error};
+use crate::messages::{Message, Span, error};
 use crate::sst::{BndX, CallFun, Exp, ExpX, Exps, LocalDeclKind, Par, ParX, Pars, Stm, StmX};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
@@ -246,67 +246,70 @@ fn func_body_to_sst(
     Ok(FuncSpecBodySst { decrease_when, termination_check, body_exp })
 }
 
+fn async_future_spec_call(
+    function: &Function,
+    span: &Span,
+    fun: Fun,
+    typ: &Typ,
+    trait_typ: Option<&Typ>,
+) -> Expr {
+    let call_target_attrs = crate::ast::CallTargetAttrs {
+        autospec: AutospecUsage::Final,
+        const_var: false,
+        assume_external_allowed: false,
+    };
+    let future_typ = function.x.outer_ret.x.typ.clone();
+    let mut trait_typs = vec![future_typ.clone()];
+    if let Some(trait_typ) = trait_typ {
+        trait_typs.push(trait_typ.clone());
+    }
+    SpannedTyped::new(
+        span,
+        typ,
+        ExprX::Call {
+            target: CallTarget::Fun(
+                crate::ast::CallTargetKind::Dynamic,
+                fun,
+                Arc::new(trait_typs),
+                Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
+                    crate::def::prefix_spec_fn_type(0),
+                )]),
+                call_target_attrs,
+            ),
+            args: Arc::new(vec![SpannedTyped::new(
+                span,
+                &future_typ,
+                ExprX::Var(function.x.outer_ret.x.name.clone()),
+            )]),
+            post_args: None,
+            body: None,
+        },
+    )
+}
+
 fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<Expr>, VirErr> {
     let mut exprs: Vec<Expr> = Vec::new();
 
     for e in specs {
-        let call_target_attrs = crate::ast::CallTargetAttrs {
-            autospec: AutospecUsage::Final,
-            const_var: false,
-            assume_external_allowed: false,
-        };
-
-        let future_typ = function.x.outer_ret.x.typ.clone();
         let output_typ = function.x.inner_ret.x.typ.clone();
 
         // outer.awaited() ==> { let inner = outer.view(); ensures_clause }
-
-        let awaited_call = SpannedTyped::new(
+        let awaited_call = async_future_spec_call(
+            function,
             &e.span,
+            fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns"; "awaited"),
             &Arc::new(TypX::Bool),
-            ExprX::Call {
-                target: CallTarget::Fun(
-                    crate::ast::CallTargetKind::Dynamic,
-                    fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "awaited"),
-                    Arc::new(vec![future_typ.clone(), output_typ.clone()]),
-                    Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
-                        crate::def::prefix_spec_fn_type(0),
-                    )]),
-                    call_target_attrs.clone(),
-                ),
-                args: Arc::new(vec![SpannedTyped::new(
-                    &e.span,
-                    &future_typ,
-                    ExprX::Var(function.x.outer_ret.x.name.clone()),
-                )]),
-                post_args: None,
-                body: None,
-            },
+            Some(&output_typ),
         );
         let view_call = SpannedTyped::new(
             &e.span,
             &output_typ,
-            PlaceX::Temporary(SpannedTyped::new(
+            PlaceX::Temporary(async_future_spec_call(
+                function,
                 &e.span,
+                fun!(CrateId::Vstd => "future", "FutureSpec"; "view"),
                 &output_typ,
-                ExprX::Call {
-                    target: CallTarget::Fun(
-                        crate::ast::CallTargetKind::Dynamic,
-                        fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "view"),
-                        Arc::new(vec![future_typ.clone(), output_typ.clone()]),
-                        Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
-                            crate::def::prefix_spec_fn_type(0),
-                        )]),
-                        call_target_attrs,
-                    ),
-                    args: Arc::new(vec![SpannedTyped::new(
-                        &e.span,
-                        &future_typ,
-                        ExprX::Var(function.x.outer_ret.x.name.clone()),
-                    )]),
-                    post_args: None,
-                    body: None,
-                },
+                None,
             )),
         );
         let block = SpannedTyped::new(
@@ -375,9 +378,20 @@ pub fn func_decl_to_sst(
     function: &Function,
 ) -> Result<FuncDeclSst, VirErr> {
     let (pars, reqs) = req_ens_to_sst(ctx, diagnostics, function, &function.x.require, true)?;
-    let (ens_pars, enss0) =
+    let (ens_pars, mut enss0) =
         req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure.0, false)?;
     let (_, enss1) = req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure.1, false)?;
+    if function.x.attrs.is_async {
+        // Async functions return futures that obey the vstd FutureSpec rules.
+        let obeys = async_future_spec_call(
+            function,
+            &function.span,
+            fun!(CrateId::Vstd => "future", "FutureSpec"; "obeys_future_laws"),
+            &Arc::new(TypX::Bool),
+            None,
+        );
+        enss0.push(expr_to_exp_skip_checks(ctx, diagnostics, &ens_pars, &obeys)?);
+    }
 
     let mut inv_masks: Vec<Exps> = Vec::new();
     match &function.x.mask_spec {
@@ -414,9 +428,18 @@ pub fn func_decl_to_sst(
             .fndef_axioms
             .as_ref()
             .expect("expected FnDef axioms to have been generated in ast_simplify");
+        let bounds =
+            crate::traits::trait_bounds_to_ast(ctx, &function.span, &function.x.typ_bounds);
         for fndef_axiom in fndef_axioms.iter() {
+            let fndef_axiom = match &fndef_axiom.x {
+                ExprX::Quant(q, bs, body) if bounds.len() > 0 => {
+                    let body = mk_implies(&body.span, &conjoin(&body.span, &bounds), body);
+                    fndef_axiom.new_x(ExprX::Quant(*q, bs.clone(), body))
+                }
+                _ => fndef_axiom.clone(),
+            };
             let mut state = State::new(diagnostics);
-            let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, fndef_axiom)?;
+            let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, &fndef_axiom)?;
             let exp = state.finalize_exp(ctx, &exp)?;
             state.finalize()?;
 
@@ -691,7 +714,7 @@ where
 }
 
 impl MaskSpec {
-    fn map_to_sst(
+    pub(crate) fn map_to_sst(
         &self,
         f: &mut impl FnMut(&Expr) -> Result<Exp, VirErr>,
     ) -> Result<MaskSet, VirErr> {

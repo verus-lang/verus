@@ -165,6 +165,7 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
                 by_ref: ByRef::No,
                 typ: binding.typ.clone(),
                 copy: false,
+                move_exec_to_proof_okay: crate::ast::MoveExecToProofOkay::Yes,
             });
             let v_pattern = SpannedTyped::new(&pattern.span, &binding.typ, v_patternx);
             stmts.push(Spanned::new(
@@ -657,6 +658,7 @@ fn simplify_one_expr(
             body,
             requires,
             ensures,
+            mask_spec,
             ret,
             external_spec,
         } => {
@@ -669,8 +671,17 @@ fn simplify_one_expr(
                 ExprX::Var(closure_var_ident.clone()),
             );
 
-            let external_spec_expr =
-                exec_closure_spec(state, &expr.span, &closure_var, params, ret, requires, ensures)?;
+            let external_spec_expr = exec_closure_spec(
+                state,
+                &expr.span,
+                &closure_var,
+                params,
+                ret,
+                requires,
+                ensures,
+                mask_spec,
+                proof_fn_modes.is_some(),
+            )?;
             let external_spec = Some((closure_var_ident, external_spec_expr));
 
             Ok(SpannedTyped::new(
@@ -682,6 +693,7 @@ fn simplify_one_expr(
                     body: body.clone(),
                     requires: requires.clone(),
                     ensures: ensures.clone(),
+                    mask_spec: mask_spec.clone(),
                     ret: ret.clone(),
                     external_spec,
                 },
@@ -729,6 +741,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                     user_mut: _,
                     typ: _,
                     copy: _,
+                    move_exec_to_proof_okay: _,
                 }) => Ok(vec![stmt.clone()]),
                 _ => {
                     let mut stmts: Vec<Stmt> = Vec::new();
@@ -751,7 +764,8 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                     name: _,
                     user_mut: _,
                     typ: _,
-                    copy: _
+                    copy: _,
+                    move_exec_to_proof_okay: _,
                 })
             ) =>
         {
@@ -816,11 +830,8 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
                 .collect();
             Ok(Arc::new(TypX::Datatype(path, Arc::new(typ_args), Arc::new(vec![]))))
         }
-        TypX::FnDef(fun, _typs, resolved) => {
+        TypX::FnDef(fun, _typs, _resolved) => {
             state.fndef_typs.insert(fun.clone());
-            if let Some(resolved_fun) = resolved {
-                state.fndef_typs.insert(resolved_fun.clone());
-            }
             Ok(typ.clone())
         }
         TypX::TypParam(x) => {
@@ -892,6 +903,32 @@ fn mk_closure_ens_call(
                 Arc::new(vec![]),
             ),
             args: Arc::new(vec![fn_val.clone(), arg_tuple.clone(), ret_arg.clone()]),
+            post_args: None,
+            body: None,
+        },
+    )
+}
+
+fn mk_closure_opens_call(
+    state: &mut State,
+    span: &Span,
+    params: &VarBinders<Typ>,
+    fn_val: &Expr,
+    arg_tuple: &Expr,
+) -> Expr {
+    let inv_typ = crate::inv_masks::namespace_set_typ();
+    let mut typ_args = closure_trait_call_typ_args(state, fn_val, params);
+    Arc::make_mut(&mut typ_args).push(inv_typ.clone());
+    SpannedTyped::new(
+        span,
+        &inv_typ,
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(
+                BuiltinSpecFun::ClosureOpensInvariants,
+                typ_args,
+                Arc::new(vec![]),
+            ),
+            args: Arc::new(vec![fn_val.clone(), arg_tuple.clone()]),
             post_args: None,
             body: None,
         },
@@ -1038,6 +1075,58 @@ fn exec_closure_spec_ensures(
     Ok(ens_forall)
 }
 
+fn exec_closure_spec_mask(
+    state: &mut State,
+    span: &Span,
+    closure_var: &Expr,
+    params: &VarBinders<Typ>,
+    mask: crate::ast::MaskSpec,
+) -> Result<Expr, VirErr> {
+    // For invariant mask:
+
+    // If the closure has `|a0, a1, a2| opens_invariants f(a0, a1, a2)`
+    // then we emit a spec of the form
+    //
+    //      forall x :: f(x.0, x.1, x.2) == closure.opens_invariants(x)
+    //
+    // with `closure.opens_invariants(x)` as the trigger
+
+    let (tuple_ident, tuple_var) = exec_closure_spec_param(state, span, params);
+    let tuple_typ = tuple_var.typ.clone();
+
+    // Supply 'let' statements of the form 'let a0 = x.0; let a1 = x.1; ...' etc.
+
+    let mut decls: Vec<Stmt> = Vec::new();
+    for (i, p) in params.iter().enumerate() {
+        let typ = &p.a;
+        let pattern = PatternX::simple_var(p.name.clone(), span, typ);
+        let tuple_field = tuple_get_field_expr(state, span, typ, &tuple_var, params.len(), i);
+        let decl = StmtX::Decl {
+            pattern,
+            mode: None,
+            init: Some(PlaceX::spec_temporary(tuple_field)),
+            els: None,
+            assert_irrefutable: false,
+        };
+        decls.push(Spanned::new(span.clone(), decl));
+    }
+
+    let inv_typ = crate::inv_masks::namespace_set_typ();
+    let inv_mask = SpannedTyped::new(span, &inv_typ, ExprX::InvMask(mask));
+
+    let closure_opens_call =
+        wrap_in_trigger(&mk_closure_opens_call(state, span, params, closure_var, &tuple_var));
+
+    let bool_typ = Arc::new(TypX::Bool);
+    let quant_body = mk_eq(span, &inv_mask, &closure_opens_call);
+
+    let forall = Quant { quant: air::ast::Quant::Forall };
+    let binders = Arc::new(vec![Arc::new(VarBinderX { name: tuple_ident, a: tuple_typ })]);
+    let forall = SpannedTyped::new(span, &bool_typ, ExprX::Quant(forall, binders, quant_body));
+
+    Ok(forall)
+}
+
 fn exec_closure_spec(
     state: &mut State,
     span: &Span,
@@ -1046,16 +1135,26 @@ fn exec_closure_spec(
     ret: &VarBinder<Typ>,
     requires: &Exprs,
     ensures: &Exprs,
+    mask_spec: &Option<crate::ast::MaskSpec>,
+    is_proof: bool,
 ) -> Result<Expr, VirErr> {
     let req_forall = exec_closure_spec_requires(state, span, closure_var, params, requires)?;
+    let mut exprs: Vec<Expr> = vec![req_forall];
 
     if ensures.len() > 0 {
         let ens_forall =
             exec_closure_spec_ensures(state, span, closure_var, params, ret, ensures, false)?;
-        Ok(conjoin(span, &vec![req_forall, ens_forall]))
-    } else {
-        Ok(req_forall)
+        exprs.push(ens_forall);
     }
+    if is_proof {
+        // proof mask is none by default
+        let mask_spec = mask_spec.clone().unwrap_or_else(|| {
+            crate::ast::MaskSpec::InvariantOpens(span.clone(), Arc::new(vec![]))
+        });
+        let ens_mask = exec_closure_spec_mask(state, span, closure_var, params, mask_spec)?;
+        exprs.push(ens_mask);
+    }
+    Ok(conjoin(span, &exprs))
 }
 
 pub(crate) fn need_fndef_axiom(fndef_typs: &HashSet<Fun>, f: &Function) -> bool {
@@ -1137,6 +1236,7 @@ fn add_fndef_axioms_to_function(
                 owning_module: None,
                 auto_imported: true,
                 external_trait_blanket: false,
+                is_unsafe: false,
             };
             trait_impls_out.push(Spanned::new(function.span.clone(), trait_implx));
         }
@@ -1237,6 +1337,27 @@ fn simplify_function(
             // We need to do this anyway since a unit-return function might
             // not have a return-arg to the ensures.
         }
+    }
+
+    if functionx.attrs.has_trivial_clone {
+        // This is the `clone` method of a `Clone` impl for a type that also implements
+        // `TrivialClone`, so the clone must be equivalent to a copy: `ensures ret == self`
+        if functionx.params.len() != 1 {
+            return Err(error(&function.span, "expected `clone` to have one parameter"));
+        }
+        let self_param = &functionx.params[0];
+        let self_var = SpannedTyped::new(
+            &function.span,
+            &self_param.x.typ,
+            ExprX::Var(self_param.x.name.clone()),
+        );
+        let ret_var = SpannedTyped::new(
+            &function.span,
+            &functionx.inner_ret.x.typ,
+            ExprX::Var(functionx.inner_ret.x.name.clone()),
+        );
+        let eq = mk_eq(&function.span, &ret_var, &self_var);
+        Arc::make_mut(&mut functionx.ensure.0).push(eq);
     }
 
     let local = LocalCtxt {
@@ -1446,6 +1567,7 @@ fn add_tuple_auto_impl(
         owning_module: None,
         auto_imported: true,
         external_trait_blanket: false,
+        is_unsafe: false,
     };
     trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
 }
@@ -1645,6 +1767,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             owning_module: None,
             auto_imported: true,
             external_trait_blanket: false,
+            is_unsafe: false,
         };
         trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
 

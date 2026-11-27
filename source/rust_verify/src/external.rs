@@ -39,7 +39,7 @@ then it's nested items can be marked VerusAware, but if it's External, this this
 use crate::attributes::ExternalAttrs;
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::ContextX;
-use crate::rust_to_vir_base::def_id_to_vir_path_option;
+use crate::rust_to_vir_path::def_id_to_vir_path_option;
 use crate::rustc_hir::intravisit::*;
 use crate::verus_items::get_rust_item;
 use rustc_hir::{
@@ -154,7 +154,7 @@ pub(crate) fn get_crate_items<'tcx>(ctxt: &ContextX<'tcx>) -> Result<CrateItems,
         in_impl: None,
     };
     let owner = ctxt.tcx.hir_owner_node(rustc_hir::CRATE_OWNER_ID);
-    visitor.visit_mod(root_module, owner.span(), rustc_hir::CRATE_HIR_ID);
+    visitor.visit_mod(root_module, owner.span(), rustc_span::def_id::CRATE_MOD_ID);
 
     if visitor.errors.len() > 0 {
         return Err(visitor.errors);
@@ -351,8 +351,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                 return;
             }
         } else {
-            let path_opt =
-                def_id_to_vir_path_option(self.ctxt.tcx, Some(&self.ctxt.verus_items), def_id);
+            let path_opt = def_id_to_vir_path_option(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
             let path_string = match &path_opt {
                 Some(path) => vir::ast_util::path_as_friendly_rust_name(&path),
                 None => format!("{:?}", def_id),
@@ -395,11 +394,8 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         match general_item {
             GeneralItem::Item(item) => match item.kind {
                 ItemKind::Mod(_ident, _module) => {
-                    self.module_path = def_id_to_vir_path_option(
-                        self.ctxt.tcx,
-                        Some(&self.ctxt.verus_items),
-                        def_id,
-                    );
+                    self.module_path =
+                        def_id_to_vir_path_option(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
                 }
                 ItemKind::Impl(impll) => {
                     self.in_impl = Some(InsideImpl {
@@ -487,10 +483,6 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
     if eattrs.internal_get_field_many_variants {
         // The macro sometimes outputs this attribute together with 'external' for the purpose
         // of some diagnostics. We thus want to ignore it.
-        return;
-    }
-
-    if eattrs.uses_unerased_proxy {
         return;
     }
 

@@ -38,7 +38,7 @@ and publishing for the Verus project.
 1. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
    - Runs basic tests only
 
-1. **`smoke-test`** (macOs ARM64)
+1. **`smoke-test`** (Linux x64)
    - Checks that `verus` builds with esoteric configurations
    - Runs minimal tests relevant to the configuration
 
@@ -239,7 +239,7 @@ crate-updates.yml (weekly/manual) → Updates crate versions → Publishes to cr
 All workflows build and test Verus on:
 
 - **Linux**: `x86_64` (ubuntu-24.04)
-- **macOS**: ARM64 (macOS 14) and `x86_64` (macOS 15)
+- **macOS**: ARM64 (macOS 15) and `x86_64` (macOS 15)
 - **Windows**: `x86_64` (2022)
 
 `x86_64` Linux receives full testing; other platforms run basic and smoke tests for efficiency.

@@ -8,7 +8,7 @@ V@[spec_index_expr] ::= V@[spec_expr] [ V@[spec_expr] ]
 
 ### Desugaring
 
-In spec code, the expression `expr[i]` desguars to `expr.spec_index(i)`, which is resolved as normal via Rust's [method resolution](https://doc.rust-lang.org/reference/expressions/method-call-expr.html).
+In spec code, the expression `expr[i]` desugars to `expr.spec_index(i)`, which is resolved as normal via Rust's [method resolution](https://doc.rust-lang.org/reference/expressions/method-call-expr.html).
 
 > [!DIFF]
 > This is different than the index operator in executable code,

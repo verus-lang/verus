@@ -45,6 +45,9 @@ pub struct ErasureInfo {
     /// mode-checking.
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
     pub(crate) local_invariant_bodies: Vec<rustc_mir_build_verus::verus::LocalInvariantBody>,
+    /// Binders (PatKind::Binding HirIds) of function parameters (including the inner binders
+    /// of unwrapped `Tracked(x)`/`Ghost(x)` parameters) that are not exec-mode
+    pub(crate) ghost_param_binders: Vec<HirId>,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
@@ -55,12 +58,62 @@ pub struct ContextX<'tcx> {
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) spans: crate::spans::SpanContext,
     pub(crate) verus_items: Arc<VerusItems>,
-    pub(crate) diagnostics: Rc<RefCell<Vec<vir::ast::VirErrAs>>>,
+    pub(crate) diagnostics: Rc<PendingDiagnostics>,
     pub(crate) no_vstd: bool,
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
     pub(crate) crate_name: CrateId,
     pub(crate) name_def_id_map: Rc<RefCell<HashMap<Path, DefId>>>,
     pub(crate) next_read_kind_id: AtomicU64,
+}
+
+/// Warnings and notes collected while translating HIR to VIR, waiting to be reported.
+/// Dropping it with diagnostics still pending means a flush was forgotten.
+pub(crate) struct PendingDiagnostics(RefCell<Vec<vir::ast::VirErrAs>>);
+
+impl PendingDiagnostics {
+    fn flush(&self, reporter: &dyn air::messages::Diagnostics) {
+        for diag in self.0.borrow_mut().drain(..) {
+            match diag {
+                vir::ast::VirErrAs::Warning(err) => {
+                    reporter.report_as(&err.to_any(), MessageLevel::Warning)
+                }
+                vir::ast::VirErrAs::Note(err) => {
+                    reporter.report_as(&err.to_any(), MessageLevel::Note)
+                }
+            }
+        }
+    }
+}
+
+impl std::ops::Deref for PendingDiagnostics {
+    type Target = RefCell<Vec<vir::ast::VirErrAs>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Drop for PendingDiagnostics {
+    fn drop(&mut self) {
+        debug_assert!(
+            std::thread::panicking() || self.0.get_mut().is_empty(),
+            "diagnostics were never reported; use flush_diagnostics or flush_diagnostics_on_drop"
+        );
+    }
+}
+
+pub(crate) struct FlushDiagnosticsOnDrop<'r> {
+    diagnostics: Rc<PendingDiagnostics>,
+    reporter: &'r dyn air::messages::Diagnostics,
+}
+
+impl Drop for FlushDiagnosticsOnDrop<'_> {
+    fn drop(&mut self) {
+        // Reporting while unwinding could panic again and abort
+        if !std::thread::panicking() {
+            self.diagnostics.flush(self.reporter);
+        }
+    }
 }
 
 /// The context in which a given header node might be interpretted
@@ -126,7 +179,7 @@ impl<'tcx> ContextX<'tcx> {
             tcx,
             spans,
             verus_items,
-            diagnostics: Rc::new(RefCell::new(Vec::new())),
+            diagnostics: Rc::new(PendingDiagnostics(RefCell::new(Vec::new()))),
             no_vstd,
             arch_word_bits: None,
             crate_name,
@@ -135,18 +188,17 @@ impl<'tcx> ContextX<'tcx> {
         }
     }
 
-    // TODO: It's easy to forget to do this; should come up with a different system
     pub(crate) fn flush_diagnostics(&self, reporter: &dyn air::messages::Diagnostics) {
-        for diag in self.diagnostics.borrow_mut().drain(..) {
-            match diag {
-                vir::ast::VirErrAs::Warning(err) => {
-                    reporter.report_as(&err.to_any(), MessageLevel::Warning)
-                }
-                vir::ast::VirErrAs::Note(err) => {
-                    reporter.report_as(&err.to_any(), MessageLevel::Note)
-                }
-            }
-        }
+        self.diagnostics.flush(reporter);
+    }
+
+    /// Returns a guard that reports the pending diagnostics when it is dropped,
+    /// so they are reported on every exit path, including early returns
+    pub(crate) fn flush_diagnostics_on_drop<'r>(
+        &self,
+        reporter: &'r dyn air::messages::Diagnostics,
+    ) -> FlushDiagnosticsOnDrop<'r> {
+        FlushDiagnosticsOnDrop { diagnostics: self.diagnostics.clone(), reporter }
     }
 
     pub(crate) fn get_verus_item(&self, def_id: DefId) -> Option<&crate::verus_items::VerusItem> {
@@ -184,7 +236,7 @@ impl<'tcx> ContextX<'tcx> {
     }
 
     pub(crate) fn def_id_to_vir_path(&self, def_id: DefId) -> Path {
-        crate::rust_to_vir_base::def_id_to_vir_path(
+        crate::rust_to_vir_path::def_id_to_vir_path(
             self.tcx,
             &self.verus_items,
             def_id,
@@ -315,6 +367,7 @@ impl ErasureInfo {
             shadow_check: vec![],
             extra_erase_ast_ids: vec![],
             local_invariant_bodies: vec![],
+            ghost_param_binders: vec![],
         }
     }
 }

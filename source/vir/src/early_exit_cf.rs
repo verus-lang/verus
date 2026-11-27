@@ -83,10 +83,12 @@ fn expr_get_early_exits_rec(
             | ExprX::ReadPlace(..)
             | ExprX::EvalAndResolve(..)
             | ExprX::Old(..)
+            | ExprX::ForcePureAndNonProphetic(..)
             | ExprX::Block(..)
             | ExprX::MatchGuardFreeze(..)
             | ExprX::ShrRefStructWrap(..)
             | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
+            | ExprX::TryOpenAtomicUpdate(..)
             | ExprX::Await(_) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
@@ -124,7 +126,7 @@ fn expr_get_early_exits_rec(
                 });
                 VisitorControlFlow::Recurse
             }
-            ExprX::OpenInvariant(expr, ..) | ExprX::TryOpenAtomicUpdate(expr, ..) => {
+            ExprX::OpenInvariant(expr, ..) => {
                 expr_get_early_exits_rec(expr, in_loop, scope_map, results);
                 // Skip checking nested loops to avoid quadratic behavior:
                 VisitorControlFlow::Return

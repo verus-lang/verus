@@ -4,6 +4,36 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] borrowed_cmp_matches verus_code! {
+        use vstd::std_specs::borrow::BorrowSpec;
+        use vstd::std_specs::cmp::{borrowed_key_ordering_matches, OrdSpec};
+
+        proof fn references<T: Ord + ?Sized>(x: &T, y: &T) {
+            assert(borrowed_key_ordering_matches::<&T, T>());
+            assert(<&T as OrdSpec>::cmp_spec(&x, &y)
+                == <&T as BorrowSpec<T>>::borrow_spec(&x).cmp_spec(
+                    <&T as BorrowSpec<T>>::borrow_spec(&y)));
+        }
+
+        proof fn self_borrow<T: Ord>() {
+            assert(borrowed_key_ordering_matches::<T, T>());
+            assert(vstd::std_specs::btree::borrowed_key_ordering_matches::<T, T>());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] borrowed_cmp_requires_compatibility verus_code! {
+        use std::borrow::Borrow;
+        use vstd::std_specs::cmp::borrowed_key_ordering_matches;
+
+        proof fn arbitrary_borrow<T: Borrow<U> + Ord, U: Ord + ?Sized>() {
+            assert(borrowed_key_ordering_matches::<T, U>()); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] eq_cmp1 verus_code! {
         use vstd::laws_eq::*;
         use vstd::laws_cmp::*;

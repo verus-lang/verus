@@ -384,7 +384,10 @@ impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-    uninterp spec fn will_return_none(&self) -> bool;
+    #[verifier::prophetic]
+    open spec fn produces(&self) -> Seq<bool> {
+        Seq::new(IteratorSpec::remaining(self).len(), |i: int| true)
+    }
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -419,6 +422,9 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
 > as core::iter::IntoIterator>::IntoIter)
     ensures
         IteratorSpec::remaining(&iter) == vec@,
+        // Stated via `len()` so callers learn that the length fits in a `usize`
+        // (needed, e.g., by `enumerate` and `position`)
+        IteratorSpec::remaining(&iter).len() == vec.len(),
         into_iter_elts(iter) == IteratorSpec::remaining(&iter),
         IteratorSpec::decrease(&iter) is Some,
 ;
@@ -427,13 +433,16 @@ pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::Int
     (iter: <&'a Vec<T, A> as core::iter::IntoIterator>::IntoIter)
     ensures
         IteratorSpec::remaining(&iter) == vec@.as_ref(),
+        IteratorSpec::remaining(&iter).len() == vec.len(),
         super::slice::into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
 ;
 
 impl<T>  FromIteratorSpecImpl<T> for Vec<T> {
-    open spec fn from_iter_ensures(remaining: Seq<T>, will_return_none: bool, s: Self) -> bool {
-        will_return_none && remaining == s@
+    open spec fn from_iter_ensures(remaining: Seq<T>, produces: Seq<bool>, s: Self) -> bool {
+        &&& produces.len() == remaining.len()
+        &&& produces.all(|p: bool| p)
+        &&& remaining == s@
     }
 }
 

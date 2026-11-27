@@ -36,6 +36,10 @@ pub(crate) fn process_const_early<'tcx>(
     let vattrs = ctxt.get_verifier_attrs_no_check(attrs)?;
     if vattrs.size_of_global {
         let err = || crate::util::err_span(item.span, "invalid global `size_of`");
+        let parent = ctxt.tcx.parent(item.owner_id.to_def_id());
+        if ctxt.tcx.def_kind(parent) != rustc_hir::def::DefKind::Mod {
+            return crate::util::err_span(item.span, "`global` must be a module-level item");
+        }
         let ItemKind::Const(_ident, generics, _ty, ConstItemRhs::Body(body_id)) = item.kind else {
             return err();
         };

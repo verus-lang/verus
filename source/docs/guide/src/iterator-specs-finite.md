@@ -51,13 +51,14 @@ on how we define them for our custom iterator.
   and (b) always returns `Some`, or eventually returns `None`, and after that point, continues
   to return `None`. 
 - **`remaining`** — a [prophetic](https://verus-lang.github.io/verus/verusdoc/vstd/proph) spec 
-  function returning the sequence of items that the iterator will
+  function returning the sequence of items that the iterator may
   eventually produce for each call to `next()`. For `VecIterator`, this is the subrange `v[i..j]`.  Note that `remaining`
   returns a `Seq<Self::Item>`; as a result, because our `VecIterator`'s `Item` is `&T`, its
   `remaining` function will return `Seq<&T>`.  The sequence library in `vstd` provides the convenience
   function `as_ref` to convert `Seq<T>` to `Seq<&T>`, and `unref` for the reverse direction.
-- **`will_return_none`** — return `true` if the iterator will eventually return `None`.
-  Infinite iterators or iterators driven by a non-terminating closure may return `false`.
+- **`produces`** — for each potential item in `remaining()`, does the item actually
+  get returned, or does the iterator get "stuck" trying to produce it, e.g., because a client supplied a 
+  closure that diverges?  Our example can't get stuck, so we return a sequence where every entry is true.
 - **`decrease`** — a termination metric for Verus's [decreases checker](recursion.md).  By default,
   `for` loops expect this to return `Some(n)` where `n` decreases on every call to `next`. Here `j - i` works.  Infinite iterators should return `None`.
 - **`peek`** — optionally returns the item at a given look-ahead index. Providing this

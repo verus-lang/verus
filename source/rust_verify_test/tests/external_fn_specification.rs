@@ -403,7 +403,7 @@ test_verify_one_file! {
     #[test] test_attr_on_const verus_code! {
         #[verifier(external_fn_specification)]
         const x: u8 = 5;
-    } => Err(err) => assert_vir_error_msg(err, "use `external_fn_specification` on fn whose body is a const")
+    } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` attribute not supported here")
 }
 
 test_verify_one_file! {
@@ -557,6 +557,42 @@ test_verify_one_file! {
             x(v, u)
         }
     } => Err(err) => assert_vir_error_msg(err, "`assume_specification` requires function type signature to match")
+}
+
+test_verify_one_file! {
+    #[test] array_len_const_expr verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier(external)]
+        fn f(a: [u8; core::mem::size_of::<u32>()]) -> u8 {
+            a[0]
+        }
+
+        // The array length is compared by value
+        assume_specification[ f ](a: [u8; 4]) -> (r: u8)
+            ensures r == a[0];
+
+        fn test(a: [u8; 4]) {
+            let r = f(a);
+            assert(r == a[0]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] mismatch_array_len_const_expr verus_code! {
+        #[verifier(external)]
+        fn f(a: [u8; core::mem::size_of::<u32>()]) -> u8 {
+            a[0]
+        }
+
+        // A different length is still rejected, both by rustc (through the call to `f`) and by
+        // the signature check
+        assume_specification[ f ](a: [u8; 3]) -> u8;
+    } => Err(err) => assert_error_msgs(err, &[
+        "mismatched types",
+        "`assume_specification` requires function type signature to match `test_crate::f` exactly"
+    ])
 }
 
 test_verify_one_file! {
@@ -1359,7 +1395,7 @@ test_verify_one_file! {
         fn test2<T>(v: Ve<T, Gl>) {
             let x = v.gget(1); // FAILS
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Err(err) => assert_vir_error_msg(err, "cannot use external trait `test_crate::Al` as a bound without declaring the trait")
 }
 
 test_verify_one_file! {
@@ -1676,9 +1712,5 @@ test_verify_one_file! {
             let y: u8 = if C { 1 } else { 2 };
             g(y)
         }
-    } => Ok(err) => {
-        assert_eq!(err.errors.len(), 0);
-        assert_eq!(err.warnings.len(), 2);
-        assert!(err.warnings[0].message.contains("`#[verifier(verifier::verify)]` is deprecated"));
-    }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
