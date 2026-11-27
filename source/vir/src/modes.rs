@@ -1215,6 +1215,17 @@ fn check_expr_in_pattern(expr: &Expr) -> Result<(), VirErr> {
             check_expr_in_pattern(expr2)
         }
         ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), expr1) => check_expr_in_pattern(expr1),
+        // a byte-string literal pattern of slice type: `array_as_slice(b"..")`, or
+        // `spec_array_as_slice(b"..")` in ghost code
+        ExprX::Call { target: crate::ast::CallTarget::Fun(_, fun, _, _, _), args, .. }
+            if (**fun == *crate::fun!(crate::ast::CrateId::Vstd => "array"; "array_as_slice")
+                || **fun
+                    == *crate::fun!(crate::ast::CrateId::Vstd => "array"; "spec_array_as_slice"))
+                && args.len() == 1
+                && matches!(&args[0].x, ExprX::Const(crate::ast::Constant::ByteStr(_))) =>
+        {
+            Ok(())
+        }
         _ => Err(crate::messages::internal_error(&expr.span, "bad PatternX::Expr")),
     }
 }

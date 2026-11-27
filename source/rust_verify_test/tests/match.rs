@@ -1788,3 +1788,76 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "overloaded deref in pattern")
 }
+
+test_verify_one_file! {
+    #[test] const_array_patterns verus_code! {
+        use vstd::prelude::*;
+
+        const KEY: [u8; 2] = [1, 2];
+
+        fn const_array(a: [u8; 2]) -> (r: bool)
+            ensures r == (a@ == KEY@),
+        {
+            proof {
+                if a@ == KEY@ {
+                    assert(a =~= KEY);
+                }
+            }
+            match a {
+                KEY => true,
+                _ => false,
+            }
+        }
+
+        fn concrete() {
+            let r = const_array([1, 2]);
+            assert(r);
+        }
+
+        const NAMES: [&str; 2] = ["a", "b"];
+
+        fn const_array_of_str(a: [&str; 2]) -> (r: bool)
+            ensures r == (a@ == NAMES@),
+        {
+            proof {
+                if a@ == NAMES@ {
+                    assert(a =~= NAMES);
+                }
+            }
+            match a {
+                NAMES => true,
+                _ => false,
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] const_array_patterns_fails verus_code! {
+        use vstd::prelude::*;
+
+        const KEY: [u8; 2] = [1, 2];
+
+        fn const_array(a: [u8; 2]) -> (r: bool)
+            ensures r == (a[0] == 1), // FAILS
+        {
+            match a {
+                KEY => true,
+                _ => false,
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] float_array_patterns verus_code! {
+        const Z: [f64; 1] = [0.0];
+
+        fn f(a: [f64; 1]) -> bool {
+            match a {
+                Z => true,
+                _ => false,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "equality-testing this type in a pattern: [f64; 1")
+}

@@ -1393,3 +1393,145 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_str_view_injective verus_code! {
+        use vstd::prelude::*;
+
+        // `str` is determined by its characters: view equality is equality
+        proof fn ext(a: &str, b: &str)
+            requires a@ == b@,
+            ensures a == b,
+        {
+        }
+
+        // distinct literals stay distinct (their views are distinct)
+        proof fn distinct() {
+            assert("a" != "b");
+            assert("a"@ != "b"@);
+        }
+
+        // the exec comparison (whose spec is view equality) establishes spec equality with
+        // the literal
+        fn classify(s: &str) -> (r: u8)
+            ensures
+                r == 1 <==> s == "one",
+                r == 2 <==> s == "two",
+        {
+            if s == "one" {
+                1
+            } else if s == "two" {
+                2
+            } else {
+                0
+            }
+        }
+
+        fn wrong(a: &str, b: &str)
+            requires a@.len() == b@.len(),
+        {
+            assert(a == b); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_str_literal_patterns verus_code! {
+        use vstd::prelude::*;
+
+        spec fn rule_spec(s: &str) -> u8 {
+            match s {
+                "one" => 1,
+                "two" | "zwei" => 2,
+                _ => 0,
+            }
+        }
+
+        // a match on literals in exec code
+        fn by_match(s: &str) -> (r: u8)
+            ensures r == rule_spec(s),
+        {
+            match s {
+                "one" => 1,
+                "two" | "zwei" => 2,
+                _ => 0,
+            }
+        }
+
+        // exec comparisons, whose specification is view equality, meet a specification that
+        // matches literals (this needs `axiom_str_view_injective`)
+        fn by_compare(s: &str) -> (r: u8)
+            ensures r == rule_spec(s),
+        {
+            if s == "one" {
+                1
+            } else if s == "two" || s == "zwei" {
+                2
+            } else {
+                0
+            }
+        }
+
+        // the arm is decided by the characters
+        proof fn arm_by_view(s: &str)
+            requires s@ == "zwei"@,
+            ensures rule_spec(s) == 2,
+        {
+        }
+
+        const ONE: &str = "one";
+
+        fn by_const(s: &str) -> (r: bool)
+            ensures r == (s == "one"),
+        {
+            match s {
+                ONE => true,
+                _ => false,
+            }
+        }
+
+        fn nested(p: (&str, u8)) -> (r: u8)
+            ensures r == if p.0 == "one" && p.1 == 0 { 1u8 } else { 0u8 },
+        {
+            match p {
+                ("one", 0) => 1,
+                _ => 0,
+            }
+        }
+
+        fn by_ref(s: &&str) -> (r: bool)
+            ensures r == (*s == "one"),
+        {
+            match s {
+                &"one" => true,
+                _ => false,
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_str_literal_patterns_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn length_is_not_enough(s: &str) -> (r: u8)
+            ensures s@.len() == 3 ==> r == 1, // FAILS
+        {
+            match s {
+                "one" => 1,
+                _ => 0,
+            }
+        }
+
+        fn other_arm(s: &str) {
+            match s {
+                "one" => {
+                    assert(s@ == "one"@);
+                }
+                _ => {
+                    assert(s@ != "two"@); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
