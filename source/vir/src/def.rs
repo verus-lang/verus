@@ -1278,6 +1278,11 @@ pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
     }
 }
 
+/// `core::cmp::PartialEq`
+pub fn partial_eq_trait_path() -> Path {
+    crate::path!(CrateId::Core => "cmp", "PartialEq")
+}
+
 pub fn clone_spec_fn_name(path: &Path) -> Fun {
     let name = path.last_segment();
     let Segment::Impl(d) = name else { panic!("clone_spec_fn_name") };

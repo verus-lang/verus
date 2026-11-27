@@ -4,6 +4,7 @@ mod common;
 use common::*;
 
 const STRUCTS: &str = verus_code_str! {
+    use vstd::prelude::*;
     #[derive(PartialEq, Eq, Structural)]
     struct Car {
         four_doors: bool,
