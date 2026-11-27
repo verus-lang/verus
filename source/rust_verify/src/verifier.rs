@@ -1219,9 +1219,7 @@ impl Verifier {
         if !bitvector {
             air_context.set_solver_option("air_recommended_options", "true");
         } else {
-            // cvc5 requires a logic declaration (and prints a warning to stderr for
-            // every query context without one), even for the self-contained
-            // by(bit_vector) queries that skip the recommended-options preset.
+            // cvc5 always requires at least a logic declaration
             air_context.set_solver_option("cvc5_logic_only", "true");
         }
         self.set_default_rlimit(&mut air_context);

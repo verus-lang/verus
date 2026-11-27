@@ -384,10 +384,6 @@ impl Context {
                 }
             }
         } else if option == "cvc5_logic_only" && value {
-            // What `air_recommended_options` does for cvc5, without the Z3-oriented tuning
-            // preset (by(bit_vector) contexts): the logic declaration, which follows the
-            // encoding, and incremental mode, which follows the solver. A no-op for Z3 with
-            // the Z3 encoding.
             if matches!(self.smt_encoding, SmtEncoding::Cvc5) {
                 self.smt_log.log_node(&node!((set-logic {str_to_node("ALL")})));
             }
