@@ -2565,8 +2565,19 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             *args_slice,
                             fun.span,
                         )?),
+                        // A const, associated const or static whose type implements the Fn
+                        // traits (e.g. a `spec_fn`) is called as a value, as for `let f = F; f(x)`
+                        (
+                            rustc_hir::def::Res::Def(
+                                DefKind::Const { .. }
+                                | DefKind::AssocConst { .. }
+                                | DefKind::Static { .. },
+                                _,
+                            ),
+                            _,
+                        ) => None,
                         // a statically resolved function
-                        (rustc_hir::def::Res::Def(_, def_id), _) => {
+                        (rustc_hir::def::Res::Def(DefKind::Fn | DefKind::AssocFn, def_id), _) => {
                             // this is necessary because we seemingly are skipping the deprecation check
                             // for free functions
                             tcx.check_stability(def_id, Some(expr.hir_id), expr.span, None);

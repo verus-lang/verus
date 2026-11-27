@@ -825,3 +825,53 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
+
+test_verify_one_file! {
+    #[test] call_spec_const_of_spec_fn_type_issue3489 verus_code! {
+        use vstd::prelude::*;
+
+        spec const F: spec_fn(int) -> int = |x: int| x + 1;
+
+        struct S;
+        impl S {
+            spec const G: spec_fn(int) -> int = |x: int| 2 * x;
+        }
+
+        spec fn s() -> int {
+            (F)(1)
+        }
+
+        proof fn p() {
+            assert(F(0) == 1);
+            assert((F)(0) == 1);
+            assert(s() == 2);
+            assert(S::G(3) == 6);
+        }
+
+        fn e() {
+            proof {
+                assert(F(4) == 5);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] call_spec_const_of_spec_fn_type_fails_issue3489 verus_code! {
+        use vstd::prelude::*;
+
+        spec const F: spec_fn(int) -> int = |x: int| x + 1;
+
+        proof fn p() {
+            assert(F(0) == 2); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] call_spec_const_of_spec_fn_type_recursive_issue3489 verus_code! {
+        use vstd::prelude::*;
+
+        spec const F: spec_fn(int) -> int = |x: int| F(x);
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a `decreases` clause")
+}
