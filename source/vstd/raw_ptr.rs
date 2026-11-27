@@ -677,6 +677,40 @@ macro_rules! pointer_specs {
                 opens_invariants none
                 no_unwind;
 
+            // --- pointer arithmetic: wrapping family (always safe to call; no precondition) ---
+            // The inner (size_of as usize) matches size_of_as_usize, which spec-position
+            // size_of resolves to outside vstd; without it, external callers state a
+            // different expression and cannot prove these ensures for generic T.
+
+            /// Specification for `wrapping_add`: the address advances by
+            /// `count * size_of::<T>()` bytes with wrap-around (mod 2^usize::BITS);
+            /// provenance and metadata are unchanged.
+            #[verifier::inline]
+            pub open spec fn spec_wrapping_add<T>(p: *$mu T, count: usize) -> *$mu T {
+                $ptr_from_data(PtrData::<T> { addr: (p@.addr + count * (size_of::<T>() as usize)) as usize, .. p@ })
+            }
+
+            #[verifier::when_used_as_spec(spec_wrapping_add)]
+            #[cfg(verus_keep_ghost)]
+            pub assume_specification<T>[<*$mu T>::wrapping_add](p: *$mu T, count: usize) -> (q: *$mu T)
+                ensures q == spec_wrapping_add(p, count)
+                opens_invariants none
+                no_unwind;
+
+            /// Specification for `wrapping_sub`: the address retreats by
+            /// `count * size_of::<T>()` bytes with wrap-around; provenance and metadata unchanged.
+            #[verifier::inline]
+            pub open spec fn spec_wrapping_sub<T>(p: *$mu T, count: usize) -> *$mu T {
+                $ptr_from_data(PtrData::<T> { addr: (p@.addr - count * (size_of::<T>() as usize)) as usize, .. p@ })
+            }
+
+            #[verifier::when_used_as_spec(spec_wrapping_sub)]
+            #[cfg(verus_keep_ghost)]
+            pub assume_specification<T>[<*$mu T>::wrapping_sub](p: *$mu T, count: usize) -> (q: *$mu T)
+                ensures q == spec_wrapping_sub(p, count)
+                opens_invariants none
+                no_unwind;
+
             }
         }
     };
