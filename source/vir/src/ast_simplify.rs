@@ -1808,6 +1808,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         path_as_rust_names: path_as_rust_names.clone(),
         arch: arch.clone(),
     });
+    let counterexamples = ctx.counterexamples;
     *ctx = crate::context::GlobalCtx::new(
         &krate,
         ctx.crate_name.clone(),
@@ -1822,7 +1823,11 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.axiom_usage_info,
         ctx.no_bv_simplify,
         ctx.report_long_running,
-    )?;
+    )
+    .map(|mut g| {
+        g.counterexamples = counterexamples;
+        g
+    })?;
     Ok(krate)
 }
 

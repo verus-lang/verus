@@ -3115,6 +3115,67 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file_with_options! {
+    // `--counterexample` only adds notes: verdicts are unchanged (scalars, slices, arrays,
+    // `&mut` scalars, loop queries)
+    #[test] counterexample_option_keeps_verdicts ["--counterexample"] => verus_code! {
+        use vstd::prelude::*;
+        fn ok(a: u8, b: u8) -> u8 { a / 2 + b / 2 }
+        fn f(i: &mut u32, buf: &[u8], arr: [u16; 3], flag: bool) -> u8 {
+            if flag && buf.len() > 2 { buf[1] } else { buf[*i as usize] } // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+test_verify_one_file_with_options! {
+    // the solver's model for a nonlinear failure need not be one: replaying the inputs
+    // shows that it is spurious
+    #[test] counterexample_replay_spurious ["--counterexample"] => verus_code! {
+        use vstd::prelude::*;
+        fn g(a: i64, b: i64)
+            requires -100 < a < 100, -100 < b < 100,
+            ensures a * b != 40, // FAILS
+        {
+        }
+    } => Err(err) => {
+        assert_one_fails(err.clone());
+        let notes: Vec<String> = err.notes.iter().map(|n| n.message.clone()).collect();
+        let cx = notes.iter().find(|n| n.starts_with("counterexample")).expect("a counterexample");
+        // either the model is a failure (a * b == 40), or the replay says it is spurious
+        let json: serde_json::Value = serde_json::from_str(
+            cx.lines().find_map(|l| l.trim().strip_prefix("json: ")).expect("json line"),
+        ).unwrap();
+        let v = |n: &str| json["values"][n].as_str().unwrap().replace("(- ", "-").replace(")", "").parse::<i64>().unwrap();
+        let (a, b) = (v("a"), v("b"));
+        if a * b == 40 {
+            assert_eq!(json["replay"], "sat");
+        } else {
+            assert_eq!(json["replay"], "unsat");
+            assert!(cx.contains("(spurious:"));
+        }
+    }
+}
+
+test_verify_one_file_with_options! {
+    // the fields of an enum's other variants are not part of the input
+    #[test] counterexample_enum_variant_fields ["--counterexample"] => verus_code! {
+        use vstd::prelude::*;
+        enum E { A(u8), B { x: u16 } }
+        fn h(e: E) {
+            match e {
+                E::A(k) => {}
+                E::B { x } => assert(x < 100), // FAILS
+            }
+        }
+    } => Err(err) => {
+        assert_one_fails(err.clone());
+        let cx = err.notes.iter().map(|n| n.message.clone())
+            .find(|n| n.starts_with("counterexample")).expect("a counterexample");
+        assert!(cx.contains("e is B = true"), "{}", cx);
+        assert!(!cx.contains("e.A.0"), "{}", cx);
+        assert!(!cx.contains("~sel"), "{}", cx);
+    }
+}
+
 /// The types the drop-check tests drop
 const DROP_TYPES: &str = code_str! {
     use vstd::prelude::*;

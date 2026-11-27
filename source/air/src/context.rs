@@ -45,7 +45,7 @@ pub enum UsageInfo {
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid(UsageInfo),
-    Invalid(Option<Model>, Option<ArcDynMessage>, Option<AssertId>),
+    Invalid(Option<Box<Model>>, Option<ArcDynMessage>, Option<AssertId>),
     Canceled,
     TypeError(TypeError),
     UnexpectedOutput(String),
@@ -150,6 +150,8 @@ pub struct Context {
     pub(crate) check_valid_used: bool,
     pub(crate) solver: SmtSolver,
     pub(crate) smt_encoding: SmtEncoding,
+    /// Expressions to evaluate in the model of the next failing query (see `Model::observed`)
+    pub(crate) observations: Vec<(String, crate::ast::Expr)>,
 }
 
 impl Context {
@@ -228,6 +230,7 @@ impl Context {
             check_valid_used: false,
             solver,
             smt_encoding,
+            observations: Vec::new(),
         };
         context.axiom_infos.push_scope(false);
         context.array_map.push_scope(false);
@@ -617,6 +620,23 @@ impl Context {
             self.pop_name_scope();
             self.smt_log.log_pop();
             self.state = ContextState::ReadyForQuery;
+        }
+    }
+
+    /// Expressions whose values the model of the next failed query should report.
+    pub fn set_observations(&mut self, obs: Vec<(String, crate::ast::Expr)>) {
+        self.observations = obs;
+    }
+
+    /// `eval_expr` that reports a solver error instead of panicking.
+    pub fn try_eval_expr(&mut self, expr: sise::TreeNode) -> Result<String, String> {
+        self.smt_log.log_eval(expr);
+        let smt_data = self.smt_log.take_pipe_data();
+        let smt_output = self.get_smt_process().send_commands(smt_data);
+        if smt_output.len() == 1 && !smt_output[0].starts_with("(error") {
+            Ok(smt_output[0].clone())
+        } else {
+            Err(smt_output.join(" "))
         }
     }
 

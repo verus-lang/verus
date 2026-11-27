@@ -779,6 +779,7 @@ impl Verifier {
         context: &CommandContext,
         prover_choice: vir::def::ProverChoice,
         default_prover_failed_assert_ids: &mut Vec<AssertId>,
+        _observations: &Vec<(String, air::ast::Expr)>,
     ) -> RunCommandQueriesResult {
         let is_singular = prover_choice == vir::def::ProverChoice::Singular;
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
@@ -924,7 +925,7 @@ impl Verifier {
                     }
                     break;
                 }
-                ValidityResult::Invalid(Some(_air_model), Some(error), assert_id_opt) => {
+                ValidityResult::Invalid(Some(air_model), Some(error), assert_id_opt) => {
                     if let Some(assert_id) = assert_id_opt {
                         if prover_choice == vir::def::ProverChoice::DefaultProver {
                             default_prover_failed_assert_ids.push(assert_id.clone());
@@ -966,6 +967,243 @@ impl Verifier {
                         if self.args.expand_errors {
                             assert!(!self.expand_flag);
                         }
+                    }
+
+                    if self.args.counterexample && !air_model.observed.is_empty() {
+                        // The model of this failed query: the function's inputs.
+                        let small = air_model.observed.iter().any(|(n, _)| n == "@small");
+                        // a short container is printed as one value; elements past its
+                        // length are not part of the input
+                        let mut lens: HashMap<String, usize> = HashMap::new();
+                        for (name, v) in air_model.observed.iter() {
+                            if let Some(base) = name.strip_suffix(".len()") {
+                                if let Ok(n) = counterexample_value(v).parse::<usize>() {
+                                    lens.insert(base.to_string(), n);
+                                }
+                            }
+                        }
+                        let observed_value: HashMap<&str, String> = air_model
+                            .observed
+                            .iter()
+                            .map(|(n, v)| (n.as_str(), counterexample_value(v)))
+                            .collect();
+                        // the fields of an enum's variants other than the model's are not part
+                        // of the input (`e is A = false`: skip `e.A.*`)
+                        let inactive: Vec<String> = air_model
+                            .observed
+                            .iter()
+                            .filter_map(|(n, v)| {
+                                let (base, variant) = n.rsplit_once(" is ")?;
+                                (counterexample_value(v) == "false")
+                                    .then(|| format!("{base}.{variant}."))
+                            })
+                            .collect();
+                        let not_input = |name: &str| -> bool {
+                            inactive.iter().any(|p| name.starts_with(p.as_str()))
+                                || name.strip_suffix("~sel").is_some_and(|base| {
+                                    observed_value.get(base) == observed_value.get(name)
+                                })
+                        };
+                        let mut lines: Vec<String> = vec![];
+                        let mut elems: HashMap<String, Vec<String>> = HashMap::new();
+                        let mut params: Vec<(String, String)> = vec![];
+                        for (name, v) in air_model.observed.iter() {
+                            if let Some(pk) = name.strip_prefix("@param:") {
+                                if let Some((pn, k)) = pk.rsplit_once(':') {
+                                    params.push((pn.to_string(), k.to_string()));
+                                }
+                                continue;
+                            }
+                            if name.starts_with('@') {
+                                continue;
+                            }
+                            // the selector is shown only where the model gives it a different
+                            // value than the declared accessor (see observe_value)
+                            if not_input(name) {
+                                continue;
+                            }
+                            if name.contains(" is ") && counterexample_value(v) == "false" {
+                                continue; // the variant that is the model's is shown
+                            }
+                            if let Some((base, rest)) = name.split_once('[') {
+                                if let (Some(n), Ok(k)) =
+                                    (lens.get(base), rest.trim_end_matches(']').parse::<usize>())
+                                {
+                                    if k < *n {
+                                        elems
+                                            .entry(base.to_string())
+                                            .or_default()
+                                            .push(counterexample_value(v));
+                                    }
+                                    continue;
+                                }
+                            }
+                            if let Some(base) = name.strip_suffix(".len()") {
+                                if lens.get(base).map_or(false, |n| *n <= 16) {
+                                    continue; // printed as the elements below
+                                }
+                            }
+                            lines.push(format!("  {name} = {}", counterexample_value(v)));
+                        }
+                        let mut bases: Vec<&String> = elems.keys().collect();
+                        bases.sort();
+                        for base in bases {
+                            if lens.get(base).map_or(false, |n| *n <= 16) {
+                                lines.push(format!("  {base} = [{}]", elems[base].join(", ")));
+                            } else {
+                                lines.push(format!(
+                                    "  {base}[..16] = [{}, ..]",
+                                    elems[base].join(", ")
+                                ));
+                            }
+                        }
+                        for (base, n) in lens.iter() {
+                            if *n <= 16 && !elems.contains_key(base) {
+                                lines.push(format!("  {base} = []"));
+                            }
+                        }
+                        if !small && !lens.is_empty() {
+                            lines.push(
+                                "  (no model with containers of at most 16 elements)".to_string(),
+                            );
+                        }
+                        // the replay of these inputs in the solver (see smt_get_model)
+                        let replay = air_model
+                            .observed
+                            .iter()
+                            .find(|(n, _)| n == "@replay")
+                            .map(|(_, v)| v.clone());
+                        match replay.as_deref() {
+                            Some("unsat") => lines.push(
+                                "  (spurious: with these inputs the solver proves the check; the \
+                                 model is not a failure)"
+                                    .to_string(),
+                            ),
+                            Some("sat") => {}
+                            _ => lines.push(
+                                "  (unconfirmed: the solver could not decide whether these inputs \
+                                 fail the check)"
+                                    .to_string(),
+                            ),
+                        }
+                        // the call, when every input is known: for replaying the run
+                        let scalars: HashMap<&String, String> = air_model
+                            .observed
+                            .iter()
+                            .filter(|(n, _)| {
+                                !n.starts_with('@') && !n.contains('[') && !n.ends_with(".len()")
+                            })
+                            .map(|(n, v)| (n, counterexample_value(v)))
+                            .collect();
+                        let args: Option<Vec<String>> = params
+                            .iter()
+                            .map(|(pn, k)| match k.as_str() {
+                                "scalar" => scalars.get(pn).cloned(),
+                                "mutref" => scalars.get(pn).map(|v| format!("&mut {v}")),
+                                "slice" | "array" | "array_ref" => {
+                                    let n = *lens.get(pn)?;
+                                    if n > 16 {
+                                        return None;
+                                    }
+                                    let es = elems.get(pn).cloned().unwrap_or_default().join(", ");
+                                    Some(match k.as_str() {
+                                        "slice" | "array_ref" => format!("&[{es}]"),
+                                        _ => format!("[{es}]"),
+                                    })
+                                }
+                                _ => None,
+                            })
+                            .collect();
+                        if let Some(args) = args {
+                            lines.push(format!(
+                                "  call: {}({})",
+                                vir::ast_util::fun_as_friendly_rust_name(&context.fun),
+                                args.join(", ")
+                            ));
+                        }
+                        // the same model as data, for tools that build and run the call (one line
+                        // of JSON): parameters and their kinds, the type at each value path, the
+                        // opaque types' views, and the values
+                        {
+                            let mut types = serde_json::Map::new();
+                            let mut views = serde_json::Map::new();
+                            let mut values = serde_json::Map::new();
+                            for (name, v) in air_model.observed.iter() {
+                                if let Some(tv) = name.strip_prefix("@type:") {
+                                    if let Some((p, t)) =
+                                        tv.rsplit_once('=').filter(|(p, _)| !not_input(p))
+                                    {
+                                        types.insert(
+                                            p.to_string(),
+                                            serde_json::Value::String(t.to_string()),
+                                        );
+                                    }
+                                } else if let Some(tv) = name.strip_prefix("@view:") {
+                                    if let Some((p, f)) = tv.rsplit_once('=') {
+                                        views.insert(
+                                            p.to_string(),
+                                            serde_json::Value::String(f.to_string()),
+                                        );
+                                    }
+                                } else if !name.starts_with('@') && !not_input(name) {
+                                    // elements past a container's length are not part of the
+                                    // input (the readable lines drop them too)
+                                    if let Some((base, rest)) = name.split_once('[') {
+                                        if let (Some(n), Ok(k)) = (
+                                            lens.get(base),
+                                            rest.trim_end_matches(']').parse::<usize>(),
+                                        ) {
+                                            if k >= *n {
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                    values.insert(
+                                        name.clone(),
+                                        serde_json::Value::String(counterexample_value(v)),
+                                    );
+                                }
+                            }
+                            let ps: Vec<serde_json::Value> = params
+                                .iter()
+                                .map(|(n, k)| {
+                                    // `ref: "mut"`: the call passes a mutable reference (a
+                                    // structured one has kind `value`, read at its current value)
+                                    let mut_ref = k == "mutref"
+                                        || air_model
+                                            .observed
+                                            .iter()
+                                            .any(|(o, _)| o == &format!("@mutref:{n}"));
+                                    if mut_ref {
+                                        serde_json::json!({"name": n, "kind": k, "ref": "mut"})
+                                    } else {
+                                        serde_json::json!({"name": n, "kind": k})
+                                    }
+                                })
+                                .collect();
+                            let j = serde_json::json!({
+                                "fn": vir::ast_util::fun_as_friendly_rust_name(&context.fun),
+                                "params": ps, "types": types, "views": views, "values": values,
+                                "small": small,
+                                // `replay`: `sat` (the inputs fail the check), `unsat` (the
+                                // model is spurious) or `unknown`; `small_sat`: small, and
+                                // replayed as `sat`
+                                "replay": replay.clone().unwrap_or("unknown".to_string()),
+                                "small_sat": small && replay.as_deref() == Some("sat"),
+                            });
+                            lines.push(format!("  json: {}", j));
+                        }
+                        reporter.report(
+                                &message(
+                                    MessageLevel::Note,
+                                    format!(
+                                        "counterexample (solver model of the inputs; may be spurious if the proof needs an invariant or a specification):\n{}",
+                                        lines.join("\n")
+                                    ),
+                                    &error.spans.first().cloned().unwrap_or(context.span.clone()),
+                                )
+                                .to_any(),
+                            );
                     }
 
                     if self.args.multiple_errors == 0 {
@@ -1089,14 +1327,20 @@ impl Verifier {
             not_skipped: false,
             used_axioms: None,
         };
-        let CommandsWithContextX { context, commands, prover_choice, skip_recommends: _ } =
-            &*commands_with_context;
+        let CommandsWithContextX {
+            context,
+            commands,
+            prover_choice,
+            skip_recommends: _,
+            observations,
+        } = &*commands_with_context;
         let context = context.with_desc_prefix(desc_prefix);
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
             air_context.comment(&context.span.as_string);
         }
+        air_context.set_observations((**observations).clone());
         for command in commands.iter() {
             result = result
                 + self.check_result_validity(
@@ -1109,6 +1353,7 @@ impl Verifier {
                     &context,
                     *prover_choice,
                     default_prover_failed_assert_ids,
+                    observations,
                 );
         }
 
@@ -2092,6 +2337,7 @@ impl Verifier {
             self.args.no_bv_simplify,
             self.args.report_long_running,
         )?;
+        global_ctx.counterexamples = self.args.counterexample;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
@@ -3420,4 +3666,29 @@ impl VerifierCallbacksEraseMacro {
             );
         }
     }
+}
+
+/// The value in a `get-value` response `((e v))`: `v`, with SMT negative numbers
+/// `(- 5)` as `-5`.
+fn counterexample_value(resp: &str) -> String {
+    let r = resp.trim();
+    let r = r.strip_prefix("((").and_then(|r| r.strip_suffix("))")).unwrap_or(r);
+    // the value is the last top-level s-expression of `e v`
+    let bytes: Vec<char> = r.chars().collect();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    for (i, c) in bytes.iter().enumerate() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ' ' if depth == 0 => start = i + 1,
+            _ => {}
+        }
+    }
+    let v: String = bytes[start..].iter().collect();
+    let v = v.trim().to_string();
+    if let Some(n) = v.strip_prefix("(- ").and_then(|x| x.strip_suffix(")")) {
+        return format!("-{n}");
+    }
+    v
 }

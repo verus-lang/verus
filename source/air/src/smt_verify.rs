@@ -7,6 +7,8 @@ use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, SmtSolver,
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
 use crate::messages::{ArcDynMessage, Diagnostics};
 pub use crate::model::{Model, ModelDef};
+use crate::printer::str_to_node;
+use sise::TreeNode as Node;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -513,10 +515,95 @@ fn restore_model_for_observer(context: &mut Context, infos: &Vec<AssertionInfo>,
     false
 }
 
+/// Assert that the query fails at assertion `i` only: its label is true and every other
+/// enabled label is false (as in `confirm_label`), so that a model is one of this failure.
+fn assert_only_failure(context: &mut Context, infos: &Vec<AssertionInfo>, i: usize) {
+    context.smt_log.log_assert(&None, &ident_var(&infos[i].label));
+    for (j, info) in infos.iter().enumerate() {
+        if j != i && !info.disabled {
+            context.smt_log.log_assert(&None, &mk_not(&ident_var(&info.label)));
+        }
+    }
+}
+
+/// `check-sat` under the query's resource limit; the solver's answer (`sat`, `unsat` or
+/// `unknown`; anything else is reported as `unknown`)
+fn check_sat_limited(context: &mut Context) -> String {
+    if matches!(context.solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
+    }
+    context.smt_log.log_word("check-sat");
+    if matches!(context.solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", "0");
+    }
+    let smt_data = context.smt_log.take_pipe_data();
+    let smt_output = context.get_smt_process().send_commands(smt_data);
+    for answer in ["sat", "unsat"] {
+        if smt_output.iter().any(|l| l == answer) {
+            return answer.to_string();
+        }
+    }
+    "unknown".to_string()
+}
+
+/// Can a value the solver gave for an observation be asserted back? Model-internal constants
+/// (Z3's `Poly!val!3`, cvc5's `@a0`) and array values are not terms of the query.
+fn is_replayable_value(v: &str) -> bool {
+    !v.is_empty()
+        && !v.contains('!')
+        && !v.contains('@')
+        && !v.contains("as-array")
+        && !v.contains("lambda")
+        && v.chars().filter(|c| *c == '(').count() == v.chars().filter(|c| *c == ')').count()
+}
+
+/// The value of an observation (`--counterexample`) in the current model. A parameter the body
+/// assigns is versioned in the query (`x@0` at entry, var_to_const): when the solver does not know
+/// a variable, the entry version is tried.
+/// Also returns the expression evaluated (with entry versions substituted).
+fn eval_observation(
+    context: &mut Context,
+    printer: &crate::printer::Printer,
+    e: &crate::ast::Expr,
+) -> Result<(String, crate::ast::Expr), String> {
+    let mut e = e.clone();
+    for _ in 0..4 {
+        match context.try_eval_expr(printer.expr_to_node(&e)) {
+            Ok(v) => return Ok((v, e)),
+            Err(msg) => {
+                let Some(name) = msg.split("unknown constant ").nth(1).map(|r| {
+                    r.split(|c: char| c.is_whitespace() || c == ')' || c == '"')
+                        .next()
+                        .unwrap_or("")
+                        .to_string()
+                }) else {
+                    return Err(msg);
+                };
+                if name.is_empty() || name.contains('@') {
+                    return Err(msg);
+                }
+                let renamed = Arc::new(crate::var_to_const::rename_var(&name, 0));
+                let mut changed = false;
+                e = crate::visitor::map_expr_visitor(&e, &mut |x: &crate::ast::Expr| match &**x {
+                    crate::ast::ExprX::Var(v) if **v == name => {
+                        changed = true;
+                        Arc::new(crate::ast::ExprX::Var(renamed.clone()))
+                    }
+                    _ => x.clone(),
+                });
+                if !changed {
+                    return Err(msg);
+                }
+            }
+        }
+    }
+    Err("observation not evaluated".to_string())
+}
+
 fn smt_get_model(
     context: &mut Context,
     mut infos: Vec<AssertionInfo>,
-    air_model: Model,
+    mut air_model: Model,
 ) -> ValidityResult {
     let mut discovered_error: Option<AssertionInfo> = None;
     let mut discovered_assert_id: Option<Option<Arc<Vec<u64>>>> = None;
@@ -538,6 +625,30 @@ fn smt_get_model(
     let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
     for def in model.iter() {
         model_defs.insert(def.name.clone(), def.clone());
+    }
+    // observations: evaluate now, before any further check-sat replaces this model
+    air_model.observed.clear();
+    // the expression each observed value is the value of (see `eval_observation`)
+    let mut evaluated: HashMap<String, crate::ast::Expr> = HashMap::new();
+    if !context.observations.is_empty() {
+        let obs = std::mem::take(&mut context.observations);
+        let printer = crate::printer::Printer::new(
+            context.message_interface.clone(),
+            true,
+            context.solver.clone(),
+        );
+        for (name, e) in obs.iter().filter(|(n, _)| n != "@bound") {
+            if name.starts_with("@param:")
+                || name.starts_with("@type:")
+                || name.starts_with("@view:")
+            {
+                air_model.observed.push((name.clone(), String::new()));
+            } else if let Ok((v, used)) = eval_observation(context, &printer, e) {
+                air_model.observed.push((name.clone(), v));
+                evaluated.insert(name.clone(), used);
+            }
+        }
+        context.observations = obs;
     }
     // Each assertion A_i is encoded as (label_i => A_i), so a violated assertion has
     // label_i = true in the model. The converse does not hold: a label that is
@@ -592,6 +703,98 @@ fn smt_get_model(
     let mut axiom_infos: Vec<Arc<AxiomInfo>> =
         context.axiom_infos.map().values().cloned().collect();
     axiom_infos.sort_by_key(|info| info.label.clone());
+    // observations: look for a model of the same failure with small inputs (`@bound`
+    // observations, e.g. `len <= 16`), so that the reported inputs can be written down and
+    // replayed; then replay the reported inputs. Only for reporting: under push/pop, after
+    // the verdict is fixed. Both replace the solver's model (see `model_replaced`).
+    let mut model_replaced = false;
+    if !context.observations.is_empty() {
+        let chosen = discovered_info_index.expect("discovered error index");
+        let obs = std::mem::take(&mut context.observations);
+        if obs.iter().any(|(n, _)| n == "@bound") {
+            model_replaced = true;
+            context.smt_log.log_push();
+            assert_only_failure(context, &infos, chosen);
+            for (_, b) in obs.iter().filter(|(n, _)| n == "@bound") {
+                context.smt_log.log_assert(&None, b);
+            }
+            // `unknown` (quantifiers, nonlinear arithmetic) still leaves a model, as for the
+            // query itself; whether that model is a real failure is decided by the replay
+            if !matches!(check_sat_limited(context).as_str(), "unsat") {
+                let printer = crate::printer::Printer::new(
+                    context.message_interface.clone(),
+                    true,
+                    context.solver.clone(),
+                );
+                let mut small = vec![];
+                let mut small_evaluated: HashMap<String, crate::ast::Expr> = HashMap::new();
+                for (name, e) in obs.iter().filter(|(n, _)| n != "@bound") {
+                    if name.starts_with("@param:")
+                        || name.starts_with("@type:")
+                        || name.starts_with("@view:")
+                    {
+                        small.push((name.clone(), String::new()));
+                    } else if let Ok((v, used)) = eval_observation(context, &printer, e) {
+                        small.push((name.clone(), v));
+                        small_evaluated.insert(name.clone(), used);
+                    }
+                }
+                if !small.is_empty() {
+                    air_model.observed = small;
+                    evaluated = small_evaluated;
+                    air_model.observed.push(("@small".to_string(), "true".to_string()));
+                }
+            }
+            context.smt_log.log_pop();
+        }
+        // Replay: with the inputs fixed to the reported values, is the same failure still
+        // satisfiable? The query's own result is almost never `sat` (vstd's quantifiers make
+        // Z3 answer `unknown`), so the model the solver gives need not be a failure: with
+        // nonlinear arithmetic in particular, its values often do not reproduce it. With the
+        // inputs fixed, the query is usually decided. `sat`: the failure happens with these
+        // inputs, as far as the solver's encoding goes; `unsat`: the model is spurious.
+        let printer = crate::printer::Printer::new(
+            context.message_interface.clone(),
+            true,
+            context.solver.clone(),
+        );
+        let mut fixed: Vec<Node> = vec![];
+        for (name, v) in air_model.observed.iter() {
+            if name.starts_with('@') || !is_replayable_value(v) {
+                continue;
+            }
+            let Some(e) = evaluated.get(name) else { continue };
+            let value = crate::parser::parse_sexpression(&vec![v.clone()]);
+            fixed.push(Node::List(vec![
+                str_to_node("assert"),
+                Node::List(vec![str_to_node("="), printer.expr_to_node(e), value]),
+            ]));
+        }
+        if !fixed.is_empty() {
+            model_replaced = true;
+            context.smt_log.log_push();
+            assert_only_failure(context, &infos, chosen);
+            for f in fixed.iter() {
+                context.smt_log.log_node(f);
+            }
+            // with the inputs fixed, model-based quantifier instantiation can often build a
+            // model of the quantified axioms, which the query itself (without it) cannot
+            let z3 = matches!(context.solver, SmtSolver::Z3);
+            if z3 {
+                context.smt_log.log_set_option("smt.mbqi", "true");
+            }
+            let result = check_sat_limited(context);
+            if z3 {
+                context.smt_log.log_set_option("smt.mbqi", "false");
+            }
+            context.smt_log.log_pop();
+            let smt_data = context.smt_log.take_pipe_data();
+            let _ = context.get_smt_process().send_commands(smt_data);
+            air_model.observed.push(("@replay".to_string(), result));
+        }
+        context.observations = obs;
+    }
+
     // stabilize order
     for info in axiom_infos {
         if let Some(def) = model_defs.get(&info.label) {
@@ -624,7 +827,9 @@ fn smt_get_model(
     // Clone the shared handle so `context` stays free for the eval_bool_expr closure.
     let obs = context.query_result_observer.clone();
     let scoped = match (&obs, discovered_info_index) {
-        (Some(_), Some(i)) if needs_confirmation => restore_model_for_observer(context, &infos, i),
+        (Some(_), Some(i)) if needs_confirmation || model_replaced => {
+            restore_model_for_observer(context, &infos, i)
+        }
         _ => false,
     };
     if let Some(obs) = &obs {
@@ -650,7 +855,7 @@ fn smt_get_model(
     }
 
     context.state = ContextState::FoundInvalid(infos, Some(air_model.clone()));
-    ValidityResult::Invalid(Some(air_model), Some(e), discovered_assert_id.unwrap())
+    ValidityResult::Invalid(Some(Box::new(air_model)), Some(e), discovered_assert_id.unwrap())
 }
 
 pub(crate) fn smt_check_query<'ctx>(

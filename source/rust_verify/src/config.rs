@@ -201,6 +201,7 @@ pub struct ArgsX {
     pub no_erasure_check: bool,
     pub no_auto_recommends_check: bool,
     pub no_cheating: bool,
+    pub counterexample: bool,
     pub check_drops: bool,
     pub time: bool,
     pub time_expanded: bool,
@@ -252,6 +253,7 @@ impl ArgsX {
             no_erasure_check: Default::default(),
             no_auto_recommends_check: Default::default(),
             no_cheating: Default::default(),
+            counterexample: Default::default(),
             check_drops: true,
             time: Default::default(),
             time_expanded: Default::default(),
@@ -390,6 +392,10 @@ pub struct VerusCli {
     /// Do not allow assume, admit, verifier::external_body, and assume_specification; also reject options that skip or weaken checks
     #[arg(long)]
     pub no_cheating: bool,
+
+    /// On a failed function body check, print the values the solver's model gives the function's inputs (integer, bool and char parameters; length and first elements of slice and array parameters)
+    #[arg(long)]
+    pub counterexample: bool,
 
     /// Do not check the implicit drops of no_unwind and atomic exec functions (found in rustc's MIR) against unverified Drop impls of the crate
     #[arg(long)]
@@ -790,6 +796,7 @@ pub fn parse_args_with_imports(
         no_erasure_check: cli.no_erasure_check,
         no_auto_recommends_check: cli.no_auto_recommends_check,
         no_cheating: cli.no_cheating,
+        counterexample: cli.counterexample,
         check_drops: !cli.no_check_drops,
         time: cli.time || cli.time_expanded,
         time_expanded: cli.time_expanded,

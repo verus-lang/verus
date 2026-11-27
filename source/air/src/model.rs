@@ -28,6 +28,9 @@ pub struct Model {
     id_snapshots: Snapshots,
     /// The list of paramters of the function
     parameters: HashSet<Ident>,
+    /// Values of `Context::observations` in this model (description, value), evaluated
+    /// right after the satisfiable check, while the model is available
+    pub observed: Vec<(String, String)>,
 }
 
 impl Model {
@@ -51,7 +54,7 @@ impl Model {
             }
         }
 
-        Model { id_snapshots: snapshots, parameters }
+        Model { id_snapshots: snapshots, parameters, observed: vec![] }
     }
 
     pub fn translate_variable(&self, sid: &Ident, name: &Ident) -> Option<String> {
