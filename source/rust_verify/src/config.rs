@@ -51,8 +51,6 @@ const OPT_NO_ERASURE_CHECK: &str = "no-erasure-check";
 const OPT_NO_CHEATING: &str = "no-cheating";
 const OPT_NO_CHECK_DROPS: &str = "no-check-drops";
 const OPT_IS_VSTD: &str = "is-vstd";
-const OPT_IS_CORE: &str = "is-core";
-const OPT_IS_STDLIB_OUTSIDE_OF_CORE: &str = "is-stdlib-outside-of-core";
 
 const LOG_VIR: &str = "vir";
 const LOG_VIR_SIMPLE: &str = "vir-simple";
@@ -912,8 +910,6 @@ pub fn parse_args_with_imports(
             (OPT_NO_TRAIT_CONFLICTS, cli.no_trait_conflicts),
             (OPT_NO_CHECK_DROPS, cli.no_check_drops),
             (OPT_IS_VSTD, cli.is_vstd),
-            (OPT_IS_CORE, cli.is_core),
-            (OPT_IS_STDLIB_OUTSIDE_OF_CORE, cli.is_stdlib_outside_of_core),
         ];
         for (flag, present) in disallowed_flags {
             if present {

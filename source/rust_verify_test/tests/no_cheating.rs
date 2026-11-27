@@ -11,6 +11,20 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] test_no_cheating_is_core_external_body ["--is-core", "--no-cheating", "no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(fn_traits))]
+
+        #[verus::trusted]
+        #[verifier::external]
+        #[path="../../../../builtin/src/lib.rs"]
+        mod verus_builtin;
+
+        #[verifier::external_body] fn no_good() // FAILS
+        {}
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file_with_options! {
     #[test] test_no_cheating_external_body_trait ["--no-cheating"] => verus_code! {
         trait A {
             #[verifier::external_body] fn no_good(&self) // FAILS
