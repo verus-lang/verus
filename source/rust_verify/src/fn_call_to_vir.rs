@@ -320,18 +320,20 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
         )
     };
 
+    let operands = bctx.begin_operands(expr);
     let (vir_args, call_body) = match args.as_deref() {
         Some(arg_slice) if is_atomic_function_call()? => {
             let [prefix @ .., au] = arg_slice else {
                 return malformed_atomic_call();
             };
 
-            let mut vir_args = mk_vir_args(bctx, prefix)?;
+            let mut vir_args = mk_vir_operands(bctx, &operands, prefix)?;
             let au_expr = expr_to_vir_consume(&bctx, au)?;
 
             let ExprX::Atomically(..) = &au_expr.x else {
                 return malformed_atomic_call();
             };
+            bctx.schedule_operand_drop(&operands, prefix.len(), au);
 
             vir_args.push(bctx.spanned_typed_new(
                 au.span,
@@ -341,17 +343,18 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
             (vir_args, Some(au_expr))
         }
-        Some(arg_slice) => (mk_vir_args(bctx, arg_slice)?, None),
+        Some(arg_slice) => (mk_vir_operands(bctx, &operands, arg_slice)?, None),
         None => Default::default(),
     };
+    let call_span = bctx.end_operands(operands);
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
     let impl_paths = get_impl_paths(bctx, f, node_substs, None, const_var, expr.span)?;
     let call_target_attrs =
         vir::ast::CallTargetAttrs { autospec: autospec_usage, assume_external_allowed, const_var };
     let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, call_target_attrs);
-    Ok(bctx.spanned_typed_new(
-        expr.span,
+    Ok(vir::ast::SpannedTyped::new(
+        &call_span,
         &expr_typ()?,
         ExprX::Call { target, args: Arc::new(vir_args), post_args: None, body: call_body },
     ))
@@ -1757,7 +1760,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let cast_to = crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
                         bctx,
                         args[0],
-                        source_vir0.to_place(bctx, expr.span, source_vir0_ty)?,
+                        source_vir0.to_place(bctx, args[0], source_vir0_ty)?,
                         mk_expr,
                     )?;
                     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
@@ -2613,7 +2616,7 @@ fn extract_ensures<'tcx>(
                 BodyErasure { erase_body: true, ret_spec: true, erase_absolutely: false },
             );
 
-            let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
+            let (_, typs) = closure_param_typs(bctx, expr)?;
             let body = tcx.hir_body(closure.body);
             let mut xs: Vec<VarIdent> = Vec::new();
             for param in body.params.iter() {
@@ -2657,7 +2660,7 @@ fn extract_quant<'tcx>(
             );
 
             let body = tcx.hir_body(closure.body);
-            let typs = closure_param_typs(bctx, expr)?;
+            let (_, typs) = closure_param_typs(bctx, expr)?;
             assert!(typs.len() == body.params.len());
             let mut binders: Vec<VarBinder<Typ>> = Vec::new();
             for (x, t) in body.params.iter().zip(typs) {
@@ -2728,7 +2731,7 @@ fn extract_assert_forall_by<'tcx>(
             );
 
             let body = tcx.hir_body(closure.body);
-            let typs = closure_param_typs(bctx, expr)?;
+            let (_, typs) = closure_param_typs(bctx, expr)?;
             assert!(body.params.len() == typs.len());
             let mut binders: Vec<VarBinder<Typ>> = Vec::new();
             for (x, t) in body.params.iter().zip(typs) {
@@ -2790,7 +2793,7 @@ fn extract_choose<'tcx>(
             let closure_body = tcx.hir_body(closure.body);
             let mut params: Vec<VarBinder<Typ>> = Vec::new();
             let mut vars: Vec<vir::ast::Expr> = Vec::new();
-            let typs = closure_param_typs(bctx, expr)?;
+            let (_, typs) = closure_param_typs(bctx, expr)?;
             assert!(closure_body.params.len() == typs.len());
             for (x, typ) in closure_body.params.iter().zip(typs) {
                 let name = pat_to_var(x.pat)?;
@@ -3019,6 +3022,20 @@ fn mk_vir_args<'tcx>(
     args: &[&'tcx Expr<'tcx>],
 ) -> Result<Vec<vir::ast::Expr>, VirErr> {
     args.iter().map(|arg| expr_to_vir_consume(bctx, arg)).collect::<Result<Vec<_>, _>>()
+}
+
+/// Translate the operands of a call, scheduling drops for them (see `begin_operands`)
+fn mk_vir_operands<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    operands: &crate::drop_scopes::Operands,
+    args: &[&'tcx Expr<'tcx>],
+) -> Result<Vec<vir::ast::Expr>, VirErr> {
+    let mut vir_args = vec![];
+    for (i, arg) in args.iter().enumerate() {
+        vir_args.push(expr_to_vir_consume(bctx, arg)?);
+        bctx.schedule_operand_drop(operands, i, arg);
+    }
+    Ok(vir_args)
 }
 
 fn mk_one_vir_arg<'tcx>(
