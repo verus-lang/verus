@@ -509,11 +509,11 @@ pub struct Ghost<A> {
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Tracked")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types_in_ground_variants(A))]
-pub struct Tracked<A> {
+pub struct Tracked<A: ?Sized> {
     phantom: PhantomData<A>,
 }
 
-impl<A> core::fmt::Debug for Tracked<A> {
+impl<A: ?Sized> core::fmt::Debug for Tracked<A> {
     fn fmt(&self, _: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         Ok(())
     }
@@ -548,8 +548,8 @@ impl<A> core::ops::DerefMut for Ghost<A> {
 ///
 /// Note: This special behavior requires support from Verus,
 /// and this trait impl cannot be used generically.
-#[cfg(verus_keep_ghost)]
-impl<A> core::ops::Deref for Tracked<A> {
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+impl<A: ?Sized> core::ops::Deref for Tracked<A> {
     type Target = A;
     #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::deref"]
     fn deref(&self) -> &Self::Target {
@@ -561,8 +561,8 @@ impl<A> core::ops::Deref for Tracked<A> {
 ///
 /// Note: This special behavior requires support from Verus,
 /// and this trait impl cannot be used generically.
-#[cfg(verus_keep_ghost)]
-impl<A> core::ops::DerefMut for Tracked<A> {
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+impl<A: ?Sized> core::ops::DerefMut for Tracked<A> {
     #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::deref_mut"]
     fn deref_mut(&mut self) -> &mut Self::Target {
         unimplemented!();
