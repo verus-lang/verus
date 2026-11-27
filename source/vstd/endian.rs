@@ -1088,7 +1088,7 @@ impl<B: Base> EndianNat<B> {
             Self::to_big(x).len() == 1,
             Self::to_big(x)[0] == x.to_nat(),
     {
-        broadcast use EndianNat::exp_properties;
+        broadcast use EndianNat::exp_properties, EndianNat::to_big_properties;
 
         reveal(EndianNat::to_big);
         crate::vstd::arithmetic::div_mod::lemma_mod_self_0(Self::exp() as int);
@@ -1105,12 +1105,42 @@ impl<B: Base> EndianNat<B> {
 
 /***** Functions involving both little and big endian *****/
 
+/// The value of a digit `d` satisfying the `Integer` trait bound as an `int`.
+// Used in closures instead of `d as int`:
+// since #2908, a closure returning `d as int` for a generic `d` loses the fact that the result is an `int`
+// (TODO: remove once fixed in verus).
+pub open spec fn digit_to_int<B: Integer>(d: B) -> int {
+    d as int
+}
+
+/// Converts a sequence of digits in base `B` in default endianness ([`endianness()`]) to an `EndianNat` in base `B`.
+pub open spec fn to_endian_from_digits<B>(n: Seq<B>) -> EndianNat<B> where B: Base + Integer {
+    EndianNat::<B>::new(endianness(), n.map(|i, d| digit_to_int(d)))
+}
+
 /// Converts a sequence of digits in base `B` in default endianness ([`endianness()`]) to an `EndianNat` in the larger base `BIG`.
 pub open spec fn to_big_from_digits<BIG, B>(n: Seq<B>) -> EndianNat<BIG> where
     BIG: BasePow2,
     B: CompatibleSmallerBaseFor<BIG> + Integer,
  {
-    EndianNat::<B>::to_big::<BIG>(EndianNat::<B>::new(endianness(), n.map(|i, d| d as int)))
+    EndianNat::<B>::to_big::<BIG>(EndianNat::<B>::new(endianness(), n.map(|i, d| digit_to_int(d))))
+}
+
+/// Proof that converting exactly one `BIG` digit's worth of `B` digits (`EndianNat::<B>::exp::<BIG>()` of them)
+/// gives a single `BIG` digit equal to the value of the `B` digits.
+pub proof fn to_big_from_digits_single<BIG, B>(n: Seq<B>) where
+    BIG: BasePow2,
+    B: CompatibleSmallerBaseFor<BIG> + Integer,
+
+    requires
+        EndianNat::<B>::in_bounds(n.map(|i, d| digit_to_int(d))),
+        n.len() == EndianNat::<B>::exp::<BIG>(),
+        n.len() > 0,
+    ensures
+        to_big_from_digits(n).len() == 1,
+        to_big_from_digits(n).index(0) == to_endian_from_digits::<B>(n).to_nat(),
+{
+    EndianNat::<B>::to_big_single::<BIG>(to_endian_from_digits::<B>(n));
 }
 
 /***** Implementations and proofs for specific types *****/
@@ -1124,9 +1154,36 @@ impl Base for u8 {
     }
 }
 
+impl Base for u16 {
+    open spec fn base() -> nat {
+        u16::MAX as nat + 1
+    }
+
+    proof fn base_min() {
+    }
+}
+
+impl Base for u32 {
+    open spec fn base() -> nat {
+        u32::MAX as nat + 1
+    }
+
+    proof fn base_min() {
+    }
+}
+
 impl Base for u64 {
     open spec fn base() -> nat {
         u64::MAX as nat + 1
+    }
+
+    proof fn base_min() {
+    }
+}
+
+impl Base for u128 {
+    open spec fn base() -> nat {
+        u128::MAX as nat + 1
     }
 
     proof fn base_min() {
@@ -1152,6 +1209,26 @@ impl BasePow2 for u8 {
     }
 }
 
+impl BasePow2 for u16 {
+    open spec fn bits() -> nat {
+        16
+    }
+
+    proof fn bits_to_base() {
+        crate::vstd::arithmetic::power2::lemma2_to64();
+    }
+}
+
+impl BasePow2 for u32 {
+    open spec fn bits() -> nat {
+        32
+    }
+
+    proof fn bits_to_base() {
+        crate::vstd::arithmetic::power2::lemma2_to64();
+    }
+}
+
 impl BasePow2 for u64 {
     open spec fn bits() -> nat {
         64
@@ -1159,6 +1236,16 @@ impl BasePow2 for u64 {
 
     proof fn bits_to_base() {
         crate::vstd::arithmetic::power2::lemma2_to64();
+    }
+}
+
+impl BasePow2 for u128 {
+    open spec fn bits() -> nat {
+        128
+    }
+
+    proof fn bits_to_base() {
+        assert(0x1_0000_0000_0000_0000_0000_0000_0000_0000 == pow2(128)) by (compute);
     }
 }
 
@@ -1172,12 +1259,69 @@ impl BasePow2 for usize {
     }
 }
 
+// Note: we do not implement `CompatibleSmallerBaseFor<usize>` for `u32`,
+// since this is only true on `64`-bit platforms.
+impl CompatibleSmallerBaseFor<u16> for u8 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u32> for u8 {
+    proof fn compatible() {
+    }
+}
+
 impl CompatibleSmallerBaseFor<u64> for u8 {
     proof fn compatible() {
     }
 }
 
+impl CompatibleSmallerBaseFor<u128> for u8 {
+    proof fn compatible() {
+    }
+}
+
 impl CompatibleSmallerBaseFor<usize> for u8 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u32> for u16 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u64> for u16 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u128> for u16 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<usize> for u16 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u64> for u32 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u128> for u32 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u128> for u64 {
+    proof fn compatible() {
+    }
+}
+
+impl CompatibleSmallerBaseFor<u128> for usize {
     proof fn compatible() {
     }
 }
