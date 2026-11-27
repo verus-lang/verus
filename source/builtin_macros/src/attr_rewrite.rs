@@ -1140,6 +1140,11 @@ fn rewrite_with_expr(
                     path.path.segments.last_mut().unwrap().ident =
                         syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
                     compiled_call = Some(original);
+                } else {
+                    *expr = Expr::Verbatim(quote_spanned!(func.span() =>
+                        ::core::compile_error!("with ghost inputs/outputs require the callee to be a function path")
+                    ));
+                    return vec![];
                 }
             }
             syn::Expr::MethodCall(syn::ExprMethodCall { method, .. }) => {

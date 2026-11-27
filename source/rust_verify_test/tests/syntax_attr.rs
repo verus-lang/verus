@@ -2259,3 +2259,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_proof_with_non_path_callee code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        fn h(g: Ghost<int>) -> (u8, Ghost<int>) {
+            (1, g)
+        }
+
+        #[verus_spec]
+        fn test(g: Ghost<int>) {
+            proof_with!{ => Ghost(y) }
+            let a = (h)(g);
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "with ghost inputs/outputs require the callee to be a function path")
+}
