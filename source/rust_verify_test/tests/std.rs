@@ -3116,6 +3116,211 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+/// The types the drop-check tests drop
+const DROP_TYPES: &str = code_str! {
+    use vstd::prelude::*;
+    use vstd::invariant::*;
+    // a type whose `Drop` impl Verus does not check, so it may unwind
+    struct PanickingDrop;
+    impl Drop for PanickingDrop {
+        fn drop(&mut self) { panic!("unverified Drop panicked"); }
+    }
+    verus! {
+    #[verifier::external_type_specification]
+    struct ExPanickingDrop(PanickingDrop);
+    // a type whose `Drop` impl Verus checks, so it is no_unwind
+    pub struct VerifiedDrop { pub x: u8 }
+    impl Drop for VerifiedDrop {
+        fn drop(&mut self)
+            opens_invariants none
+            no_unwind
+        { }
+    }
+    struct P;
+    impl InvariantPredicate<int, u8> for P { open spec fn inv(k: int, v: u8) -> bool { true } }
+    }
+};
+
+test_verify_one_file! {
+    // (a) a `no_unwind` function drops a value whose `Drop` impl Verus does not check (#2949)
+    #[test] check_drops_no_unwind_unverified DROP_TYPES.to_string() + verus_code_str! {
+        fn f(d: PanickingDrop) no_unwind { }
+    } => Err(err) => assert_vir_error_msg(err, "whose `Drop` impl is not verified, in a `no_unwind` function")
+}
+
+test_verify_one_file! {
+    // a `no_unwind` function may drop a value whose `Drop` impl Verus checks
+    #[test] check_drops_no_unwind_verified DROP_TYPES.to_string() + verus_code_str! {
+        fn f(v: VerifiedDrop) no_unwind { }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // a function that may unwind may drop anything
+    #[test] check_drops_may_unwind DROP_TYPES.to_string() + verus_code_str! {
+        fn f(d: PanickingDrop) { }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // a `no_unwind` function that moves the value out does not drop it, and the spec copy that
+    // time-travel prevention makes of an exec variable used in spec code is not dropped either
+    #[test] check_drops_no_unwind_moved_out DROP_TYPES.to_string() + verus_code_str! {
+        fn f(d: PanickingDrop) -> (r: PanickingDrop)
+            ensures r == d,
+            no_unwind
+        {
+            let x = d;
+            assert(x == d);
+            x
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // (b) an unwinding drop in a local invariant block would exit it early
+    #[test] check_drops_local_invariant_block DROP_TYPES.to_string() + verus_code_str! {
+        fn f(Tracked(i): Tracked<&LocalInvariant<int, u8, P>>, d: PanickingDrop) {
+            open_local_invariant!(i => inner => {
+                let x = d;
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "whose `Drop` impl is not verified, in an invariant block")
+}
+
+test_verify_one_file! {
+    // a drop that cannot unwind is fine in a local invariant block
+    #[test] check_drops_local_invariant_block_verified DROP_TYPES.to_string() + verus_code_str! {
+        fn f(Tracked(i): Tracked<&LocalInvariant<int, u8, P>>, v: VerifiedDrop) {
+            open_local_invariant!(i => inner => {
+                let x = v;
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // (c) a drop in an atomic invariant block is a step of its own, even if Verus checks the `Drop` impl (#778)
+    #[test] check_drops_atomic_invariant_block DROP_TYPES.to_string() + verus_code_str! {
+        fn f(Tracked(i): Tracked<&AtomicInvariant<int, u8, P>>, v: VerifiedDrop) {
+            open_atomic_invariant!(i => inner => {
+                let x = v;
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in an atomic invariant block, but running its `Drop` impl is not one atomic step")
+}
+
+test_verify_one_file! {
+    // a drop after the block has closed is fine
+    #[test] check_drops_after_atomic_invariant_block DROP_TYPES.to_string() + verus_code_str! {
+        fn f(Tracked(i): Tracked<&AtomicInvariant<int, u8, P>>, d: PanickingDrop) {
+            open_atomic_invariant!(i => inner => {
+                let y: u8 = 1;
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // (c) a drop in an atomic function
+    #[test] check_drops_atomic_function DROP_TYPES.to_string() + verus_code_str! {
+        #[verifier::atomic]
+        fn f(v: VerifiedDrop)
+            opens_invariants none
+            no_unwind
+        { }
+    } => Err(err) => assert_vir_error_msg(err, "in an atomic function, but running its `Drop` impl is not one atomic step")
+}
+
+test_verify_one_file! {
+    // invariant blocks in closures are checked too
+    #[test] check_drops_closure_atomic_invariant_block DROP_TYPES.to_string() + verus_code_str! {
+        fn f(Tracked(i): Tracked<&AtomicInvariant<int, u8, P>>, v: VerifiedDrop) {
+            let c = move || {
+                open_atomic_invariant!(i => inner => {
+                    let x = v;
+                });
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in an atomic invariant block, but running its `Drop` impl is not one atomic step")
+}
+
+test_verify_one_file! {
+    // an atomic block inside a local one: the drop after the atomic block closes is in the local block only
+    #[test] check_drops_nested_invariant_blocks DROP_TYPES.to_string() + verus_code_str! {
+        fn f(Tracked(li): Tracked<&LocalInvariant<int, u8, P>>, Tracked(ai): Tracked<&AtomicInvariant<int, u8, P>>, v: VerifiedDrop)
+            requires li.namespace() != ai.namespace(),
+        {
+            open_local_invariant!(li => inner => {
+                open_atomic_invariant!(ai => inner2 => {
+                    let y: u8 = 1;
+                });
+                let x = v;
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // a value moved into a trait method resolves to the verified impl, whose own drops are checked
+    #[test] check_drops_trait_method_resolved DROP_TYPES.to_string() + verus_code_str! {
+        trait T { fn take(self, d: VerifiedDrop) no_unwind; }
+        struct S;
+        impl T for S { fn take(self, d: VerifiedDrop) { } }
+        fn f(s: S, v: VerifiedDrop) no_unwind {
+            s.take(v);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // a generic `no_unwind` function may drop a value of its type parameter; where a caller
+    // relies on it being `no_unwind`, the type it is called with is checked
+    #[test] check_drops_type_argument_of_no_unwind_callee DROP_TYPES.to_string() + verus_code_str! {
+        fn consume<T>(x: T) no_unwind { }
+        fn ok(x: u8) no_unwind { consume(x); }
+        fn f(d: PanickingDrop) no_unwind { consume(d); }
+    } => Err(err) => assert_vir_error_msg(err, "this calls `consume` with a type whose values it may drop, `PanickingDrop`, whose `Drop` impl is not verified, in a `no_unwind` function")
+}
+
+test_verify_one_file! {
+    // the type argument is not checked where Verus does not rely on the callee being no_unwind
+    #[test] check_drops_type_argument_may_unwind_caller DROP_TYPES.to_string() + verus_code_str! {
+        fn consume<T>(x: T) no_unwind { }
+        fn f(d: PanickingDrop) { consume(d); }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // the drop glue of a `dyn` type is not known: it may run any `Drop` impl
+    #[test] check_drops_dyn verus_code! {
+        use vstd::prelude::*;
+        trait T { }
+        fn f(x: Box<dyn T>) no_unwind { }
+    } => Err(err) => assert_vir_error_msg(err, "this may drop a `dyn T` in a `no_unwind` function, whose drop glue is not known here")
+}
+
+test_verify_one_file! {
+    // tracked values do not exist in the compiled program, so they are not dropped there
+    #[test] check_drops_tracked_values_not_dropped verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        struct P;
+        impl<G> InvariantPredicate<int, G> for P { open spec fn inv(k: int, g: G) -> bool { true } }
+        fn f<G>(Tracked(inv): Tracked<&AtomicInvariant<int, G, P>>, Tracked(g): Tracked<G>) no_unwind {
+            open_atomic_invariant!(inv => x => {
+                proof {
+                    let tracked y = x;
+                    x = y;
+                }
+            });
+            proof {
+                let tracked h = g;
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     // compiler-provided `Clone` at a `Copy` type (unit, tuples, closures) is a copy
     #[test] test_builtin_clone_of_copy_types verus_code! {
