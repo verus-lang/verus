@@ -1510,6 +1510,9 @@ fn check_function_inner(
     if function.x.is_main() && function.x.mode != Mode::Exec {
         return Err(error(&function.span, "`main` function must be `exec`"));
     }
+    if function.x.is_main() && !function.x.require.is_empty() {
+        return Err(error(&function.span, "`main` function cannot have a `requires` clause"));
+    }
 
     // These should be true by construction in Rust->VIR; sanity check them here.
     if let crate::ast::BodyVisibility::Visibility(vis) = &function.x.body_visibility {

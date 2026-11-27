@@ -191,6 +191,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] main_requires_fail verus_code! {
+        fn main()
+            requires
+                false,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`main` function cannot have a `requires` clause")
+}
+
+test_verify_one_file! {
     #[test] open_fn_refers_to_private_const_fail verus_code! {
         mod A {
             spec const X: usize = 1;
