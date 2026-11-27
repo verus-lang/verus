@@ -59,7 +59,7 @@ impl<T> SliceAdditionalExecFns<T> for [T] {
 
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::slice::slice_index_get")]
-pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
+pub const exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
     requires
         0 <= i < slice.view().len(),
     ensures
@@ -249,6 +249,14 @@ pub axiom fn tracked_borrow_mut<T>(tracked s: &mut [T], i: int) -> (tracked t: &
     ensures
         *t == old(s)[i],
         final(s)@ == old(s)@.update(i, *final(t)),
+;
+
+/// Borrows the subslice bounded by `[i, j)` of a tracked slice.
+pub axiom fn tracked_borrow_subrange<T>(tracked s: &[T], i: int, j: int) -> (tracked out: &[T])
+    requires
+        0 <= i <= j <= s@.len(),
+    ensures
+        out@ == s@.subrange(i, j),
 ;
 
 } // verus!
