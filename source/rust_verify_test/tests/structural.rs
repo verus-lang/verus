@@ -193,3 +193,14 @@ test_verify_one_file_with_options! {
 
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_structural_type_param_through_self verus_code! {
+        use vstd::prelude::*;
+        trait Tr { type A: Structural + PartialEq; }
+        impl<X> Tr for X { type A = u8; }
+
+        #[derive(PartialEq, Structural)]
+        struct S<T> { x: <Self as Tr>::A }
+    } => Err(err) => assert_vir_error_msg(err, "`Structural` requires all type arguments to be `Structural`")
+}
