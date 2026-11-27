@@ -825,3 +825,195 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
 }
+
+// In the tests below, the array type `A` has the length that const evaluation computes
+// during type checking, and `observed` returns it. The compiled program uses the same values,
+// which the tests that run the binary print.
+
+// `verus!` stubs only the syntactic `spec const`, so the compiled program evaluates consts and
+// const fns with a hand-written `#[verifier::spec]`, and so does const evaluation
+const ATTRIBUTE_SPEC_CONST: &str = code_str! {
+    use vstd::prelude::*;
+    verus! {
+        #[verifier::spec]
+        pub const N: usize = 5;
+        pub struct S;
+        impl S {
+            #[verifier::spec]
+            pub const N: usize = 6;
+        }
+        #[verifier::spec]
+        pub const fn n() -> usize { 7 }
+    }
+    type A = [u8; N + S::N + n()];
+    verus! {
+        fn observed(a: A) -> (r: usize) ensures r == 18 { a.len() }
+    }
+    fn main() { println!("{} {} {} {}", N, S::N, n(), observed([0u8; 18])); }
+};
+
+#[test]
+fn attribute_spec_const_is_evaluated() {
+    assert_eq!(verify_compile_and_run(ATTRIBUTE_SPEC_CONST, &[]), "5 6 7 18\n");
+}
+
+const SYNTACTIC_SPEC_CONST: &str = code_str! {
+    use vstd::prelude::*;
+    verus! {
+        pub spec const N: usize = 5usize;
+    }
+    type A = [u8; N];
+    verus! {
+        fn observed(a: A) -> (r: usize) ensures r == 0 { a.len() }
+    }
+    fn main() { println!("{}", observed([0u8; N])); }
+};
+
+#[test]
+fn syntactic_spec_const_is_stubbed() {
+    assert_eq!(verify_compile_and_run(SYNTACTIC_SPEC_CONST, &[]), "0\n");
+}
+
+test_verify_one_file! {
+    #[test] hand_written_ghost_attributes_are_evaluated code! {
+        use vstd::prelude::*;
+        verus! {
+            // In exec code, verification ignores these attributes on expressions
+            // other than blocks, and so does const evaluation
+            pub const fn f1() -> (r: usize)
+                ensures r == 1
+            {
+                let mut x: usize = 0;
+                #[verifier::proof_block] x = 1;
+                x
+            }
+            pub const fn f2() -> (r: usize)
+                ensures r == 2
+            {
+                let mut x: usize = 0;
+                #[verifier::spec] x = 2;
+                x
+            }
+        }
+        // Unverified code under ghost attributes is evaluated as exec code
+        pub const fn f3() -> usize {
+            let mut x: usize = 0;
+            #[verifier::proof_block] { x = 3; }
+            x
+        }
+        pub const fn f4() -> usize {
+            let mut x: usize = 0;
+            #[verifier::spec] let _y = { x = 4; 0usize };
+            x
+        }
+        pub const fn f5() -> usize {
+            let mut x: usize = 0;
+            let _g = verus_builtin::ghost_exec({ x = 5; 0u8 });
+            x
+        }
+        pub const SUM: usize = f1() + f2() + f3() + f4() + f5();
+        type A = [u8; SUM];
+        verus! {
+            fn observed(a: A) -> (r: usize) ensures r == 15 { a.len() }
+        }
+    } => Ok(())
+}
+
+// `verus_exec_expr_keep_ghost!` and `verus_exec_expr_erase_ghost!` remove their ghost code in
+// the compiled program, and so does const evaluation
+const EXEC_EXPR_MACROS: &str = code_str! {
+    use vstd::prelude::*;
+    pub const M2: usize = 7;
+    pub const K1: usize =
+        verus_exec_expr_keep_ghost!({ let mut x: usize = 1; proof { x = M2; } x });
+    pub const K2: usize =
+        verus_exec_expr_erase_ghost!({ let mut x: usize = 1; proof { x = M2; } x });
+    type A = [u8; K1 + K2];
+    verus! {
+        fn observed(a: A) -> (r: usize) ensures r == 2 { a.len() }
+    }
+    fn main() { println!("{} {} {}", K1, K2, observed([0u8; K1 + K2])); }
+};
+
+#[test]
+fn exec_expr_macros_ghost_code_is_erased() {
+    assert_eq!(verify_compile_and_run(EXEC_EXPR_MACROS, &[]), "1 1 2\n");
+}
+
+// The compiled program keeps the body of a proof const without its ghost `let`s, and const
+// evaluation evaluates the same code
+const PROOF_CONST: &str = code_str! {
+    use vstd::prelude::*;
+    verus! {
+        pub proof const P: u8 = { let ghost g: u8 = 1u8; u8::MAX };
+    }
+    type A = [u8; P as usize];
+    verus! {
+        fn observed(a: A) -> (r: usize) ensures r == 255 { a.len() }
+    }
+    fn main() { println!("{} {}", P, observed([0u8; 255])); }
+};
+
+#[test]
+fn proof_const_is_evaluated() {
+    assert_eq!(verify_compile_and_run(PROOF_CONST, &[]), "255 255\n");
+}
+
+// The compiled program leaves out a proof const that is not `pub`, and const evaluation skips its
+// body too (`lemma` is not a const fn)
+test_verify_one_file! {
+    #[test] private_proof_const_is_skipped verus_code! {
+        proof fn lemma() {}
+        proof const P: u8 = { lemma(); 7 };
+    } => Ok(())
+}
+
+// Ghost code from the attribute macros and `proof!`/`proof_decl!` in a verified const fn
+const ATTRIBUTE_MACROS_GHOST_CODE: &str = code_str! {
+    use vstd::prelude::*;
+    verus! {
+        pub proof fn seven() -> (r: u64) ensures r == 7 { 7 }
+    }
+    #[verus_verify]
+    #[verus_spec(r =>
+        requires n < 10
+        ensures r == n + 1
+    )]
+    pub const fn f(n: u8) -> u8 {
+        let mut x: u8 = n;
+        proof_decl! {
+            let ghost g: int = x as int;
+        }
+        proof! { let s = seven(); assert(g == n && s == 7); }
+        x = x + 1;
+        x
+    }
+    pub const K: u8 = f(3);
+    type A = [u8; K as usize];
+    verus! {
+        fn observed(a: A) -> (r: usize) ensures r == 4 { a.len() }
+    }
+    fn main() { println!("{} {}", K, observed([0u8; 4])); }
+};
+
+#[test]
+fn attribute_macros_ghost_code_is_erased() {
+    assert_eq!(verify_compile_and_run(ATTRIBUTE_MACROS_GHOST_CODE, &[]), "4 4\n");
+}
+
+// Without vstd, the markers of the `verus_builtin_macros` crate count: `N` is stubbed during
+// verification as in the compiled program, so the assertion holds in both
+const NO_VSTD_SPEC_CONST: &str = code_str! {
+    verus! {
+        pub spec const N: usize = 5usize;
+    }
+    const _: () = assert!(N == 0);
+    type A = [u8; N];
+    fn main() { println!("{}", core::mem::size_of::<A>()); }
+};
+
+#[test]
+fn no_vstd_spec_const_is_stubbed() {
+    let args = ["--no-vstd", "--cfg", "verus_no_vstd"];
+    assert_eq!(verify_compile_and_run(NO_VSTD_SPEC_CONST, &args), "0\n");
+}

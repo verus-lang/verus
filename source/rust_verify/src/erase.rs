@@ -705,12 +705,16 @@ pub(crate) fn setup_full_erasure_ctxt<'tcx>(
             .expect("assume_new function for Ghost/Tracked")
     };
 
-    let erase_call_fns = verus_items
+    let erase_call_fns: HashSet<DefId> = verus_items
         .id_to_name
         .iter()
         .filter(|(_, verus_item)| full_erasure_erases_call(verus_item))
         .map(|(def_id, _)| *def_id)
         .collect();
+    // A const fn among these is erased only with the ghost code around it, as in the compiled
+    // program
+    let full_erasure_call_fns =
+        erase_call_fns.iter().copied().filter(|def_id| !tcx.is_const_fn(*def_id)).collect();
     let proof_with_callee_fn_def_id = verus_items
         .name_to_id
         .get(&VerusItem::BuiltinFunction(BuiltinFunctionItem::ProofWithCallee))
@@ -728,6 +732,7 @@ pub(crate) fn setup_full_erasure_ctxt<'tcx>(
     rustc_mir_build_verus::verus::set_full_erasure_ctxt(Arc::new(
         rustc_mir_build_verus::verus::FullErasureCtxt {
             ghost_detection: Arc::new(ghost_detection),
+            erase_call_fns: full_erasure_call_fns,
             proof_with_callee_fn_def_id,
         },
     ));

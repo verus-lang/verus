@@ -962,7 +962,7 @@ pub(crate) fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro
         let block: TokenStream =
             syntax::proof_block(erase, quote_spanned!(input.span() => {#input}).into()).into();
         quote! {
-            #[verifier::proof_block]
+            #[verus::internal(proof_block)]
             {
                 #block;
             }
