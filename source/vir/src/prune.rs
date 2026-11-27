@@ -796,16 +796,19 @@ impl TraitX {
 /// private to that module. Such datatypes are pruned entirely, so the impl cannot be encoded;
 /// leaving it out only drops an axiom (code in this module cannot name `Private` anyway).
 fn assoc_type_impl_mentions_only_known_types(ctxt: &Ctxt, assoc_impl: &AssocTypeImpl) -> bool {
-    let ft = |_: &mut (), t: &Typ| {
-        crate::ast_visitor::typ_visitor_check(t, &mut |t: &Typ| match &**t {
+    let ft = |all_known: &mut bool, t: &Typ| {
+        let known = crate::ast_visitor::typ_visitor_check(t, &mut |t: &Typ| match &**t {
             TypX::Datatype(dt @ Dt::Path(_), _, _) if !ctxt.datatype_map.contains_key(dt) => {
-                Err(crate::messages::error_bare("datatype not visible"))
+                Err(())
             }
             _ => Ok(()),
-        })?;
+        });
+        *all_known &= known.is_ok();
         Ok(t.clone())
     };
-    crate::ast_visitor::map_assoc_type_impl_visitor_env(assoc_impl, &mut (), &ft).is_ok()
+    let mut all_known = true;
+    crate::ast_visitor::map_assoc_type_impl_visitor_env(assoc_impl, &mut all_known, &ft).is_ok()
+        && all_known
 }
 
 impl AssocTypeImplX {
