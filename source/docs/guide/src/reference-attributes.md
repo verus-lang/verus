@@ -27,6 +27,7 @@
  - [`when_used_as_spec`](#verifierwhen_used_as_spec)
  - [`exec_allows_no_decreases_clause`](#verifierexec_allows_no_decreases_clause)
  - [`assume_termination`](#verifierassume_termination)
+ - [`assume_external_impl`](#verifierassume_external_impl)
 
 ## `#![all_triggers]`
 
@@ -317,3 +318,33 @@ Assumes that an `exec` function is guaranteed to terminate, even if it does not 
 This is currently unneeded, as `exec` termination checking does not check that callees also terminate.
 Because it introduces an unverified assumption, it is rejected under
 [no-cheating mode](./tcb.md#no-cheating-mode) unless the function is (directly or indirectly) [annotated as trusted](./tcb.md).
+
+## `#[verifier::assume_external_impl]`
+
+Applies to an impl of an [external trait extension](./external_trait_specifications.md#external-trait-extension-spec-helper-functions)
+trait such as `PartialEqSpecImpl` or `IteratorSpecImpl`.
+The spec functions in such an impl become part of the specification of the matching impl of
+the original trait (e.g. `PartialEq`).
+If that matching impl is not verified (because it is written outside `verus!`,
+marked `#[verifier::external]`, or only declared via `assume_specification` on its methods), nothing checks that it satisfies these specifications,
+so Verus requires this attribute to mark the specifications as trusted assumptions:
+
+```rust
+impl PartialEq for S { // outside verus!, not verified
+    fn eq(&self, other: &S) -> bool { self.x == other.x }
+}
+
+verus! {
+#[verifier::assume_external_impl]
+impl PartialEqSpecImpl for S {
+    open spec fn obeys_eq_spec() -> bool { true }
+    open spec fn eq_spec(&self, other: &S) -> bool { self.x == other.x }
+}
+}
+```
+
+The attribute is rejected if the matching impl is verified.
+Because it introduces an unverified assumption, it is rejected under
+[no-cheating mode](./tcb.md#no-cheating-mode) unless the impl is (directly or indirectly) [annotated as trusted](./tcb.md).
+A matching impl inside `verus!` counts as verified even if some of its methods are
+`#[verifier::external_body]`; those methods are already marked as assumptions.

@@ -872,6 +872,8 @@ fn synthesize_extension_impls(
             owning_module: ti.x.owning_module.clone(),
             auto_imported: ti.x.auto_imported,
             external_trait_blanket: false,
+            is_external: ti.x.is_external,
+            assume_external_impl: false,
             is_unsafe: false,
         };
         synthesized.push(ti.new_x(trait_implx));
@@ -1767,6 +1769,76 @@ pub(crate) fn find_trait_impl_from_extension(
         err = err.secondary_span(&candidate.span)
     }
     return Err(err);
+}
+
+/// An impl of TSpecImpl attaches specifications (via TSpec) to the matching impl of T.
+/// If the impl of T is not verified (e.g. it is written outside verus!, marked external,
+/// or only declared via assume_specification),
+/// nothing checks the impl of T against these specifications,
+/// so the impl of TSpecImpl is an assumption and must be marked as such
+/// with #[verifier::assume_external_impl].
+///
+/// Only check impls written in the current crate. Imported impls were checked when
+/// their defining crate was verified, which may have been exempt as vstd or --is-core.
+/// The caller skips this check when verifying vstd itself, including with --is-core.
+pub fn check_assume_external_impls(krate: &Krate, current_crate: &CrateId) -> Result<(), VirErr> {
+    let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
+    for t in krate.traits.iter() {
+        if let Some((extension, _)) = &t.x.external_trait_extension {
+            extension_to_trait.insert(extension.clone(), t.x.name.clone());
+        }
+    }
+    let trait_impl_map: HashMap<Path, TraitImpl> =
+        krate.trait_impls.iter().map(|ti| (ti.x.impl_path.clone(), ti.clone())).collect();
+    for trait_impl in krate.trait_impls.iter() {
+        if &trait_impl.x.impl_path.krate != current_crate || trait_impl.x.external_trait_blanket {
+            continue;
+        }
+        let Some(t) = extension_to_trait.get(&trait_impl.x.trait_path) else { continue };
+        // (if there is no matching impl, the error is reported elsewhere; see Ctx::new)
+        if let Ok(origin) = find_trait_impl_from_extension(trait_impl, &trait_impl_map, t) {
+            check_assume_external_impl(trait_impl, &origin, t)?;
+        }
+    }
+    Ok(())
+}
+
+fn check_assume_external_impl(
+    extension: &TraitImpl,
+    origin: &TraitImpl,
+    origin_trait_path: &Path,
+) -> Result<(), VirErr> {
+    if extension.x.auto_imported
+        || extension.x.impl_path == crate::def::synthesized_extension_impl_path(&origin.x.impl_path)
+    {
+        // Not written by the user in Verus code,
+        // so it only inherits the default specifications from TSpec
+        return Ok(());
+    }
+    match (origin.x.is_external, extension.x.assume_external_impl) {
+        (true, false) => Err(error(
+            &extension.span,
+            format!(
+                "the matching impl for `{}` is not verified, \
+                so the specifications in this impl are unverified assumptions about it",
+                path_as_friendly_rust_name(origin_trait_path),
+            ),
+        )
+        .secondary_label(&origin.span, "unverified impl")
+        .help(
+            "mark this impl with `#[verifier::assume_external_impl]` to accept these assumptions",
+        )),
+        (false, true) => Err(error(
+            &extension.span,
+            format!(
+                "`#[verifier::assume_external_impl]` is unnecessary, \
+                because the matching impl for `{}` is verified",
+                path_as_friendly_rust_name(origin_trait_path),
+            ),
+        )
+        .secondary_span(&origin.span)),
+        _ => Ok(()),
+    }
 }
 
 // Is an impl of the form impl<A: ?Sized + ...> T<...> for A

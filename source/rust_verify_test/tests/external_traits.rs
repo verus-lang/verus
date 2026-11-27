@@ -3,6 +3,114 @@
 mod common;
 use common::*;
 
+test_verify_crates! {
+    #[test] local_spec_impl_for_imported_external_impl [
+        "a" => code! {
+            use vstd::prelude::*;
+            pub trait T { fn f() -> bool; }
+            verus! { pub struct S; }
+            impl T for S { fn f() -> bool { true } }
+        },
+        "b" => verus_code! {
+            use a::{S, T};
+
+            #[verifier::external_trait_specification]
+            #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+            pub trait Ex {
+                type ExternalTraitSpecificationFor: T;
+                fn f() -> (r: bool) ensures r == Self::s();
+                spec fn s() -> bool;
+            }
+
+            // The extension is local even though the executable impl is imported.
+            impl TSpecImpl for S { open spec fn s() -> bool { true } }
+        },
+    ] => Err(err) => assert_vir_error_msg(err, "so the specifications in this impl are unverified assumptions")
+}
+
+test_verify_one_file! {
+    #[test] spec_impl_for_assume_specification_impl_requires_attr code! {
+        use vstd::prelude::*;
+        pub trait T {
+            fn f() -> bool;
+        }
+
+        verus! {
+        pub trait Obj {
+            fn value(&self) -> u8;
+        }
+        }
+
+        // dyn types are not auto-imported, so this impl is only declared via assume_specification
+        impl T for dyn Obj {
+            fn f() -> bool {
+                true
+            }
+        }
+
+        verus! {
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            fn f() -> (r: bool) ensures r == Self::s();
+            spec fn s() -> bool;
+        }
+
+        pub assume_specification[<dyn Obj as T>::f]() -> (r: bool)
+            ensures r;
+
+        impl TSpecImpl for dyn Obj {
+            open spec fn s() -> bool {
+                false
+            }
+        }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "so the specifications in this impl are unverified assumptions")
+}
+
+test_verify_one_file! {
+    #[test] spec_impl_for_assume_specification_impl_with_attr code! {
+        use vstd::prelude::*;
+        pub trait T {
+            fn f() -> bool;
+        }
+
+        verus! {
+        pub trait Obj {
+            fn value(&self) -> u8;
+        }
+        }
+
+        // dyn types are not auto-imported, so this impl is only declared via assume_specification
+        impl T for dyn Obj {
+            fn f() -> bool {
+                true
+            }
+        }
+
+        verus! {
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            fn f() -> (r: bool) ensures r == Self::s();
+            spec fn s() -> bool;
+        }
+
+        pub assume_specification[<dyn Obj as T>::f]() -> (r: bool)
+            ensures r;
+
+        #[verifier::assume_external_impl]
+        impl TSpecImpl for dyn Obj {
+            open spec fn s() -> bool {
+                false
+            }
+        }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] external_trait_supertrait_associated_type verus_code! {
         #[verifier::external]
@@ -778,6 +886,7 @@ test_verify_one_file! {
         trait Ex {
             type ExternalTraitSpecificationFor: T;
         }
+        #[verifier::assume_external_impl]
         impl TSpecImpl for u32 {
         }
 
@@ -812,6 +921,7 @@ test_verify_one_file! {
         trait Ex {
             type ExternalTraitSpecificationFor: T;
         }
+        #[verifier::assume_external_impl]
         impl TSpecImpl for u32 {
         }
 
@@ -911,12 +1021,14 @@ test_verify_one_file! {
             spec fn s(&self) -> bool;
         }
 
+        #[verifier::assume_external_impl]
         impl<A> TSpecImpl<A> for A {
             spec fn s(&self) -> bool {
                 false
             }
         }
 
+        #[verifier::assume_external_impl]
         impl<A> TSpecImpl<A> for Ghost<A> {
             spec fn s(&self) -> bool {
                 false

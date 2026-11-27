@@ -2008,6 +2008,11 @@ pub struct TraitImplX {
     pub auto_imported: bool,
     // Is a blanket implementation declared by external_trait_extension:
     pub external_trait_blanket: bool,
+    // Not verified by Verus: auto_imported, or declared via assume_specification on its methods
+    pub is_external: bool,
+    // For an impl of an external_trait_extension TSpecImpl:
+    // marked #[verifier::assume_external_impl], allowing the matching impl of T to be unverified
+    pub assume_external_impl: bool,
     pub is_unsafe: bool,
 }
 
