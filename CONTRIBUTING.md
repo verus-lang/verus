@@ -340,6 +340,16 @@ any changes to those tools to take effect.
 | `vargo fmt` [`--check`]                | `cargo make fmt` [`--check`]              |
 | `vargo fmt --exclude vstd` [`--check`] | `cargo make fmt-exclude-vstd` [`--check`] |
 | `vargo fmt -p vstd` [`--check`]        | `cargo make fmt-vstd` [`--check`]         |
+| `vargo nextest run -p air`             | `cargo make test-air`                     |
+| `vargo nextest run -p rust_verify_test`| `cargo make test-rust-verify`             |
+| `vargo test -p rust_verify_test`       | `cargo make test-rust-verify`             |
+
+The `test-*` tasks mirror the test invocations used by CI (see
+`.github/workflows/ci.yml`), so a CI failure can be reproduced locally with the
+same command. `cargo make test` runs the full suite; `cargo make test-basic`
+runs only the `basic` suite as a quick smoke test. The
+`cargo-verus`/`cargo-verus-toolchains` tests and the `line_count` tool tests
+are available as `cargo make test-cargo-verus` and `cargo make test-line-count`.
 
 For more detail on the exact commands each `cargo-make` task runs, refer to their definitions in
 `source/Makefile.toml`.
