@@ -5,6 +5,8 @@ use super::arithmetic::power2::*;
 use super::bits::*;
 use super::math::*;
 use super::prelude::*;
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+use super::string::StringSliceAdditionalSpecFns;
 use core::mem::MaybeUninit;
 
 verus! {
@@ -135,16 +137,18 @@ pub const exec fn layout_for_type_is_valid<V>()
 /// Note that, unusually for a lemma, this is an `exec`-mode function. (This is necessary to
 /// ensure that the types are really compilable, as ghost code can reason about "virtual" types
 /// that exceed these bounds.) Despite being `exec`-mode, it is a no-op.
+/// The value is an `exec` reference for the same reason:
+/// a tracked reference may be to a made-up value that is too large for memory.
 #[allow(unused_variables)]
 #[verifier::external_body]
 #[inline(always)]
-pub const exec fn layout_for_val_is_valid<V: ?Sized>(val: Tracked<&V>)
+pub const exec fn layout_for_val_is_valid<V: ?Sized>(val: &V)
     ensures
-        valid_layout(spec_size_of_val::<V>(val@) as usize, spec_align_of_val::<V>(val@) as usize),
-        spec_size_of_val::<V>(val@) as usize as nat == spec_size_of_val::<V>(val@),
-        spec_align_of_val::<V>(val@) as usize as nat == spec_align_of_val::<V>(val@),
-        spec_align_of_val::<V>(val@) != 0,
-        spec_size_of_val::<V>(val@) % spec_align_of_val::<V>(val@) == 0,
+        valid_layout(spec_size_of_val::<V>(val) as usize, spec_align_of_val::<V>(val) as usize),
+        spec_size_of_val::<V>(val) as usize as nat == spec_size_of_val::<V>(val),
+        spec_align_of_val::<V>(val) as usize as nat == spec_align_of_val::<V>(val),
+        spec_align_of_val::<V>(val) != 0,
+        spec_size_of_val::<V>(val) % spec_align_of_val::<V>(val) == 0,
     opens_invariants none
     no_unwind
 {
@@ -188,6 +192,17 @@ pub broadcast axiom fn layout_of_unit_tuple()
         align_of::<()>() == 1,
 ;
 
+/// For `Sized` types, the size and alignment of a value are the same as the size and
+/// alignment of the type
+/// ([Reference](https://doc.rust-lang.org/std/mem/fn.align_of_val.html))
+pub broadcast axiom fn layout_of_sized<T>(v: &T)
+    ensures
+        #![trigger spec_align_of_val::<T>(v)]
+        #![trigger spec_size_of_val::<T>(v)]
+        spec_align_of_val::<T>(v) == align_of::<T>(),
+        spec_size_of_val::<T>(v) == size_of::<T>(),
+;
+
 /// Pointers and references have the same layout. Mutability of the pointer or reference does not change the layout ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer.intro)).
 pub broadcast axiom fn layout_of_references_and_pointers<T: ?Sized>()
     ensures
@@ -219,6 +234,11 @@ pub broadcast axiom fn layout_of_references_and_pointers_for_unsized_types<T: ?S
         #![trigger align_of::<*mut T>()]
         size_of::<*mut T>() >= size_of::<usize>(),
         align_of::<*mut T>() >= align_of::<usize>(),
+        // unstable assumption: pointer layout is the pointer metadata plus the address
+        // needed to define type representation for pointers to unsized types
+        size_of::<*mut T>() == (size_of::<<T as core::ptr::Pointee>::Metadata>() + size_of::<
+            usize,
+        >()),
 ;
 
 /// Slices have the same layout as the underlying type.
@@ -233,12 +253,28 @@ pub broadcast axiom fn layout_of_slices<T>(x: &[T])
 
 /// `str` has the same layout as `[u8]`, which has the same layout as `u8`.
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#str-layout)).
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn layout_of_str(x: &str)
     ensures
         #![trigger spec_align_of_val::<str>(x)]
         #![trigger spec_size_of_val::<str>(x)]
-        // todo - how to specify spec_size_of_val::<str>(x) in terms of the byte representation of x?
+        spec_size_of_val::<str>(x) == x.spec_bytes().len() * size_of::<u8>(),
         spec_align_of_val::<str>(x) == align_of::<u8>(),
+;
+
+/// `str` has the same layout as `[u8]`, which has the same layout as `u8`.
+/// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#str-layout)).
+// Axiom for verifying core
+#[cfg(verus_verify_core)]
+pub broadcast axiom fn layout_of_str(x: &str)
+    ensures
+        #![trigger spec_align_of_val::<str>(x)]
+        spec_align_of_val::<str>(x) == align_of::<
+            u8,
+        >(),
+// cannot specify spec_size_of_val here because we cannot talk about
+// the axiomatized byte representation of a str (`spec_bytes`) under this cfg
+
 ;
 
 /// The size is a multiple of alignment and alignment is always a power of 2
@@ -385,6 +421,7 @@ pub broadcast group group_layout_axioms {
     layout_of_references_and_pointers_for_sized_types,
     layout_of_references_and_pointers_for_unsized_types,
     layout_of_slices,
+    layout_of_sized,
     layout_of_str,
     layout_of_maybe_uninit,
     group_align_properties,
