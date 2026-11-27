@@ -442,19 +442,13 @@ pub open spec fn obeys_clone_eq<T: Clone>() -> bool {
 } // verus!
 verus! {
 
-/// The default behavior of the vstd library enforces writing panic-free code.
-/// While developers may still use panic, verification should ensure that any
-/// panic is provably unreachable.
-/// cfg!(feature = "allow_panic") explicily allows code to panic.
-pub open spec fn allow_panic() -> bool {
-    cfg!(feature = "allow_panic")
-}
-
+/// Always panics. Like `core::panicking::panic`, a call is rejected unless panicking is
+/// allowed at the call site (see `#[verifier::deny_panic(false)]`).
 #[doc(hidden)]
 #[verifier(external_body)]
 pub fn __call_panic(out: &[&str]) -> !
-    requires
-        allow_panic(),
+    requires[no_panic exact]
+        false,
 {
     core::panic!("__call_panic {:?}", out);
 }

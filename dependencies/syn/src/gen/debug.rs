@@ -126,11 +126,15 @@ impl Debug for crate::AssumeSpecification {
         formatter.field("inputs", &self.inputs);
         formatter.field("output", &self.output);
         formatter.field("requires", &self.requires);
+        formatter.field("no_panic_requires", &self.no_panic_requires);
         formatter.field("ensures", &self.ensures);
+        formatter.field("unwind_ensures", &self.unwind_ensures);
+        formatter.field("panic_ensures", &self.panic_ensures);
         formatter.field("default_ensures", &self.default_ensures);
         formatter.field("returns", &self.returns);
         formatter.field("invariants", &self.invariants);
         formatter.field("unwind", &self.unwind);
+        formatter.field("no_panic", &self.no_panic);
         formatter.field("semi", &self.semi);
         formatter.finish()
     }
@@ -3004,6 +3008,18 @@ impl Debug for crate::ModeTracked {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::NoPanicRequires {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("NoPanicRequires");
+        formatter.field("token", &self.token);
+        formatter.field("bracket_token", &self.bracket_token);
+        formatter.field("no_panic_token", &self.no_panic_token);
+        formatter.field("exact", &self.exact);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::Open {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Open");
@@ -3630,19 +3646,31 @@ impl Debug for crate::SignatureInvariants {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::SignatureNoPanic {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("SignatureNoPanic");
+        formatter.field("token", &self.token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::SignatureSpec {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("SignatureSpec");
         formatter.field("prover", &self.prover);
         formatter.field("atomic_spec", &self.atomic_spec);
         formatter.field("requires", &self.requires);
+        formatter.field("no_panic_requires", &self.no_panic_requires);
         formatter.field("recommends", &self.recommends);
         formatter.field("ensures", &self.ensures);
+        formatter.field("unwind_ensures", &self.unwind_ensures);
+        formatter.field("panic_ensures", &self.panic_ensures);
         formatter.field("default_ensures", &self.default_ensures);
         formatter.field("returns", &self.returns);
         formatter.field("decreases", &self.decreases);
         formatter.field("invariants", &self.invariants);
         formatter.field("unwind", &self.unwind);
+        formatter.field("no_panic", &self.no_panic);
         formatter.field("with", &self.with);
         formatter.finish()
     }
@@ -4242,6 +4270,18 @@ impl Debug for crate::Uninterp {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Uninterp");
         formatter.field("token", &self.token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::UnwindEnsures {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("UnwindEnsures");
+        formatter.field("token", &self.token);
+        formatter.field("bracket_token", &self.bracket_token);
+        formatter.field("on_token", &self.on_token);
+        formatter.field("kind", &self.kind);
+        formatter.field("exprs", &self.exprs);
         formatter.finish()
     }
 }

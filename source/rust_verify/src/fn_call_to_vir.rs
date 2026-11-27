@@ -347,13 +347,23 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
     let impl_paths = get_impl_paths(bctx, f, node_substs, None, const_var, expr.span)?;
-    let call_target_attrs =
-        vir::ast::CallTargetAttrs { autospec: autospec_usage, assume_external_allowed, const_var };
+    let call_target_attrs = vir::ast::CallTargetAttrs {
+        autospec: autospec_usage,
+        assume_external_allowed,
+        const_var,
+        deny_panic: get_deny_panic(bctx, Some(expr.hir_id))?,
+    };
     let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, call_target_attrs);
     Ok(bctx.spanned_typed_new(
         expr.span,
         &expr_typ()?,
-        ExprX::Call { target, args: Arc::new(vir_args), post_args: None, body: call_body },
+        ExprX::Call {
+            target,
+            args: Arc::new(vir_args),
+            post_args: None,
+            body: call_body,
+            unwind_path: None,
+        },
     ))
 }
 
@@ -427,6 +437,23 @@ pub(crate) fn call_index<'tcx>(
     call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
 }
 
+/// Determine whether `requires[no_panic]` conditions should be checked for a call,
+/// based on #[verifier::deny_panic(...)] on the call expression (if any)
+/// or on the enclosing items.
+pub(crate) fn get_deny_panic<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    hir_id: Option<rustc_hir::HirId>,
+) -> Result<bool, VirErr> {
+    if let Some(hir_id) = hir_id {
+        let expr_attrs = bctx.ctxt.tcx.hir_attrs(hir_id);
+        let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
+        if let Some(b) = expr_vattrs.deny_panic {
+            return Ok(b);
+        }
+    }
+    Ok(crate::attributes::get_deny_panic_walk_parents(bctx.ctxt.tcx, bctx.fun_id).unwrap_or(true))
+}
+
 /// Common logic for all the overloaded methods
 pub(crate) fn call_overloaded_method<'tcx>(
     bctx: &BodyCtxt<'tcx>,
@@ -494,10 +521,12 @@ pub(crate) fn call_overloaded_method<'tcx>(
         autospec: autospec_usage,
         assume_external_allowed: false,
         const_var: false,
+        deny_panic: get_deny_panic(bctx, None)?,
     };
     let call_target =
         CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, call_target_attrs);
-    let x = ExprX::Call { target: call_target, args, post_args: None, body: None };
+    let x =
+        ExprX::Call { target: call_target, args, post_args: None, body: None, unwind_path: None };
 
     Ok(bctx.spanned_typed_new(span, &expr_typ, x))
 }
@@ -641,7 +670,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                     | SpecItem::InvMaskListCompl
                     | SpecItem::InvMaskSet
                     | SpecItem::NoUnwind
-                    | SpecItem::NoUnwindWhen => (true, false),
+                    | SpecItem::NoPanic
+                    | SpecItem::NoUnwindWhen
+                    | SpecItem::NoPanicRequires
+                    | SpecItem::NoPanicRequiresExact
+                    | SpecItem::UnwindEnsures
+                    | SpecItem::PanicEnsures => (true, false),
 
                     SpecItem::Ensures | SpecItem::Returns => (true, true),
 
@@ -663,7 +697,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                     record_spec_fn_pure_args_only(bctx, expr);
                     mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
                 }
-                SpecItem::Requires | SpecItem::Recommends | SpecItem::Returns => {
+                SpecItem::Requires
+                | SpecItem::NoPanicRequires
+                | SpecItem::NoPanicRequiresExact
+                | SpecItem::UnwindEnsures
+                | SpecItem::PanicEnsures
+                | SpecItem::Recommends
+                | SpecItem::Returns => {
                     record_spec_fn_pure_args_only(bctx, expr);
                     internal_err_unless!(
                         args_len == 1,
@@ -686,7 +726,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                     for (arg, vir_arg) in subargs.iter().zip(vir_args.iter()) {
                         let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
                         match spec_item {
-                            SpecItem::Requires | SpecItem::Recommends => match &*typ {
+                            SpecItem::Requires
+                            | SpecItem::NoPanicRequires
+                            | SpecItem::NoPanicRequiresExact
+                            | SpecItem::UnwindEnsures
+                            | SpecItem::PanicEnsures
+                            | SpecItem::Recommends => match &*typ {
                                 TypX::Bool => {}
                                 _ => {
                                     return err_span(
@@ -704,6 +749,18 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                     let header = match spec_item {
                         SpecItem::Requires => Arc::new(HeaderExprX::Requires(Arc::new(vir_args))),
+                        SpecItem::NoPanicRequires => {
+                            Arc::new(HeaderExprX::NoPanicRequires(Arc::new(vir_args)))
+                        }
+                        SpecItem::NoPanicRequiresExact => {
+                            Arc::new(HeaderExprX::NoPanicRequiresExact(Arc::new(vir_args)))
+                        }
+                        SpecItem::UnwindEnsures => {
+                            Arc::new(HeaderExprX::UnwindEnsures(Arc::new(vir_args)))
+                        }
+                        SpecItem::PanicEnsures => {
+                            Arc::new(HeaderExprX::PanicEnsures(Arc::new(vir_args)))
+                        }
                         SpecItem::Recommends => {
                             Arc::new(HeaderExprX::Recommends(Arc::new(vir_args)))
                         }
@@ -891,6 +948,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                 SpecItem::NoUnwind => {
                     record_spec_fn_pure_args_only(bctx, expr);
                     let header = Arc::new(HeaderExprX::NoUnwind);
+                    mk_expr(ExprX::Header(header))
+                }
+                SpecItem::NoPanic => {
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    let header = Arc::new(HeaderExprX::NoPanic);
                     mk_expr(ExprX::Header(header))
                 }
                 SpecItem::NoUnwindWhen => {
@@ -2334,6 +2396,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 args: Arc::new(vir_args),
                 post_args: None,
                 body: None,
+                unwind_path: None,
             });
         }
         VerusItem::ErasedGhostValue

@@ -1,8 +1,8 @@
 use crate::ast::{
     ArrayKind, AssertQueryMode, BitwiseOp, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, Path, Primitive,
-    ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
-    UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
+    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, NoUnwindWhenKind, Path,
+    Primitive, ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs,
+    UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
 };
 use crate::ast_util::{
     LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
@@ -15,12 +15,13 @@ use crate::def::{
     ProverChoice, SNAPSHOT_BOUNDARY, SNAPSHOT_CALL, SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR,
     STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, Spanned, U_HI, encode_dt_as_path, new_internal_qid,
     new_user_qid_name, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv,
-    prefix_pre_var, prefix_requires, prefix_spec_fn_type, snapshot_ident, suffix_global_id,
-    suffix_local_unique_id, suffix_typ_param_ids,
+    prefix_panic_ensures, prefix_pre_var, prefix_requires, prefix_spec_fn_type,
+    prefix_unwind_ensures, snapshot_ident, suffix_global_id, suffix_local_unique_id,
+    suffix_typ_param_ids,
 };
-use crate::messages::{Span, error, error_with_label};
+use crate::messages::{Message, Span, error, error_with_label};
 use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
-use crate::sst::{ArithOp, BinaryOp, FuncCheckSst, Pars, PostConditionKind, Stms};
+use crate::sst::{ArithOp, BinaryOp, Exps, FuncCheckSst, Pars, PostConditionKind, Stms};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
     UnwindSst,
@@ -1644,12 +1645,25 @@ enum UnwindAir {
     NoUnwindWhen(Expr),
 }
 
+/// The function's no-panic obligation (a no-panic condition implies the corresponding
+/// no-unwind condition, which is in UnwindAir)
+enum PanicAir {
+    MayPanic,
+    NoPanic,
+    NoPanicWhen(Expr),
+}
+
 struct State {
     /// shared between all queries for a single function
     local_shared: Vec<Decl>,
     local_decls_decreases_init: Stms,
     commands: Vec<CommandsWithContext>,
     unwind: UnwindAir,
+    panic: PanicAir,
+    /// `ensures[on unwind]` conditions that must hold at the end of each unwind path
+    unwind_ens: Arc<Vec<(Span, Expr)>>,
+    /// `ensures[on panic]` conditions that must hold at the end of each unwind or panic path
+    panic_ens: Arc<Vec<(Span, Expr)>>,
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
     static_prelude: Vec<Stmt>,
@@ -1855,6 +1869,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             dest,
             assert_id,
             body,
+            deny_panic,
+            unwind_path,
         } => {
             // When we emit the VCs for a call to `f`, we might also want these to include
             // the generic conditions
@@ -1908,68 +1924,238 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(Arc::new(StmtX::Assert(assert_id.clone(), error, filter, e_req)));
             }
 
-            let callee_unwind_spec = func.x.unwind_spec_or_default();
-            let callee_never_unwinds = matches!(callee_unwind_spec, UnwindSpec::NoUnwind);
-            if !matches!(state.unwind, UnwindAir::MayUnwind)
-                && !callee_never_unwinds
-                && !ctx.checking_spec_preconditions()
-            {
-                let e1 = match &state.unwind {
-                    UnwindAir::MayUnwind => unreachable!(),
-                    UnwindAir::NoUnwind(_) => Arc::new(ExprX::Const(Constant::Bool(true))),
-                    UnwindAir::NoUnwindWhen(expr) => expr.clone(),
-                };
-                let e2 = match &callee_unwind_spec {
-                    UnwindSpec::MayUnwind => Arc::new(ExprX::Const(Constant::Bool(false))),
-                    UnwindSpec::NoUnwind => unreachable!(),
-                    UnwindSpec::NoUnwindWhen(_) => {
-                        let f_unwind =
-                            prefix_no_unwind_when(&fun_to_air_ident(&ctx.name_ctxt, &func.x.name));
-                        Arc::new(ExprX::Apply(f_unwind, req_args.clone()))
-                    }
-                };
-                let error = match &state.unwind {
-                    UnwindAir::MayUnwind => unreachable!(),
-                    UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
-                        &stm.span,
-                        "cannot show this call will not unwind, in function marked `no_unwind`",
-                        format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
-                    ),
-                    UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
-                        error_with_label(
-                            &stm.span,
-                            "cannot show this call will not unwind",
-                            format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
-                        )
-                        .secondary_label(span, "unwinding is not allowed in this invariant block")
-                    }
-                    UnwindAir::NoUnwindWhen(_e) => error_with_label(
-                        &stm.span,
-                        "cannot show this call will not unwind, in function marked `no_unwind`",
-                        "this call might unwind",
-                    ),
-                };
-                let error = if let UnwindSpec::NoUnwindWhen(e) = &callee_unwind_spec {
-                    error.secondary_label(
-                        &e.span,
-                        "this condition needs to hold to show that the callee will not unwind",
-                    )
-                } else {
-                    error.secondary_label(
-                        &func.span,
-                        "perhaps you need to mark this function as `no_unwind`?",
-                    )
-                };
-                let e = mk_implies(&e1, &e2);
-                stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
-            }
-
             let mut ens_args_wo_typ = Vec::new();
             call_args_to_air(ctx, expr_ctxt, args, dest, &mut ens_args_wo_typ, &mut stmts)?;
 
             if let Some(stm) = body {
                 let stmt = stm_to_stmts(ctx, state, stm)?;
                 stmts.extend(stmt);
+            }
+
+            // Unwind path, emitted as:
+            //   DeadEnd(
+            //     assume(callee unwinds);
+            //     unwind_path (resolutions and type invariant obligations);
+            //     assert(caller is allowed to unwind);
+            //   )
+            // Since unwinding implies panicking, the unwind path also checks the caller's
+            // panic obligations. If the callee might panic without unwinding (it's `no_unwind`
+            // or `no_unwind when`), there is also a panic path:
+            //   DeadEnd(
+            //     assume(callee panics);
+            //     assert(caller is allowed to panic);
+            //   )
+            let callee_unwind_spec = func.x.unwind_spec_or_default();
+            let callee_never_unwinds = callee_unwind_spec.never_unwinds();
+            let callee_no_unwind_when = || {
+                let f_unwind =
+                    prefix_no_unwind_when(&fun_to_air_ident(&ctx.name_ctxt, &func.x.name));
+                Arc::new(ExprX::Apply(f_unwind, req_args.clone()))
+            };
+            let callee_unwind_ens = || {
+                let f = prefix_unwind_ensures(&fun_to_air_ident(&ctx.name_ctxt, &func.x.name));
+                Arc::new(ExprX::Apply(f, req_args.clone()))
+            };
+            let callee_panic_ens = || {
+                let f = prefix_panic_ensures(&fun_to_air_ident(&ctx.name_ctxt, &func.x.name));
+                Arc::new(ExprX::Apply(f, req_args.clone()))
+            };
+            // Don't suggest changing the callee's specification if it comes from vstd
+            let callee_in_vstd = func.x.name.path.krate == crate::ast::CrateId::Vstd
+                || func.x.proxy.as_ref().is_some_and(|p| p.x.krate == crate::ast::CrateId::Vstd);
+            let callee_label = |error: Message| {
+                match &callee_unwind_spec {
+                UnwindSpec::NoUnwindWhen(e, kind) if kind.is_no_panic() => {
+                    error.secondary_label(&e.span, "failed this `requires[no_panic]` precondition")
+                }
+                UnwindSpec::NoUnwindWhen(e, _) => {
+                    error.secondary_label(&e.span, "failed this `no_unwind when` condition")
+                }
+                UnwindSpec::NoUnwind if callee_in_vstd => error.secondary_label(
+                    &func.span,
+                    "this function is marked `no_unwind`, but it might still panic without unwinding",
+                ),
+                UnwindSpec::NoUnwind => error.secondary_label(
+                    &func.span,
+                    "this function is marked `no_unwind`, but it might still panic without unwinding; you may need to mark it `no_panic`",
+                ),
+                UnwindSpec::MayUnwind | UnwindSpec::NoPanic if callee_in_vstd => {
+                    error.secondary_label(&func.span, "this function might panic")
+                }
+                UnwindSpec::MayUnwind | UnwindSpec::NoPanic => error.secondary_label(
+                    &func.span,
+                    "this function does not specify its panicking behavior; you may need to mark it `no_panic`",
+                ),
+            }
+            };
+
+            // For `requires[no_panic]`, check the condition unless deny_panic is false.
+            // (This makes the unwind path below vacuous.)
+            let mut preemptive_panic_check = false;
+            match &callee_unwind_spec {
+                UnwindSpec::NoUnwindWhen(e, kind)
+                    if kind.is_no_panic() && *deny_panic && !ctx.checking_spec_preconditions() =>
+                {
+                    let error = error_with_label(
+                        &stm.span,
+                        "possible panic",
+                        format!("call to {:} might panic", fun_as_friendly_rust_name(fun)),
+                    )
+                    .secondary_label(&e.span, "failed this `requires[no_panic]` precondition")
+                    .help("to allow panicking here, use `#[verifier::deny_panic(false)]` or add a panic-specification to the caller function");
+                    stmts.push(Arc::new(StmtX::Assert(None, error, None, callee_no_unwind_when())));
+                    preemptive_panic_check = true;
+                }
+                _ => {}
+            }
+
+            if !callee_never_unwinds && !ctx.checking_spec_preconditions() {
+                let mut unwind_stmts: Vec<Stmt> = Vec::new();
+
+                // assume the negation of the callee's no_unwind condition
+                if let UnwindSpec::NoUnwindWhen(..) = &callee_unwind_spec {
+                    unwind_stmts.push(Arc::new(StmtX::Assume(mk_not(&callee_no_unwind_when()))));
+                }
+                // assume the callee's `ensures[on unwind]` and `ensures[on panic]` conditions
+                if func.x.unwind_ensure.len() > 0 {
+                    unwind_stmts.push(Arc::new(StmtX::Assume(callee_unwind_ens())));
+                }
+                if func.x.panic_ensure.len() > 0 {
+                    unwind_stmts.push(Arc::new(StmtX::Assume(callee_panic_ens())));
+                }
+
+                let mut nontrivial = false;
+                if let Some(stm) = unwind_path {
+                    let path_stmts = stm_to_stmts(ctx, state, stm)?;
+                    nontrivial |= path_stmts.len() > 0;
+                    unwind_stmts.extend(path_stmts);
+                }
+
+                // assert the negation of the caller's no_unwind condition
+                // (which includes the caller's no_panic condition, if any)
+                if !matches!(state.unwind, UnwindAir::MayUnwind) && !preemptive_panic_check {
+                    nontrivial = true;
+                    let e = match &state.unwind {
+                        UnwindAir::MayUnwind => unreachable!(),
+                        UnwindAir::NoUnwind(_) => Arc::new(ExprX::Const(Constant::Bool(false))),
+                        UnwindAir::NoUnwindWhen(expr) => mk_not(expr),
+                    };
+                    let error = match &state.unwind {
+                        UnwindAir::MayUnwind => unreachable!(),
+                        UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
+                            &stm.span,
+                            "possible panic",
+                            format!("call to `{:}` might panic", fun_as_friendly_rust_name(fun)),
+                        ),
+                        UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
+                            error_with_label(
+                                &stm.span,
+                                "possible unwinding exit in invariant block",
+                                format!(
+                                    "call to {:} might unwind due to a panic",
+                                    fun_as_friendly_rust_name(fun)
+                                ),
+                            )
+                            .secondary_label(
+                                span,
+                                "unwinding exit is not allowed from within this invariant block",
+                            )
+                        }
+                        UnwindAir::NoUnwindWhen(_e) => error_with_label(
+                            &stm.span,
+                            "possible panic",
+                            format!("call to `{:}` might panic", fun_as_friendly_rust_name(fun)),
+                        ),
+                    };
+                    let error = callee_label(error);
+                    unwind_stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
+                }
+
+                // assert the caller's `ensures[on unwind]` and `ensures[on panic]` conditions
+                for (span, e) in state.unwind_ens.iter() {
+                    nontrivial = true;
+                    let error = error_with_label(
+                        &stm.span,
+                        "`ensures[on unwind]` condition may not hold if this call unwinds",
+                        format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
+                    )
+                    .secondary_label(span, "failed this `ensures[on unwind]` condition");
+                    unwind_stmts.push(Arc::new(StmtX::Assert(None, error, None, e.clone())));
+                }
+                for (span, e) in state.panic_ens.iter() {
+                    nontrivial = true;
+                    let error = error_with_label(
+                        &stm.span,
+                        "`ensures[on panic]` condition may not hold if this call panics",
+                        format!("call to {:} might panic", fun_as_friendly_rust_name(fun)),
+                    )
+                    .secondary_label(span, "failed this `ensures[on panic]` condition");
+                    unwind_stmts.push(Arc::new(StmtX::Assert(None, error, None, e.clone())));
+                }
+
+                if nontrivial {
+                    let block = Arc::new(StmtX::Block(Arc::new(unwind_stmts)));
+                    stmts.push(Arc::new(StmtX::DeadEnd(block)));
+                }
+            }
+
+            // Panic path, for callees that might panic without unwinding.
+            // This is subsumed by the unwind path if the callee may panic exactly when it may
+            // unwind, unless the unwind path assumes the callee's `ensures[on unwind]`
+            // (which need not hold if the callee panics without unwinding).
+            let caller_has_panic_obligations =
+                !matches!(state.panic, PanicAir::MayPanic) || state.panic_ens.len() > 0;
+            let callee_may_panic = !matches!(callee_unwind_spec, UnwindSpec::NoPanic);
+            if callee_may_panic
+                && (!callee_unwind_spec.panic_iff_unwind() || func.x.unwind_ensure.len() > 0)
+                && caller_has_panic_obligations
+                && !ctx.checking_spec_preconditions()
+            {
+                let mut panic_stmts: Vec<Stmt> = Vec::new();
+                // assume the negation of the callee's no_panic condition
+                if let UnwindSpec::NoUnwindWhen(_, kind) = &callee_unwind_spec {
+                    if kind.is_no_panic() {
+                        panic_stmts.push(Arc::new(StmtX::Assume(mk_not(&callee_no_unwind_when()))));
+                    }
+                }
+                if func.x.panic_ensure.len() > 0 {
+                    panic_stmts.push(Arc::new(StmtX::Assume(callee_panic_ens())));
+                }
+                if !matches!(state.panic, PanicAir::MayPanic) && !preemptive_panic_check {
+                    let e = match &state.panic {
+                        PanicAir::MayPanic => unreachable!(),
+                        PanicAir::NoPanic => Arc::new(ExprX::Const(Constant::Bool(false))),
+                        PanicAir::NoPanicWhen(expr) => mk_not(expr),
+                    };
+                    let error = error_with_label(
+                        &stm.span,
+                        "possible panic",
+                        format!("call to `{:}` might panic", fun_as_friendly_rust_name(fun)),
+                    );
+                    let error = callee_label(error);
+                    panic_stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
+                }
+                for (span, e) in state.panic_ens.iter() {
+                    let error = error_with_label(
+                        &stm.span,
+                        "`ensures[on panic]` condition may not hold if this call panics",
+                        format!("call to {:} might panic", fun_as_friendly_rust_name(fun)),
+                    )
+                    .secondary_label(span, "failed this `ensures[on panic]` condition");
+                    panic_stmts.push(Arc::new(StmtX::Assert(None, error, None, e.clone())));
+                }
+                let block = Arc::new(StmtX::Block(Arc::new(panic_stmts)));
+                stmts.push(Arc::new(StmtX::DeadEnd(block)));
+            }
+
+            // For `requires[no_panic exact]`, the callee panics if the condition fails,
+            // so if the call returns, the condition holds
+            if matches!(
+                callee_unwind_spec,
+                UnwindSpec::NoUnwindWhen(_, NoUnwindWhenKind::NoPanicRequiresExact)
+            ) && !ctx.checking_spec_preconditions()
+            {
+                stmts.push(Arc::new(StmtX::Assume(callee_no_unwind_when())));
             }
 
             let typ_args: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
@@ -2413,10 +2599,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             // Right now all closures are assumed to unwind
             let mut unwind = UnwindAir::MayUnwind;
+            let mut panic = PanicAir::MayPanic;
+            let mut unwind_ens = Arc::new(vec![]);
+            let mut panic_ens = Arc::new(vec![]);
             std::mem::swap(&mut state.unwind, &mut unwind);
+            std::mem::swap(&mut state.panic, &mut panic);
+            std::mem::swap(&mut state.unwind_ens, &mut unwind_ens);
+            std::mem::swap(&mut state.panic_ens, &mut panic_ens);
 
             let mut body_stmts = stm_to_stmts(ctx, state, body)?;
             std::mem::swap(&mut state.unwind, &mut unwind);
+            std::mem::swap(&mut state.panic, &mut panic);
+            std::mem::swap(&mut state.unwind_ens, &mut unwind_ens);
+            std::mem::swap(&mut state.panic_ens, &mut panic_ens);
 
             stmts.append(&mut body_stmts);
 
@@ -3028,6 +3223,8 @@ pub(crate) fn body_stm_to_air(
         local_decls_decreases_init,
         statics,
         unwind,
+        unwind_ens,
+        panic_ens,
     } = func_check_sst;
 
     // Notify observer that body lowering is starting.
@@ -3096,14 +3293,26 @@ pub(crate) fn body_stm_to_air(
     }
 
     let unwind_air = match unwind {
-        UnwindSst::MayUnwind => UnwindAir::MayUnwind,
-        UnwindSst::NoUnwind => UnwindAir::NoUnwind(ReasonForNoUnwind::Function),
-        UnwindSst::NoUnwindWhen(exp) => {
+        UnwindSst::MayUnwind => (UnwindAir::MayUnwind, PanicAir::MayPanic),
+        UnwindSst::NoUnwind => {
+            (UnwindAir::NoUnwind(ReasonForNoUnwind::Function), PanicAir::MayPanic)
+        }
+        UnwindSst::NoPanic => (UnwindAir::NoUnwind(ReasonForNoUnwind::Function), PanicAir::NoPanic),
+        UnwindSst::NoUnwindWhen(exp, no_panic) => {
             let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
             let e = exp_to_expr(ctx, &exp, expr_ctxt)?;
-            UnwindAir::NoUnwindWhen(e)
+            let panic =
+                if *no_panic { PanicAir::NoPanicWhen(e.clone()) } else { PanicAir::MayPanic };
+            (UnwindAir::NoUnwindWhen(e), panic)
         }
     };
+    let (unwind_air, panic_air) = unwind_air;
+    let ens_to_air = |exps: &Exps| -> Result<Vec<(Span, Expr)>, VirErr> {
+        let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+        exps.iter().map(|exp| Ok((exp.span.clone(), exp_to_expr(ctx, &exp, expr_ctxt)?))).collect()
+    };
+    let unwind_ens_air = ens_to_air(unwind_ens)?;
+    let panic_ens_air = ens_to_air(panic_ens)?;
 
     for e in crate::traits::trait_bounds_to_air(ctx, typ_bounds) {
         // The outer query already has this in reqs, but inner queries need it separately:
@@ -3117,6 +3326,9 @@ pub(crate) fn body_stm_to_air(
         local_decls_decreases_init: local_decls_decreases_init.clone(),
         commands: Vec::new(),
         unwind: unwind_air,
+        panic: panic_air,
+        unwind_ens: Arc::new(unwind_ens_air),
+        panic_ens: Arc::new(panic_ens_air),
         post_condition_info: PostConditionInfo {
             dest: post_condition.dest.clone(),
             ens_exprs,

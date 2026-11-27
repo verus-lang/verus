@@ -51,11 +51,10 @@ pub struct ExTryReserveError(alloc::collections::TryReserveError);
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::vec::vec_index")]
 pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
-    requires
+    requires[no_panic exact]
         i < vec.view().len(),
     ensures
         *element == vec.view().index(i as int),
-    no_unwind
 {
     &vec[i]
 }
@@ -65,14 +64,13 @@ pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::vec::vec_index_mut")]
 pub fn vec_index_mut<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element: &mut T)
-    requires
+    requires[no_panic exact]
         i < vec.view().len(),
     ensures
         *element == old(vec)@.index(i as int),
         final(vec)@ == old(vec)@.update(i as int, *final(element)),
 
         *final(element) == final(vec).view().index(i as int),
-    no_unwind
 {
     &mut vec[i]
 }
@@ -93,7 +91,7 @@ pub broadcast proof fn axiom_spec_len<T, A: Allocator>(v: &Vec<T, A>)
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::len ](vec: &Vec<T, A>) -> (len: usize)
     ensures
         len == spec_vec_len(vec),
-    no_unwind
+    no_panic
 ;
 
 ////// Other functions
@@ -224,7 +222,7 @@ pub assume_specification<T, A: Allocator> [ <Vec<T, A>>::is_empty ](
 ) -> (res: bool)
     ensures res <==> v@.len() == 0,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::remove ](
@@ -247,7 +245,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, 
     ensures
         slice@ == vec@,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::convert::AsRef<[T]>>::as_ref ](
@@ -256,7 +254,7 @@ pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::convert::AsRef<[T
     ensures
         slice@ == vec@,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 #[doc(hidden)]
@@ -265,7 +263,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut
         slice@ == old(vec)@,
         final(slice)@ == final(vec)@,
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::deref ](

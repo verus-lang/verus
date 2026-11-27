@@ -37,11 +37,12 @@ use verus_syn::{
     ImplItem, ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
     InvariantNameSetList, InvariantNameSetListCompl, InvariantNameSetSet, Item, ItemBroadcastGroup,
     ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion,
-    Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec, ModeSpecChecked, Pat,
-    PatIdent, PatType, Path, PathArguments, Publish, Receiver, Recommends, Requires, ReturnType,
-    Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
-    SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath,
-    TypeReference, UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
+    Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec, ModeSpecChecked,
+    NoPanicRequires, Pat, PatIdent, PatType, Path, PathArguments, Publish, Receiver, Recommends,
+    Requires, ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants,
+    SignatureNoPanic, SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem,
+    TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath, TypeReference, UnOp, UnwindEnsures,
+    Visibility, braced, bracketed, parenthesized, parse_macro_input,
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -985,13 +986,17 @@ impl Visitor {
         atomic_perm_clause: Option<(verus_syn::Ident, verus_syn::PermClause)>,
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
+        let no_panic_requires = self.take_ghost(&mut spec.no_panic_requires);
         let recommends = self.take_ghost(&mut spec.recommends);
         let ensures = self.take_ghost(&mut spec.ensures);
+        let unwind_ensures = self.take_ghost(&mut spec.unwind_ensures);
+        let panic_ensures = self.take_ghost(&mut spec.panic_ensures);
         let default_ensures = self.take_ghost(&mut spec.default_ensures);
         let returns = self.take_ghost(&mut spec.returns);
         let decreases = self.take_ghost(&mut spec.decreases);
         let opens_invariants = self.take_ghost(&mut spec.invariants);
         let unwind = self.take_ghost(&mut spec.unwind);
+        let no_panic = self.take_ghost(&mut spec.no_panic);
         debug_assert!(spec.atomic_spec.is_none());
 
         let (self_token_op, args) = inputs;
@@ -1058,6 +1063,48 @@ impl Visitor {
                 spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
                         quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::requires([#exprs])),
+                    ),
+                    Some(Semi { spans: [token.span] }),
+                ));
+            }
+        }
+        if let Some(NoPanicRequires { token, exact, mut exprs, .. }) = no_panic_requires {
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                let f = if exact.is_some() {
+                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::no_panic_requires_exact)
+                } else {
+                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::no_panic_requires)
+                };
+                spec_stmts.push(Stmt::Expr(
+                    Expr::Verbatim(quote_spanned!(token.span => #f([#exprs]))),
+                    Some(Semi { spans: [token.span] }),
+                ));
+            }
+        }
+        if let Some(UnwindEnsures { token, mut exprs, .. }) = unwind_ensures {
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                spec_stmts.push(Stmt::Expr(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::unwind_ensures([#exprs])),
+                    ),
+                    Some(Semi { spans: [token.span] }),
+                ));
+            }
+        }
+        if let Some(UnwindEnsures { token, mut exprs, .. }) = panic_ensures {
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                spec_stmts.push(Stmt::Expr(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::panic_ensures([#exprs])),
                     ),
                     Some(Semi { spans: [token.span] }),
                 ));
@@ -1281,6 +1328,15 @@ impl Visitor {
                     Some(Semi { spans: [token.span] }),
                 ));
             }
+        }
+
+        if let Some(SignatureNoPanic { token }) = no_panic {
+            spec_stmts.push(Stmt::Expr(
+                Expr::Verbatim(
+                    quote_spanned_builtin!(verus_builtin, token.span() => #verus_builtin::no_panic()),
+                ),
+                Some(Semi { spans: [token.span] }),
+            ));
         }
 
         spec_stmts
@@ -2237,11 +2293,15 @@ impl Visitor {
             inputs,
             output,
             requires,
+            no_panic_requires,
             ensures,
+            unwind_ensures,
+            panic_ensures,
             default_ensures,
             returns,
             invariants,
             unwind,
+            no_panic,
             semi,
         } = assume_specification.clone();
         let ex_ident = get_ex_ident_mangle_path(&qself, &path);
@@ -2270,13 +2330,17 @@ impl Visitor {
                 prover: None,
                 atomic_spec: None,
                 requires: requires,
+                no_panic_requires,
                 recommends: None,
                 ensures: ensures,
+                unwind_ensures,
+                panic_ensures,
                 default_ensures,
                 returns: returns,
                 decreases: None,
                 invariants: invariants,
                 unwind: unwind,
+                no_panic,
                 with: None,
             },
         };

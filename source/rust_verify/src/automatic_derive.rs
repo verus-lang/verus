@@ -293,6 +293,7 @@ fn clone_add_post_condition<'tcx>(
                 autospec: AutospecUsage::Final,
                 const_var: false,
                 assume_external_allowed: false,
+                deny_panic: true,
             },
         );
         let self_var = SpannedTyped::new(
@@ -309,7 +310,7 @@ fn clone_add_post_condition<'tcx>(
         let ens_expr = SpannedTyped::new(
             &expr.span,
             &bool_typ(),
-            ExprX::Call { target: ct, args, body: None, post_args: None },
+            ExprX::Call { target: ct, args, body: None, post_args: None, unwind_path: None },
         );
 
         let ens_expr = cleanup_span_ids(bctx, span, &ens_expr);
@@ -374,6 +375,7 @@ fn to_relation(expr: &Expr, output: &Expr) -> Result<Expr, ()> {
                         args,
                         body: None,
                         post_args: None,
+                        unwind_path: None,
                     } if fun == &vir::fun!(CrateId::Core => "clone", "Clone"; "clone") => {
                         assert!(args.len() == 1);
                         (args[0].clone(), impl_paths.clone(), typs[0].clone())
@@ -406,13 +408,14 @@ fn strictly_cloned_call(e1: &Expr, e2: &Expr, typ: Typ, impl_paths: ImplPaths) -
             autospec: AutospecUsage::Final,
             const_var: false,
             assume_external_allowed: false,
+            deny_panic: true,
         },
     );
     let args = Arc::new(vec![e1.clone(), e2.clone()]);
     SpannedTyped::new(
         &e1.span,
         &bool_typ(),
-        ExprX::Call { target: ct, args, body: None, post_args: None },
+        ExprX::Call { target: ct, args, body: None, post_args: None, unwind_path: None },
     )
 }
 
@@ -566,6 +569,8 @@ fn stub_to_spec_function(stub: &FunctionStub, body: Option<Expr>) -> Function {
             fndef_axioms: None,
             mask_spec: None,
             unwind_spec: None,
+            unwind_ensure: Arc::new(vec![]),
+            panic_ensure: Arc::new(vec![]),
             item_kind,
             attrs,
             body: body,

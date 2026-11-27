@@ -229,6 +229,12 @@ pub enum StmX {
         /// Code to be executed *inside* the function call,
         /// i.e. emplaced between the pre- and postcondition
         body: Option<Stm>,
+        /// If true, check the callee's `requires[no_panic]` conditions
+        /// (see CallTargetAttrs::deny_panic)
+        deny_panic: bool,
+        /// Code to be executed in the case that the call unwinds
+        /// (e.g., resolutions and type invariant obligations)
+        unwind_path: Option<Stm>,
     },
     /// Assertion to be verified by the SMT solver; reports Stm's span on failure plus optional extra info
     Assert(Option<AssertId>, Option<Message>, Exp),
@@ -364,7 +370,9 @@ pub struct LocalDeclX {
 pub enum UnwindSst {
     MayUnwind,
     NoUnwind,
-    NoUnwindWhen(Exp),
+    /// The bool is true if the condition also guarantees that the function doesn't panic
+    NoUnwindWhen(Exp, bool),
+    NoPanic,
 }
 
 #[derive(Debug, Clone, Copy, ToDebugSNode)]
@@ -397,6 +405,10 @@ pub struct FuncDeclSst {
     pub enss: (Exps, Exps),
     pub inv_masks: Arc<Vec<Exps>>,
     pub unwind_condition: Option<Exp>,
+    /// `ensures[on unwind]` conditions (functions of the arguments' pre-state)
+    pub unwind_ensures: Exps,
+    /// `ensures[on panic]` conditions (functions of the arguments' pre-state)
+    pub panic_ensures: Exps,
     pub fndef_axioms: Exps,
 }
 
@@ -406,6 +418,10 @@ pub struct FuncCheckSst {
     pub return_opaque_type_eqs: Arc<Vec<(Typ, Typ)>>,
     pub post_condition: Arc<PostConditionSst>,
     pub unwind: UnwindSst,
+    /// `ensures[on unwind]` conditions, checked at the end of each unwind path
+    pub unwind_ens: Exps,
+    /// `ensures[on panic]` conditions, checked at the end of each unwind or panic path
+    pub panic_ens: Exps,
     pub body: Stm,
     pub local_decls: Arc<Vec<LocalDecl>>,
     /// LocalDeclKind::Decreases have an assignment that must be carried into loop_isolation(false):

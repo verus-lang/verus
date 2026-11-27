@@ -795,6 +795,9 @@ pub trait VisitMut {
     fn visit_mode_tracked_mut(&mut self, i: &mut crate::ModeTracked) {
         visit_mode_tracked_mut(self, i);
     }
+    fn visit_no_panic_requires_mut(&mut self, i: &mut crate::NoPanicRequires) {
+        visit_no_panic_requires_mut(self, i);
+    }
     fn visit_open_mut(&mut self, i: &mut crate::Open) {
         visit_open_mut(self, i);
     }
@@ -974,6 +977,9 @@ pub trait VisitMut {
     fn visit_signature_invariants_mut(&mut self, i: &mut crate::SignatureInvariants) {
         visit_signature_invariants_mut(self, i);
     }
+    fn visit_signature_no_panic_mut(&mut self, i: &mut crate::SignatureNoPanic) {
+        visit_signature_no_panic_mut(self, i);
+    }
     fn visit_signature_spec_mut(&mut self, i: &mut crate::SignatureSpec) {
         visit_signature_spec_mut(self, i);
     }
@@ -1136,6 +1142,9 @@ pub trait VisitMut {
     }
     fn visit_uninterp_mut(&mut self, i: &mut crate::Uninterp) {
         visit_uninterp_mut(self, i);
+    }
+    fn visit_unwind_ensures_mut(&mut self, i: &mut crate::UnwindEnsures) {
+        visit_unwind_ensures_mut(self, i);
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -1354,8 +1363,17 @@ where
     if let Some(it) = &mut node.requires {
         v.visit_requires_mut(it);
     }
+    if let Some(it) = &mut node.no_panic_requires {
+        v.visit_no_panic_requires_mut(it);
+    }
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.unwind_ensures {
+        v.visit_unwind_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.panic_ensures {
+        v.visit_unwind_ensures_mut(it);
     }
     if let Some(it) = &mut node.default_ensures {
         v.visit_default_ensures_mut(it);
@@ -1368,6 +1386,9 @@ where
     }
     if let Some(it) = &mut node.unwind {
         v.visit_signature_unwind_mut(it);
+    }
+    if let Some(it) = &mut node.no_panic {
+        v.visit_signature_no_panic_mut(it);
     }
     skip!(node.semi);
 }
@@ -3856,6 +3877,18 @@ where
 {
     skip!(node.tracked_token);
 }
+pub fn visit_no_panic_requires_mut<V>(v: &mut V, node: &mut crate::NoPanicRequires)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+    skip!(node.bracket_token);
+    v.visit_ident_mut(&mut node.no_panic_token);
+    if let Some(it) = &mut node.exact {
+        v.visit_ident_mut(it);
+    }
+    v.visit_specification_mut(&mut node.exprs);
+}
 pub fn visit_open_mut<V>(v: &mut V, node: &mut crate::Open)
 where
     V: VisitMut + ?Sized,
@@ -4441,6 +4474,12 @@ where
     v.visit_invariant_name_set_mut(&mut node.set);
     skip!(node.comma);
 }
+pub fn visit_signature_no_panic_mut<V>(v: &mut V, node: &mut crate::SignatureNoPanic)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+}
 pub fn visit_signature_spec_mut<V>(v: &mut V, node: &mut crate::SignatureSpec)
 where
     V: VisitMut + ?Sized,
@@ -4454,11 +4493,20 @@ where
     if let Some(it) = &mut node.requires {
         v.visit_requires_mut(it);
     }
+    if let Some(it) = &mut node.no_panic_requires {
+        v.visit_no_panic_requires_mut(it);
+    }
     if let Some(it) = &mut node.recommends {
         v.visit_recommends_mut(it);
     }
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.unwind_ensures {
+        v.visit_unwind_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.panic_ensures {
+        v.visit_unwind_ensures_mut(it);
     }
     if let Some(it) = &mut node.default_ensures {
         v.visit_default_ensures_mut(it);
@@ -4474,6 +4522,9 @@ where
     }
     if let Some(it) = &mut node.unwind {
         v.visit_signature_unwind_mut(it);
+    }
+    if let Some(it) = &mut node.no_panic {
+        v.visit_signature_no_panic_mut(it);
     }
     if let Some(it) = &mut node.with {
         v.visit_with_spec_on_fn_mut(it);
@@ -4993,6 +5044,16 @@ where
     V: VisitMut + ?Sized,
 {
     skip!(node.token);
+}
+pub fn visit_unwind_ensures_mut<V>(v: &mut V, node: &mut crate::UnwindEnsures)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+    skip!(node.bracket_token);
+    v.visit_ident_mut(&mut node.on_token);
+    v.visit_ident_mut(&mut node.kind);
+    v.visit_specification_mut(&mut node.exprs);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]

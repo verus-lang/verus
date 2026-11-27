@@ -779,6 +779,9 @@ pub trait Visit<'ast> {
     fn visit_mode_tracked(&mut self, i: &'ast crate::ModeTracked) {
         visit_mode_tracked(self, i);
     }
+    fn visit_no_panic_requires(&mut self, i: &'ast crate::NoPanicRequires) {
+        visit_no_panic_requires(self, i);
+    }
     fn visit_open(&mut self, i: &'ast crate::Open) {
         visit_open(self, i);
     }
@@ -958,6 +961,9 @@ pub trait Visit<'ast> {
     fn visit_signature_invariants(&mut self, i: &'ast crate::SignatureInvariants) {
         visit_signature_invariants(self, i);
     }
+    fn visit_signature_no_panic(&mut self, i: &'ast crate::SignatureNoPanic) {
+        visit_signature_no_panic(self, i);
+    }
     fn visit_signature_spec(&mut self, i: &'ast crate::SignatureSpec) {
         visit_signature_spec(self, i);
     }
@@ -1120,6 +1126,9 @@ pub trait Visit<'ast> {
     }
     fn visit_uninterp(&mut self, i: &'ast crate::Uninterp) {
         visit_uninterp(self, i);
+    }
+    fn visit_unwind_ensures(&mut self, i: &'ast crate::UnwindEnsures) {
+        visit_unwind_ensures(self, i);
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -1348,8 +1357,17 @@ where
     if let Some(it) = &node.requires {
         v.visit_requires(it);
     }
+    if let Some(it) = &node.no_panic_requires {
+        v.visit_no_panic_requires(it);
+    }
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
+    }
+    if let Some(it) = &node.unwind_ensures {
+        v.visit_unwind_ensures(it);
+    }
+    if let Some(it) = &node.panic_ensures {
+        v.visit_unwind_ensures(it);
     }
     if let Some(it) = &node.default_ensures {
         v.visit_default_ensures(it);
@@ -1362,6 +1380,9 @@ where
     }
     if let Some(it) = &node.unwind {
         v.visit_signature_unwind(it);
+    }
+    if let Some(it) = &node.no_panic {
+        v.visit_signature_no_panic(it);
     }
     skip!(node.semi);
 }
@@ -4022,6 +4043,18 @@ where
 {
     skip!(node.tracked_token);
 }
+pub fn visit_no_panic_requires<'ast, V>(v: &mut V, node: &'ast crate::NoPanicRequires)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    skip!(node.bracket_token);
+    v.visit_ident(&node.no_panic_token);
+    if let Some(it) = &node.exact {
+        v.visit_ident(it);
+    }
+    v.visit_specification(&node.exprs);
+}
 pub fn visit_open<'ast, V>(v: &mut V, node: &'ast crate::Open)
 where
     V: Visit<'ast> + ?Sized,
@@ -4636,6 +4669,12 @@ where
     v.visit_invariant_name_set(&node.set);
     skip!(node.comma);
 }
+pub fn visit_signature_no_panic<'ast, V>(v: &mut V, node: &'ast crate::SignatureNoPanic)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+}
 pub fn visit_signature_spec<'ast, V>(v: &mut V, node: &'ast crate::SignatureSpec)
 where
     V: Visit<'ast> + ?Sized,
@@ -4649,11 +4688,20 @@ where
     if let Some(it) = &node.requires {
         v.visit_requires(it);
     }
+    if let Some(it) = &node.no_panic_requires {
+        v.visit_no_panic_requires(it);
+    }
     if let Some(it) = &node.recommends {
         v.visit_recommends(it);
     }
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
+    }
+    if let Some(it) = &node.unwind_ensures {
+        v.visit_unwind_ensures(it);
+    }
+    if let Some(it) = &node.panic_ensures {
+        v.visit_unwind_ensures(it);
     }
     if let Some(it) = &node.default_ensures {
         v.visit_default_ensures(it);
@@ -4669,6 +4717,9 @@ where
     }
     if let Some(it) = &node.unwind {
         v.visit_signature_unwind(it);
+    }
+    if let Some(it) = &node.no_panic {
+        v.visit_signature_no_panic(it);
     }
     if let Some(it) = &node.with {
         v.visit_with_spec_on_fn(it);
@@ -5206,6 +5257,16 @@ where
     V: Visit<'ast> + ?Sized,
 {
     skip!(node.token);
+}
+pub fn visit_unwind_ensures<'ast, V>(v: &mut V, node: &'ast crate::UnwindEnsures)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    skip!(node.bracket_token);
+    v.visit_ident(&node.on_token);
+    v.visit_ident(&node.kind);
+    v.visit_specification(&node.exprs);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]

@@ -422,6 +422,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 dest,
                 assert_id,
                 body,
+                deny_panic,
+                unwind_path,
             } => {
                 let resolved_method = if let Some((f, ts)) = resolved_method {
                     let ts = self.visit_typs(ts)?;
@@ -433,6 +435,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let args = self.visit_exps(args)?;
                 let dest = R::map_opt(dest, &mut |d| self.visit_dest(d))?;
                 let body = R::map_opt(body, &mut |s| self.visit_stm(s))?;
+                let unwind_path = R::map_opt(unwind_path, &mut |s| self.visit_stm(s))?;
                 R::ret(|| {
                     stm_new(StmX::Call {
                         fun: fun.clone(),
@@ -445,6 +448,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         dest: R::get_opt(dest),
                         assert_id: assert_id.clone(),
                         body: R::get_opt(body),
+                        deny_panic: *deny_panic,
+                        unwind_path: R::get_opt(unwind_path),
                     })
                 })
             }
@@ -677,6 +682,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         }
         let unwind_condition: <R as Returner>::Opt<Arc<SpannedTyped<ExpX>>> =
             R::map_opt(&func_decl.unwind_condition, &mut |exp| self.visit_exp(exp))?;
+        let unwind_ensures = self.visit_exps(&func_decl.unwind_ensures)?;
+        let panic_ensures = self.visit_exps(&func_decl.panic_ensures)?;
 
         R::ret(|| FuncDeclSst {
             req_inv_pars: R::get_vec_a(req_inv_pars),
@@ -685,16 +692,20 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             enss: (R::get_vec_a(enss0), R::get_vec_a(enss1)),
             inv_masks: R::get_vec_a(inv_masks),
             unwind_condition: R::get_opt(unwind_condition),
+            unwind_ensures: R::get_vec_a(unwind_ensures),
+            panic_ensures: R::get_vec_a(panic_ensures),
             fndef_axioms: R::get_vec_a(fndef_axioms),
         })
     }
 
     fn visit_unwind(&mut self, unwind: &UnwindSst) -> Result<R::Ret<UnwindSst>, Err> {
         match unwind {
-            UnwindSst::MayUnwind | UnwindSst::NoUnwind => R::ret(|| unwind.clone()),
-            UnwindSst::NoUnwindWhen(exp) => {
+            UnwindSst::MayUnwind | UnwindSst::NoUnwind | UnwindSst::NoPanic => {
+                R::ret(|| unwind.clone())
+            }
+            UnwindSst::NoUnwindWhen(exp, no_panic) => {
                 let exp = self.visit_exp(exp)?;
-                R::ret(|| UnwindSst::NoUnwindWhen(R::get(exp)))
+                R::ret(|| UnwindSst::NoUnwindWhen(R::get(exp), *no_panic))
             }
         }
     }
@@ -712,12 +723,16 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let local_decls = R::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
         let local_decls_decreases_init = self.visit_stms(&def.local_decls_decreases_init)?;
         let unwind = self.visit_unwind(&def.unwind)?;
+        let unwind_ens = self.visit_exps(&def.unwind_ens)?;
+        let panic_ens = self.visit_exps(&def.panic_ens)?;
 
         R::ret(|| FuncCheckSst {
             reqs: R::get_vec_a(reqs),
             return_opaque_type_eqs: R::get_vec_a(return_opaque_type_eqs),
             post_condition: Arc::new(R::get(post_condition)),
             unwind: R::get(unwind),
+            unwind_ens: R::get_vec_a(unwind_ens),
+            panic_ens: R::get_vec_a(panic_ens),
             body: R::get(body),
             local_decls: R::get_vec_a(local_decls),
             local_decls_decreases_init: R::get_vec_a(local_decls_decreases_init),

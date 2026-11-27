@@ -116,11 +116,15 @@ impl Hash for crate::AssumeSpecification {
         self.inputs.hash(state);
         self.output.hash(state);
         self.requires.hash(state);
+        self.no_panic_requires.hash(state);
         self.ensures.hash(state);
+        self.unwind_ensures.hash(state);
+        self.panic_ensures.hash(state);
         self.default_ensures.hash(state);
         self.returns.hash(state);
         self.invariants.hash(state);
         self.unwind.hash(state);
+        self.no_panic.hash(state);
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -2651,6 +2655,17 @@ impl Hash for crate::ModeTracked {
     {}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::NoPanicRequires {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.no_panic_token.hash(state);
+        self.exact.hash(state);
+        self.exprs.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::Open {
     fn hash<H>(&self, _state: &mut H)
     where
@@ -3249,6 +3264,13 @@ impl Hash for crate::SignatureInvariants {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::SignatureNoPanic {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::SignatureSpec {
     fn hash<H>(&self, state: &mut H)
     where
@@ -3257,13 +3279,17 @@ impl Hash for crate::SignatureSpec {
         self.prover.hash(state);
         self.atomic_spec.hash(state);
         self.requires.hash(state);
+        self.no_panic_requires.hash(state);
         self.recommends.hash(state);
         self.ensures.hash(state);
+        self.unwind_ensures.hash(state);
+        self.panic_ensures.hash(state);
         self.default_ensures.hash(state);
         self.returns.hash(state);
         self.decreases.hash(state);
         self.invariants.hash(state);
         self.unwind.hash(state);
+        self.no_panic.hash(state);
         self.with.hash(state);
     }
 }
@@ -3803,6 +3829,17 @@ impl Hash for crate::Uninterp {
     where
         H: Hasher,
     {}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::UnwindEnsures {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.on_token.hash(state);
+        self.kind.hash(state);
+        self.exprs.hash(state);
+    }
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

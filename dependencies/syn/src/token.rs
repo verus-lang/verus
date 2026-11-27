@@ -764,6 +764,7 @@ define_keywords! {
     "opens_invariants"   pub struct OpensInvariants
     "invariant_except_break"   pub struct InvariantExceptBreak
     "no_unwind"   pub struct NoUnwind
+    "no_panic"    pub struct NoPanic
     "invariant"   pub struct Invariant
     "invariant_ensures"   pub struct InvariantEnsures
     "assert"      pub struct Assert
@@ -1058,6 +1059,7 @@ macro_rules! Token {
     [opens_invariants] => { $crate::token::OpensInvariants };
     [invariant_except_break] => { $crate::token::InvariantExceptBreak };
     [no_unwind]   => { $crate::token::NoUnwind };
+    [no_panic]    => { $crate::token::NoPanic };
     [invariant]   => { $crate::token::Invariant };
     [invariant_ensures] => { $crate::token::InvariantEnsures };
     [assert]      => { $crate::token::Assert };

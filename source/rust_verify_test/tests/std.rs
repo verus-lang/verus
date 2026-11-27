@@ -2446,9 +2446,24 @@ test_verify_one_file! {
         fn test3() {
             assert!(2 + 2 == 3); // FAILS
         }
+        // panicking is allowed with deny_panic(false)
+        #[verifier::deny_panic(false)]
+        fn test4(x: u8) {
+            if x == 0 {
+                panic!();
+            }
+            assert!(x == 1);
+            assert(x == 1);
+        }
+        #[verifier::deny_panic(false)]
+        fn test5()
+            no_panic
+        {
+            panic!(); // FAILS
+        }
     } => Err(err) => {
-        assert_eq!(err.errors.len(), 3);
-        assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
+        assert_eq!(err.errors.len(), 4);
+        assert!(err.errors.iter().all(|e| e.rendered.contains("possible panic")));
     }
 }
 
@@ -2512,9 +2527,14 @@ test_verify_one_file! {
         fn test2(x: u64) {
             assert_ne!(x, 3, "x is {}", x); // FAILS
         }
+        #[verifier::deny_panic(false)]
+        fn test3(x: u64) {
+            assert_eq!(x, 3);
+            assert(x == 3);
+        }
     } => Err(err) => {
         assert_eq!(err.errors.len(), 2);
-        assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
+        assert!(err.errors.iter().all(|e| e.rendered.contains("possible panic")));
     }
 }
 

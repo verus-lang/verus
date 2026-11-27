@@ -1,6 +1,7 @@
 use crate::ast::{
     Expr, ExprX, Exprs, Fun, HeaderExprX, LoopInvariant, LoopInvariantKind, LoopInvariants,
-    MaskSpec, PlaceX, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent, VirErr, Visibility,
+    MaskSpec, NoUnwindWhenKind, PlaceX, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent,
+    VirErr, Visibility,
 };
 use crate::ast_util::air_unique_var;
 use crate::messages::error;
@@ -84,6 +85,8 @@ pub struct Header {
     pub atomic_update: Option<Expr>,
     pub atomic_call_loop: bool,
     pub unwind_spec: Option<UnwindSpec>,
+    pub unwind_ensure: Exprs,
+    pub panic_ensure: Exprs,
     pub extra_dependencies: Vec<Fun>,
     pub open_visibility_qualifier: Option<Visibility>,
 }
@@ -105,6 +108,8 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
     let mut atomic_update: Option<Expr> = None;
     let mut atomic_call_loop = false;
     let mut unwind_spec: Option<UnwindSpec> = None;
+    let mut unwind_ensure: Option<Exprs> = None;
+    let mut panic_ensure: Option<Exprs> = None;
     let mut open_visibility_qualifier: Option<Visibility> = None;
     let mut n = 0;
     let mut unwrap_parameter_allowed = true;
@@ -240,7 +245,11 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         atomic_call_loop = true;
                         allowed = allows.loops();
                     }
-                    HeaderExprX::NoUnwind | HeaderExprX::NoUnwindWhen(_) => {
+                    HeaderExprX::NoUnwind
+                    | HeaderExprX::NoUnwindWhen(_)
+                    | HeaderExprX::NoPanic
+                    | HeaderExprX::NoPanicRequires(_)
+                    | HeaderExprX::NoPanicRequiresExact(_) => {
                         match unwind_spec {
                             None => {}
                             _ => {
@@ -249,11 +258,40 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         }
                         unwind_spec = match &**header {
                             HeaderExprX::NoUnwind => Some(UnwindSpec::NoUnwind),
+                            HeaderExprX::NoPanic => Some(UnwindSpec::NoPanic),
                             HeaderExprX::NoUnwindWhen(expr) => {
-                                Some(UnwindSpec::NoUnwindWhen(expr.clone()))
+                                Some(UnwindSpec::NoUnwindWhen(expr.clone(), NoUnwindWhenKind::When))
+                            }
+                            HeaderExprX::NoPanicRequires(es)
+                            | HeaderExprX::NoPanicRequiresExact(es) => {
+                                let kind = if matches!(&**header, HeaderExprX::NoPanicRequires(_)) {
+                                    NoUnwindWhenKind::NoPanicRequires
+                                } else {
+                                    NoUnwindWhenKind::NoPanicRequiresExact
+                                };
+                                let expr = crate::ast_util::conjoin(&stmt.span, &es);
+                                Some(UnwindSpec::NoUnwindWhen(expr, kind))
                             }
                             _ => unreachable!(),
                         };
+                    }
+                    HeaderExprX::UnwindEnsures(es) => {
+                        if unwind_ensure.is_some() {
+                            return Err(error(
+                                &stmt.span,
+                                "only one `ensures[on unwind]` clause allowed",
+                            ));
+                        }
+                        unwind_ensure = Some(es.clone());
+                    }
+                    HeaderExprX::PanicEnsures(es) => {
+                        if panic_ensure.is_some() {
+                            return Err(error(
+                                &stmt.span,
+                                "only one `ensures[on panic]` clause allowed",
+                            ));
+                        }
+                        panic_ensure = Some(es.clone());
                     }
                     HeaderExprX::OpenVisibilityQualifier(v) => {
                         match open_visibility_qualifier {
@@ -290,6 +328,8 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
     let invariant_except_break = invariant_except_break.unwrap_or(Arc::new(vec![]));
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
     let decrease = decrease.unwrap_or(Arc::new(vec![]));
+    let unwind_ensure = unwind_ensure.unwrap_or(Arc::new(vec![]));
+    let panic_ensure = panic_ensure.unwrap_or(Arc::new(vec![]));
     Ok(Header {
         unwrap_parameters,
         no_method_body: false,
@@ -308,6 +348,8 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
         atomic_update,
         atomic_call_loop,
         unwind_spec,
+        unwind_ensure,
+        panic_ensure,
         extra_dependencies,
         open_visibility_qualifier,
     })

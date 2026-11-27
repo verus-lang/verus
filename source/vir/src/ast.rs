@@ -859,6 +859,19 @@ pub enum HeaderExprX {
     NoUnwind,
     /// This function will not unwind if the given condition holds (function of arguments)
     NoUnwindWhen(Expr),
+    /// `requires[no_panic]`: the function will not panic if the conditions hold,
+    /// and the conditions are checked at call sites by default (see deny_panic)
+    NoPanicRequires(Exprs),
+    /// `requires[no_panic exact]`: same as NoPanicRequires, but additionally
+    /// the function panics if the conditions do not hold
+    NoPanicRequiresExact(Exprs),
+    /// `ensures[on unwind]`: the conditions hold if the function unwinds
+    UnwindEnsures(Exprs),
+    /// `no_panic`: the function never panics (and hence never unwinds)
+    NoPanic,
+    /// `ensures[on panic]`: the conditions hold if the function panics
+    /// (whether it unwinds or aborts)
+    PanicEnsures(Exprs),
     /// The visibility used in, e.g., `open(crate)`
     OpenVisibilityQualifier(Visibility),
 }
@@ -1028,6 +1041,9 @@ pub struct CallTargetAttrs {
     pub const_var: bool,
     /// If the expected Fun is undeclared, enable replacing Fun with AssumeExternal
     pub assume_external_allowed: bool,
+    /// If true, check the callee's `requires[no_panic]` conditions at this call site
+    /// even if not needed to prove that the caller does not panic
+    pub deny_panic: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -1162,6 +1178,11 @@ pub enum ExprX {
         ///
         /// We use this for the `atomically |update| { ... }` block of the atomic function call.
         body: Option<Expr>,
+        /// Executed in the case that the call unwinds, after the call.
+        ///
+        /// This is used for resolutions (inserted by resolution_inference) that apply
+        /// on the unwind path. Must be None prior to resolution_inference.
+        unwind_path: Option<Expr>,
     },
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
@@ -1659,12 +1680,33 @@ pub enum MaskSpec {
     InvariantOpensSet(Expr),
 }
 
-/// Function specification of its invariant mask
+/// Where a NoUnwindWhen condition came from
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
+pub enum NoUnwindWhenKind {
+    /// `no_unwind when e`: the condition is only checked at call sites
+    /// when needed to prove that the caller doesn't unwind
+    When,
+    /// `requires[no_panic] e`: the condition is checked at call sites
+    /// (unless deny_panic is false for the call)
+    NoPanicRequires,
+    /// `requires[no_panic exact] e`: same as NoPanicRequires, but additionally the function
+    /// panics if the condition does not hold (so the condition holds if the function returns)
+    NoPanicRequiresExact,
+}
+
+/// Function specification of whether it may unwind or panic.
+/// Unwinding implies panicking, but a panic may also abort without unwinding.
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum UnwindSpec {
+    /// `no_unwind`: never unwinds, but may panic (by aborting)
     NoUnwind,
-    NoUnwindWhen(Expr),
+    /// Doesn't unwind if the condition holds; for the `NoPanicRequires` kinds,
+    /// it also doesn't panic if the condition holds
+    NoUnwindWhen(Expr, NoUnwindWhenKind),
+    /// May unwind or panic
     MayUnwind,
+    /// `no_panic`: never panics (and hence never unwinds)
+    NoPanic,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
@@ -1795,6 +1837,12 @@ pub struct FunctionX {
     pub atomic_update: Option<Expr>,
     /// UnwindSpec that specifies if the function is allowed to unwind
     pub unwind_spec: Option<UnwindSpec>,
+    /// `ensures[on unwind]` conditions that hold if the function unwinds
+    /// (functions of the arguments' pre-state, like the UnwindSpec conditions)
+    pub unwind_ensure: Exprs,
+    /// `ensures[on panic]` conditions that hold if the function panics,
+    /// whether it unwinds or aborts (functions of the arguments' pre-state)
+    pub panic_ensure: Exprs,
     /// Allows the item to be a const declaration or static
     pub item_kind: ItemKind,
     /// Various attributes

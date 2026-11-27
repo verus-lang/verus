@@ -18,7 +18,7 @@ pub assume_specification[ <u8>::from_le_bytes ](bytes: [u8; 1]) -> u8
     returns
         bytes@[0],
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 // Conversion between u16 and little-endian byte sequences
@@ -100,7 +100,7 @@ pub assume_specification[ <u16>::from_le_bytes ](bytes: [u8; 2]) -> u16
     returns
         spec_u16_from_le_bytes(bytes@),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 #[cfg(feature = "alloc")]
@@ -203,7 +203,7 @@ pub assume_specification[ <u32>::from_le_bytes ](bytes: [u8; 4]) -> u32
     returns
         spec_u32_from_le_bytes(bytes@),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 #[cfg(feature = "alloc")]
@@ -368,7 +368,7 @@ pub assume_specification[ <u64>::from_le_bytes ](bytes: [u8; 8]) -> u64
     returns
         spec_u64_from_le_bytes(bytes@),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 #[cfg(feature = "alloc")]

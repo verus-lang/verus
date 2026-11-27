@@ -75,6 +75,7 @@ fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirE
             args,
             post_args,
             body,
+            unwind_path,
         } if !traits.contains(&get_trait(fun)) || !funs.contains(fun) => {
             if let Some(spec_trait) = impl_to_spec_traits.get(&get_trait(fun)) {
                 return Err(error(
@@ -98,6 +99,7 @@ fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirE
                 args: args.clone(),
                 post_args: post_args.clone(),
                 body: body.clone(),
+                unwind_path: unwind_path.clone(),
             }))
         }
         ExprX::Call {
@@ -117,6 +119,7 @@ fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirE
             args,
             post_args,
             body,
+            unwind_path,
         } if traits.contains(&get_trait(fun))
             && !internal_traits.contains(&get_trait(fun))
             && funs.contains(fun)
@@ -136,6 +139,7 @@ fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirE
                 args: args.clone(),
                 post_args: post_args.clone(),
                 body: body.clone(),
+                unwind_path: unwind_path.clone(),
             }))
         }
         ExprX::Call {
@@ -155,6 +159,7 @@ fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirE
             args,
             post_args,
             body,
+            unwind_path,
         } if extension_traits.contains(&get_trait(fun)) => {
             assert!(traits.contains(&get_trait(fun)));
             assert!(funs.contains(fun));
@@ -173,6 +178,7 @@ fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirE
                 args: args.clone(),
                 post_args: post_args.clone(),
                 body: body.clone(),
+                unwind_path: unwind_path.clone(),
             }))
         }
         ExprX::Call {
@@ -192,6 +198,7 @@ fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirE
             args,
             post_args,
             body,
+            unwind_path,
         } if traits.contains(&get_trait(fun))
             && !internal_traits.contains(&get_trait(fun))
             && funs.contains(fun)
@@ -212,6 +219,7 @@ fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirE
                 args: args.clone(),
                 post_args: post_args.clone(),
                 body: body.clone(),
+                unwind_path: unwind_path.clone(),
             }))
         }
         _ => Ok(expr.clone()),
@@ -400,6 +408,7 @@ pub fn rewrite_one_external_expr(
                 args,
                 post_args,
                 body,
+                unwind_path,
             },
             Some(to_spec),
         ) => {
@@ -426,6 +435,7 @@ pub fn rewrite_one_external_expr(
                 args: args.clone(),
                 post_args: post_args.clone(),
                 body: body.clone(),
+                unwind_path: unwind_path.clone(),
             })
         }
         _ => expr.clone(),
@@ -771,6 +781,8 @@ pub fn inherit_default_bodies(
                     atomic_update: None,
                     mask_spec: None,
                     unwind_spec: None,
+                    unwind_ensure: Arc::new(vec![]),
+                    panic_ensure: Arc::new(vec![]),
                     item_kind: default_function.x.item_kind,
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
                     body: None,
@@ -1862,6 +1874,7 @@ fn check_dyn_spec(f: &Function) -> Result<(), ()> {
                 args,
                 post_args,
                 body,
+                unwind_path,
             } = &expr.x
             {
                 if args.first().is_some_and(|a| self.is_receiver_expr(a))
@@ -1877,7 +1890,8 @@ fn check_dyn_spec(f: &Function) -> Result<(), ()> {
                     }
                     self.visit_exprs(args)?;
                     self.visit_opt_expr(post_args)?;
-                    return self.visit_opt_expr(body);
+                    self.visit_opt_expr(body)?;
+                    return self.visit_opt_expr(unwind_path);
                 }
             }
             self.visit_expr_rec(expr)
@@ -1920,6 +1934,8 @@ fn check_dyn_spec(f: &Function) -> Result<(), ()> {
         mask_spec,
         atomic_update,
         unwind_spec,
+        unwind_ensure,
+        panic_ensure,
         item_kind: _,
         attrs: _,
         body: _,
@@ -1943,6 +1959,8 @@ fn check_dyn_spec(f: &Function) -> Result<(), ()> {
     if let Some(unwind_spec) = unwind_spec {
         visitor.visit_unwind_spec(unwind_spec)?;
     }
+    visitor.visit_exprs(unwind_ensure)?;
+    visitor.visit_exprs(panic_ensure)?;
     Ok(())
 }
 

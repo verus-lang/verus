@@ -29,24 +29,24 @@ impl<T> MaybeUninitAdditionalSpecFns<T> for MaybeUninit<T> {
 pub assume_specification<T>[ MaybeUninit::<T>::new ](val: T) -> (res: MaybeUninit<T>)
     ensures res.mem_contents() == MemContents::Init(val),
     opens_invariants none
-    no_unwind;
+    no_panic;
 
 pub assume_specification<T>[ MaybeUninit::<T>::uninit ]() -> (res: MaybeUninit<T>)
     ensures res.mem_contents() == MemContents::Uninit,
     opens_invariants none
-    no_unwind;
+    no_panic;
 
 pub assume_specification<T>[ MaybeUninit::<T>::assume_init ](m: MaybeUninit<T>) -> T
     requires m.mem_contents().is_init(),
     returns m.mem_contents().value(),
     opens_invariants none
-    no_unwind;
+    no_panic;
 
 pub assume_specification<T>[ MaybeUninit::<T>::assume_init_ref ](m: &MaybeUninit<T>) -> (ret: &T)
     requires m.mem_contents().is_init(),
     ensures ret == m.mem_contents().value(),
     opens_invariants none
-    no_unwind;
+    no_panic;
 
 pub assume_specification<T>[ MaybeUninit::<T>::assume_init_mut ](m: &mut MaybeUninit<T>) -> (ret: &mut T)
     requires m.mem_contents().is_init(),
@@ -54,14 +54,14 @@ pub assume_specification<T>[ MaybeUninit::<T>::assume_init_mut ](m: &mut MaybeUn
         final(m).mem_contents().is_init(),
         final(m).mem_contents().value() == *final(ret),
     opens_invariants none
-    no_unwind;
+    no_panic;
 
 pub assume_specification<T>[ MaybeUninit::<T>::write ](m: &mut MaybeUninit<T>, val: T) -> (ret: &mut T)
     ensures *ret == val,
         final(m).mem_contents().is_init(),
         final(m).mem_contents().value() == *final(ret),
     opens_invariants none
-    no_unwind;
+    no_panic;
 
 pub assume_specification<T, const N: usize>[ MaybeUninit::<T>::array_assume_init ](
     array: [MaybeUninit<T>; N],
@@ -71,6 +71,6 @@ pub assume_specification<T, const N: usize>[ MaybeUninit::<T>::array_assume_init
     ensures
         forall|i: int| #![auto] 0 <= i < N ==> ret@[i] == array@[i].mem_contents().value(),
     opens_invariants none
-    no_unwind;
+    no_panic;
 
 }

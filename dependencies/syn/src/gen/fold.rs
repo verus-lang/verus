@@ -868,6 +868,12 @@ pub trait Fold {
     fn fold_mode_tracked(&mut self, i: crate::ModeTracked) -> crate::ModeTracked {
         fold_mode_tracked(self, i)
     }
+    fn fold_no_panic_requires(
+        &mut self,
+        i: crate::NoPanicRequires,
+    ) -> crate::NoPanicRequires {
+        fold_no_panic_requires(self, i)
+    }
     fn fold_open(&mut self, i: crate::Open) -> crate::Open {
         fold_open(self, i)
     }
@@ -1074,6 +1080,12 @@ pub trait Fold {
     ) -> crate::SignatureInvariants {
         fold_signature_invariants(self, i)
     }
+    fn fold_signature_no_panic(
+        &mut self,
+        i: crate::SignatureNoPanic,
+    ) -> crate::SignatureNoPanic {
+        fold_signature_no_panic(self, i)
+    }
     fn fold_signature_spec(&mut self, i: crate::SignatureSpec) -> crate::SignatureSpec {
         fold_signature_spec(self, i)
     }
@@ -1267,6 +1279,9 @@ pub trait Fold {
     }
     fn fold_uninterp(&mut self, i: crate::Uninterp) -> crate::Uninterp {
         fold_uninterp(self, i)
+    }
+    fn fold_unwind_ensures(&mut self, i: crate::UnwindEnsures) -> crate::UnwindEnsures {
+        fold_unwind_ensures(self, i)
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -1474,11 +1489,16 @@ where
             .map(|it| ((it).0, crate::punctuated::fold((it).1, f, F::fold_fn_arg))),
         output: f.fold_return_type(node.output),
         requires: (node.requires).map(|it| f.fold_requires(it)),
+        no_panic_requires: (node.no_panic_requires)
+            .map(|it| f.fold_no_panic_requires(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        unwind_ensures: (node.unwind_ensures).map(|it| f.fold_unwind_ensures(it)),
+        panic_ensures: (node.panic_ensures).map(|it| f.fold_unwind_ensures(it)),
         default_ensures: (node.default_ensures).map(|it| f.fold_default_ensures(it)),
         returns: (node.returns).map(|it| f.fold_returns(it)),
         invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
         unwind: (node.unwind).map(|it| f.fold_signature_unwind(it)),
+        no_panic: (node.no_panic).map(|it| f.fold_signature_no_panic(it)),
         semi: node.semi,
     }
 }
@@ -4010,6 +4030,21 @@ where
         tracked_token: node.tracked_token,
     }
 }
+pub fn fold_no_panic_requires<F>(
+    f: &mut F,
+    node: crate::NoPanicRequires,
+) -> crate::NoPanicRequires
+where
+    F: Fold + ?Sized,
+{
+    crate::NoPanicRequires {
+        token: node.token,
+        bracket_token: node.bracket_token,
+        no_panic_token: f.fold_ident(node.no_panic_token),
+        exact: (node.exact).map(|it| f.fold_ident(it)),
+        exprs: f.fold_specification(node.exprs),
+    }
+}
 pub fn fold_open<F>(f: &mut F, node: crate::Open) -> crate::Open
 where
     F: Fold + ?Sized,
@@ -4597,6 +4632,17 @@ where
         comma: node.comma,
     }
 }
+pub fn fold_signature_no_panic<F>(
+    f: &mut F,
+    node: crate::SignatureNoPanic,
+) -> crate::SignatureNoPanic
+where
+    F: Fold + ?Sized,
+{
+    crate::SignatureNoPanic {
+        token: node.token,
+    }
+}
 pub fn fold_signature_spec<F>(
     f: &mut F,
     node: crate::SignatureSpec,
@@ -4608,13 +4654,18 @@ where
         prover: (node.prover).map(|it| f.fold_prover(it)),
         atomic_spec: (node.atomic_spec).map(|it| f.fold_atomic_spec(it)),
         requires: (node.requires).map(|it| f.fold_requires(it)),
+        no_panic_requires: (node.no_panic_requires)
+            .map(|it| f.fold_no_panic_requires(it)),
         recommends: (node.recommends).map(|it| f.fold_recommends(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        unwind_ensures: (node.unwind_ensures).map(|it| f.fold_unwind_ensures(it)),
+        panic_ensures: (node.panic_ensures).map(|it| f.fold_unwind_ensures(it)),
         default_ensures: (node.default_ensures).map(|it| f.fold_default_ensures(it)),
         returns: (node.returns).map(|it| f.fold_returns(it)),
         decreases: (node.decreases).map(|it| f.fold_signature_decreases(it)),
         invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
         unwind: (node.unwind).map(|it| f.fold_signature_unwind(it)),
+        no_panic: (node.no_panic).map(|it| f.fold_signature_no_panic(it)),
         with: (node.with).map(|it| f.fold_with_spec_on_fn(it)),
     }
 }
@@ -5143,6 +5194,21 @@ where
 {
     crate::Uninterp {
         token: node.token,
+    }
+}
+pub fn fold_unwind_ensures<F>(
+    f: &mut F,
+    node: crate::UnwindEnsures,
+) -> crate::UnwindEnsures
+where
+    F: Fold + ?Sized,
+{
+    crate::UnwindEnsures {
+        token: node.token,
+        bracket_token: node.bracket_token,
+        on_token: f.fold_ident(node.on_token),
+        kind: f.fold_ident(node.kind),
+        exprs: f.fold_specification(node.exprs),
     }
 }
 #[cfg(feature = "full")]

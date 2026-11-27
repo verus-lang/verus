@@ -1655,6 +1655,7 @@ fn check_tracked_swap(
         args,
         post_args: None,
         body: None,
+        unwind_path: None,
     } = &expr.x
     else {
         unreachable!()
@@ -1916,6 +1917,7 @@ fn check_expr(
             args: _,
             post_args: _,
             body: _,
+            unwind_path: _,
         } => {
             let function = match ctxt.funs.get(x) {
                 None => {
@@ -1951,6 +1953,7 @@ fn check_expr(
             args: es,
             post_args: None,
             body,
+            unwind_path: None,
         } => {
             assert!(body.is_none());
 
@@ -2001,6 +2004,7 @@ fn check_expr(
             args: es,
             post_args: None,
             body,
+            unwind_path: None,
         } => {
             assert!(attrs.autospec == AutospecUsage::Final);
             assert!(!attrs.const_var); // const_var is handled in ConstVar/StaticVar case
@@ -2105,7 +2109,13 @@ fn check_expr(
 
             Ok((function.x.outer_ret.x.mode, out_proph))
         }
-        ExprX::Call { target: CallTarget::FnSpec(e0), args: es, post_args: None, body } => {
+        ExprX::Call {
+            target: CallTarget::FnSpec(e0),
+            args: es,
+            post_args: None,
+            body,
+            unwind_path: None,
+        } => {
             assert!(body.is_none());
             if typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot call spec function from exec mode"));
@@ -2131,6 +2141,7 @@ fn check_expr(
             args: es,
             post_args: None,
             body,
+            unwind_path: None,
         } => {
             assert!(body.is_none());
             if typing.block_ghostness == Ghost::Exec {
@@ -2151,7 +2162,13 @@ fn check_expr(
             }
             Ok((Mode::Spec, proph))
         }
-        ExprX::Call { target: CallTarget::AssumeExternal, args: es, post_args: None, body } => {
+        ExprX::Call {
+            target: CallTarget::AssumeExternal,
+            args: es,
+            post_args: None,
+            body,
+            unwind_path: None,
+        } => {
             assert!(body.is_none());
             if typing.block_ghostness != Ghost::Exec {
                 return Err(error(&expr.span, "cannot call external function from non-exec mode"));
@@ -2171,6 +2188,12 @@ fn check_expr(
         }
         ExprX::Call { post_args: Some(_), .. } => {
             return Err(error(&expr.span, "ExprX::Call should not have `post_args` at this point"));
+        }
+        ExprX::Call { unwind_path: Some(_), .. } => {
+            return Err(error(
+                &expr.span,
+                "ExprX::Call should not have `unwind_path` at this point",
+            ));
         }
         ExprX::ArrayLiteral(es) => {
             let modes = vec_map_result(es, |e| {
@@ -4137,8 +4160,8 @@ fn check_function_inner(
         }
     }
     match &function.x.unwind_spec {
-        None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
-        Some(UnwindSpec::NoUnwindWhen(expr)) => {
+        None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind | UnwindSpec::NoPanic) => {}
+        Some(UnwindSpec::NoUnwindWhen(expr, _)) => {
             let mut unw_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
             let mut unw_typing = unw_typing.push_in_pure(true);
             check_expr_has_mode(
@@ -4151,6 +4174,19 @@ fn check_function_inner(
                 &Proph::No,
             )?;
         }
+    }
+    for expr in function.x.unwind_ensure.iter().chain(function.x.panic_ensure.iter()) {
+        let mut unw_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+        let mut unw_typing = unw_typing.push_in_pure(true);
+        check_expr_has_mode(
+            ctxt,
+            record,
+            &mut unw_typing,
+            Mode::Spec,
+            expr,
+            Mode::Spec,
+            &Proph::No,
+        )?;
     }
 
     let ret_mode = if !is_unit(&function.x.outer_ret.x.typ) {

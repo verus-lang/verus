@@ -861,6 +861,8 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             dest,
             assert_id,
             body,
+            deny_panic,
+            unwind_path,
         } => {
             let (is_polys, function) = if let crate::sst::CallTarget::Fun(fun) = fun {
                 let function = &ctx.func_sst_map[fun].x;
@@ -905,6 +907,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 None
             };
             let body = body.as_ref().map(|stm| visit_stm(ctx, state, stm));
+            let unwind_path = unwind_path.as_ref().map(|stm| visit_stm(ctx, state, stm));
             mk_stm(StmX::Call {
                 fun: fun.clone(),
                 resolved_method: resolved_method.clone(),
@@ -916,6 +919,8 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 dest,
                 assert_id: assert_id.clone(),
                 body,
+                deny_panic: *deny_panic,
+                unwind_path,
             })
         }
         StmX::Assert(id, msg, e1) => {
@@ -1098,6 +1103,8 @@ fn visit_func_decl_sst(
         enss: (enss0, enss1),
         inv_masks,
         unwind_condition,
+        unwind_ensures,
+        panic_ensures,
         fndef_axioms,
     } = function;
 
@@ -1107,6 +1114,8 @@ fn visit_func_decl_sst(
     let inv_masks =
         Arc::new(inv_masks.iter().map(|es| visit_exps_native(ctx, state, es)).collect());
     let unwind_condition = unwind_condition.as_ref().map(|e| visit_exp_native(ctx, state, e));
+    let unwind_ensures = visit_exps_native(ctx, state, unwind_ensures);
+    let panic_ensures = visit_exps_native(ctx, state, panic_ensures);
     state.types.pop_scope();
 
     state.types.push_scope(true);
@@ -1123,6 +1132,8 @@ fn visit_func_decl_sst(
         enss: (enss0, enss1),
         inv_masks,
         unwind_condition,
+        unwind_ensures,
+        panic_ensures,
         fndef_axioms,
     }
 }
@@ -1156,6 +1167,8 @@ fn visit_func_check_sst(
         return_opaque_type_eqs,
         post_condition,
         unwind,
+        unwind_ens,
+        panic_ens,
         body,
         local_decls,
         local_decls_decreases_init,
@@ -1167,12 +1180,14 @@ fn visit_func_check_sst(
     let reqs = visit_exps_native(ctx, state, reqs);
 
     let unwind = match &unwind {
-        UnwindSst::MayUnwind | UnwindSst::NoUnwind => unwind.clone(),
-        UnwindSst::NoUnwindWhen(e) => {
+        UnwindSst::MayUnwind | UnwindSst::NoUnwind | UnwindSst::NoPanic => unwind.clone(),
+        UnwindSst::NoUnwindWhen(e, no_panic) => {
             let e = visit_exp_native(ctx, state, e);
-            UnwindSst::NoUnwindWhen(e)
+            UnwindSst::NoUnwindWhen(e, *no_panic)
         }
     };
+    let unwind_ens = visit_exps_native(ctx, state, unwind_ens);
+    let panic_ens = visit_exps_native(ctx, state, panic_ens);
 
     state.types.push_scope(true);
     let mut locals: Vec<LocalDecl> = Vec::new();
@@ -1247,6 +1262,8 @@ fn visit_func_check_sst(
         return_opaque_type_eqs: return_opaque_type_eqs.clone(),
         post_condition,
         unwind,
+        unwind_ens,
+        panic_ens,
         body,
         local_decls: Arc::new(locals),
         local_decls_decreases_init,

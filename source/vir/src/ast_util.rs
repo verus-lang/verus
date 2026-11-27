@@ -799,6 +799,33 @@ impl crate::ast::CallTargetKind {
     }
 }
 
+impl UnwindSpec {
+    /// The function never unwinds
+    pub fn never_unwinds(&self) -> bool {
+        matches!(self, UnwindSpec::NoUnwind | UnwindSpec::NoPanic)
+    }
+
+    /// The function's no-panic condition is tied to its no-unwind condition
+    /// (so that it can only panic when it could unwind)
+    pub fn panic_iff_unwind(&self) -> bool {
+        match self {
+            UnwindSpec::MayUnwind | UnwindSpec::NoPanic => true,
+            UnwindSpec::NoUnwindWhen(_, kind) => kind.is_no_panic(),
+            UnwindSpec::NoUnwind => false,
+        }
+    }
+}
+
+impl NoUnwindWhenKind {
+    /// The condition also guarantees that the function doesn't panic
+    pub fn is_no_panic(&self) -> bool {
+        match self {
+            NoUnwindWhenKind::When => false,
+            NoUnwindWhenKind::NoPanicRequires | NoUnwindWhenKind::NoPanicRequiresExact => true,
+        }
+    }
+}
+
 impl FunctionX {
     pub fn is_main(&self) -> bool {
         self.name.path.segments.last().expect("last segment").is_name("main")
@@ -833,7 +860,7 @@ impl FunctionX {
         match &self.unwind_spec {
             None => match self.mode {
                 Mode::Exec => UnwindSpec::MayUnwind,
-                Mode::Spec | Mode::Proof => UnwindSpec::NoUnwind,
+                Mode::Spec | Mode::Proof => UnwindSpec::NoPanic,
             },
             Some(unwind_spec) => unwind_spec.clone(),
         }
@@ -851,8 +878,7 @@ pub(crate) fn call_no_unwind(call_target: &CallTarget, funs: &HashMap<Fun, Funct
             | CallTargetKind::DynamicResolved { .. }
             | CallTargetKind::ExternalTraitDefault => {
                 let function = &funs[fun];
-                let unwind_spec = function.x.unwind_spec_or_default();
-                matches!(unwind_spec, UnwindSpec::NoUnwind)
+                function.x.unwind_spec_or_default().never_unwinds()
             }
         },
     }
@@ -1420,7 +1446,12 @@ impl HeaderExprX {
             | HeaderExprX::ExtraDependency(_)
             | HeaderExprX::OpenVisibilityQualifier(_)
             | HeaderExprX::NoUnwind
-            | HeaderExprX::NoUnwindWhen(_) => "beginning of the function body",
+            | HeaderExprX::NoUnwindWhen(_)
+            | HeaderExprX::NoPanicRequires(_)
+            | HeaderExprX::NoPanicRequiresExact(_)
+            | HeaderExprX::UnwindEnsures(_)
+            | HeaderExprX::NoPanic
+            | HeaderExprX::PanicEnsures(_) => "beginning of the function body",
 
             HeaderExprX::InvariantExceptBreak(_)
             | HeaderExprX::Invariant(_)

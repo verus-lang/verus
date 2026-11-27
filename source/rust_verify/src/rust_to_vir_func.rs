@@ -381,6 +381,8 @@ fn finish_autospec<'tcx>(
         mask_spec: None,
         atomic_update: None,
         unwind_spec: None,
+        unwind_ensure: Arc::new(vec![]),
+        panic_ensure: Arc::new(vec![]),
         hidden: Arc::new(vec![]),
     };
     Ok(Spanned::new(function_autospec.span.clone(), function_autospec_x))
@@ -2604,6 +2606,8 @@ pub(crate) fn finish_function<'tcx>(
         mask_spec: header.invariant_mask,
         atomic_update: header.atomic_update,
         unwind_spec: header.unwind_spec,
+        unwind_ensure: header.unwind_ensure,
+        panic_ensure: header.panic_ensure,
         item_kind,
         attrs,
         body,
@@ -2780,6 +2784,8 @@ fn check_external_fn_specification_trait_method_decl_typs(
             mask_spec,
             atomic_update: _,
             unwind_spec,
+            unwind_ensure,
+            panic_ensure,
             item_kind: _,
             attrs: _,
             body,
@@ -2797,6 +2803,8 @@ fn check_external_fn_specification_trait_method_decl_typs(
         unsupported_err_unless!(decrease_by.is_none(), span, "`decreases ... via` clauses");
         unsupported_err_unless!(matches!(mask_spec, None), span, "opens_invariants");
         unsupported_err_unless!(matches!(unwind_spec, None), span, "unwind");
+        unsupported_err_unless!(unwind_ensure.len() == 0, span, "`ensures[on unwind]` clauses");
+        unsupported_err_unless!(panic_ensure.len() == 0, span, "`ensures[on panic]` clauses");
         unsupported_err_unless!(body.is_none(), span, "opens_invariants");
     }
     Ok(())
@@ -3636,6 +3644,8 @@ pub(crate) fn finish_const_or_static<'tcx>(
         mask_spec: None,
         atomic_update: None,
         unwind_spec: None,
+        unwind_ensure: Arc::new(vec![]),
+        panic_ensure: Arc::new(vec![]),
         item_kind,
         attrs,
         body: if vattrs.external_body { None } else { Some(vir_body) },
@@ -3758,6 +3768,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         mask_spec: None,
         atomic_update: None,
         unwind_spec: None,
+        unwind_ensure: Arc::new(vec![]),
+        panic_ensure: Arc::new(vec![]),
         item_kind: ItemKind::Function,
         attrs: Default::default(),
         body: None,

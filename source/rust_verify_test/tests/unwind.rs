@@ -50,13 +50,15 @@ test_verify_one_file! {
         use vstd::std_specs::control_flow::{FromResidualSpec, TrySpec};
 
         fn branch<T: Try>(value: T) -> ControlFlow<T::Residual, T::Output>
-            no_unwind when !value.may_unwind()
+            ensures[on panic]
+                value.may_unwind(),
         {
             value.branch()
         }
 
         fn from_residual<T: FromResidual<R>, R>(residual: R) -> T
-            no_unwind when !<T as FromResidualSpec<R>>::may_unwind(&residual)
+            ensures[on panic]
+                <T as FromResidualSpec<R>>::may_unwind(&residual),
         {
             T::from_residual(residual)
         }
@@ -905,4 +907,1139 @@ test_verify_one_file! {
             x
         }
     } => Err(err) => assert_vir_error_msg(err, "invalid nested header block")
+}
+
+test_verify_one_file_with_options! {
+    #[test] requires_no_panic ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn fn_may_unwind() {
+        }
+
+        fn f(i: u8)
+            requires[no_panic]
+                i >= 5,
+        {
+        }
+
+        fn f2(i: u8, j: u8)
+            requires
+                i < 200,
+            requires[no_panic]
+                i >= 5,
+                j >= 5,
+        {
+        }
+
+        fn f3(i: u8, j: u8)
+            requires[no_panic]
+                i >= 5,
+            requires
+                j < 200,
+            ensures
+                true,
+        {
+        }
+
+        fn caller1() {
+            f(10);
+            f2(10, 10);
+            f3(10, 10);
+        }
+
+        fn caller2() {
+            f(3); // FAILS
+        }
+
+        fn caller3(j: u8) {
+            f(j); // FAILS
+        }
+
+        fn caller4() {
+            f2(10, 3); // FAILS
+        }
+
+        #[verifier::deny_panic(false)]
+        fn caller5() {
+            f(3);
+            f2(10, 3);
+        }
+
+        #[verifier::deny_panic(false)]
+        fn caller6()
+            no_unwind
+        {
+            f(3); // FAILS
+        }
+
+        #[verifier::deny_panic(false)]
+        fn caller7()
+            no_unwind
+        {
+            f(10);
+        }
+
+        fn caller8() {
+            #[verifier::deny_panic(false)] f(3);
+            f(3); // FAILS
+        }
+
+        #[verifier::deny_panic(false)]
+        fn caller9() {
+            #[verifier::deny_panic(true)] f(3); // FAILS
+        }
+
+        fn body1(i: u8)
+            requires[no_panic]
+                i >= 5,
+        {
+            fn_may_unwind(); // FAILS
+        }
+
+        fn body2(i: u8)
+            requires[no_panic]
+                i >= 5,
+        {
+            // the caller's own requires[no_panic] conditions are not preconditions,
+            // so with deny_panic, this must be proven unconditionally
+            f(i); // FAILS
+        }
+
+        #[verifier::deny_panic(false)]
+        fn body3(i: u8)
+            requires[no_panic]
+                i >= 5,
+        {
+            f(i);
+            if i < 5 {
+                fn_may_unwind();
+            }
+        }
+
+        #[verifier::deny_panic(false)]
+        fn body4(i: u8)
+            requires[no_panic]
+                i >= 4,
+        {
+            f(i); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 9)
+}
+
+test_verify_one_file_with_options! {
+    #[test] requires_no_panic_exact ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external_body]
+        fn do_panic()
+            ensures
+                false,
+        {
+            panic!();
+        }
+
+        fn g(i: u8)
+            requires[no_panic exact]
+                i >= 5,
+        {
+            if i < 5 {
+                do_panic();
+            }
+        }
+
+        fn g_bad(i: u8)
+            requires[no_panic exact]
+                i >= 5, // FAILS
+        {
+        }
+
+        fn g_bad2(i: u8)
+            requires[no_panic exact]
+                i >= 5,
+        {
+            if i < 5 {
+                do_panic();
+            }
+            do_panic(); // FAILS
+        }
+
+        #[verifier::deny_panic(false)]
+        fn caller1(j: u8) {
+            g(j);
+            assert(j >= 5);
+        }
+
+        #[verifier::deny_panic(false)]
+        fn caller2(j: u8) {
+            g(j);
+            assert(j >= 6); // FAILS
+        }
+
+        fn caller3(j: u8) {
+            g(j); // FAILS
+        }
+
+        fn caller4(j: u8) {
+            #[verifier::deny_panic(false)] g(j);
+            #[verifier::deny_panic(true)] g(j);
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] requires_no_panic_assume_specification verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        fn ext(i: u8) -> u8 {
+            if i == 0 { panic!() }
+            i
+        }
+
+        pub assume_specification[ext](i: u8) -> (r: u8)
+            requires[no_panic exact]
+                i > 0,
+            ensures
+                r == i;
+
+        fn test1() {
+            let r = ext(3);
+            assert(r == 3);
+        }
+
+        fn test2() {
+            let r = ext(0); // FAILS
+        }
+
+        #[verifier::deny_panic(false)]
+        fn test3(i: u8) {
+            let r = ext(i);
+            assert(i > 0);
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] requires_no_panic_trait verus_code! {
+        use vstd::prelude::*;
+
+        trait T {
+            fn m(&self, i: u8)
+                requires[no_panic]
+                    i >= 5;
+        }
+
+        struct S;
+
+        impl T for S {
+            fn m(&self, i: u8) {
+            }
+        }
+
+        struct S2;
+
+        impl T for S2 {
+            fn m(&self, i: u8) {
+                if i < 5 {
+                    may_unwind();
+                }
+                may_unwind(); // FAILS
+            }
+        }
+
+        fn may_unwind() {
+        }
+
+        fn test1<A: T>(a: &A) {
+            a.m(5);
+            a.m(4); // FAILS
+        }
+
+        fn test2(s: &S) {
+            s.m(5);
+            s.m(4); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] requires_no_panic_bad_syntax verus_code! {
+        fn f(i: u8)
+            requires[no_panic bogus]
+                i >= 5,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected `exact`")
+}
+
+test_verify_one_file! {
+    #[test] requires_no_unwind_old_syntax verus_code! {
+        fn f(i: u8)
+            requires[no_unwind]
+                i >= 5,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use `requires[no_panic]` instead of `requires[no_unwind]`")
+}
+
+test_verify_one_file! {
+    #[test] requires_no_panic_with_no_unwind verus_code! {
+        fn f(i: u8)
+            requires[no_panic]
+                i >= 5,
+            no_unwind
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "only one `unwind` spec allowed")
+}
+
+test_verify_one_file! {
+    #[test] requires_no_panic_proof_fn verus_code! {
+        proof fn f(i: u8)
+            requires[no_panic]
+                i >= 5,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "an `unwind` specification can only be given on exec functions")
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind verus_code! {
+        use vstd::prelude::*;
+
+        fn may_unwind() {
+        }
+
+        fn f(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            if i >= 10 {
+                may_unwind();
+            }
+        }
+
+        fn f_fail(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            may_unwind(); // FAILS
+        }
+
+        // the callee's ensures[on unwind] can be assumed on its unwind path
+        fn g(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            f(i);
+        }
+
+        fn g_fail(i: u8)
+            ensures[on unwind]
+                i >= 11,
+        {
+            f(i); // FAILS
+        }
+
+        // ensures[on unwind] is not a precondition
+        fn h() {
+            f(3);
+        }
+
+        // multiple clauses are all checked
+        fn multi(i: u8, j: u8)
+            ensures[on unwind]
+                i >= 10,
+                j >= 10,
+        {
+            if i >= 10 {
+                may_unwind(); // FAILS
+            }
+        }
+
+        fn multi2(i: u8, j: u8)
+            ensures[on unwind]
+                i >= 10,
+                j >= 10,
+        {
+            if i >= 10 && j >= 10 {
+                may_unwind();
+            }
+            if j >= 10 {
+                f(i);
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_syntax verus_code! {
+        use vstd::prelude::*;
+
+        fn may_unwind() {
+        }
+
+        fn f1(i: u8) -> (r: u8)
+            requires
+                i < 100,
+            ensures
+                r == i + 1,
+            ensures[on unwind]
+                i >= 10,
+        {
+            if i >= 10 {
+                may_unwind();
+            }
+            i + 1
+        }
+
+        fn f2(i: u8) -> (r: u8)
+            requires
+                i < 100,
+            ensures[on unwind]
+                i >= 10,
+            ensures
+                r == i + 1,
+        {
+            if i >= 10 {
+                may_unwind();
+            }
+            i + 1
+        }
+
+        fn test() {
+            let r = f1(5);
+            assert(r == 6);
+            let r = f2(5);
+            assert(r == 6);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_with_no_unwind_when verus_code! {
+        use vstd::prelude::*;
+
+        fn may_unwind() {
+        }
+
+        fn nu(i: u8)
+            no_unwind when i < 10
+        {
+            if i >= 10 {
+                may_unwind();
+            }
+        }
+
+        // the callee only unwinds when i >= 10
+        fn f(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            nu(i);
+        }
+
+        // the endpoint of the unwind path checks both the legacy `no_unwind when`
+        // and `ensures[on unwind]`
+        fn g(i: u8, j: u8)
+            ensures[on unwind]
+                j == 0,
+            no_unwind when i < 10
+        {
+            if i >= 10 && j == 0 {
+                may_unwind();
+            }
+            if i >= 10 {
+                may_unwind(); // FAILS
+            }
+        }
+
+        fn g2(i: u8, j: u8)
+            ensures[on unwind]
+                j == 0,
+            no_unwind when i < 10
+        {
+            if j == 0 {
+                may_unwind(); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_with_requires_no_unwind verus_code! {
+        use vstd::prelude::*;
+
+        fn may_unwind() {
+        }
+
+        fn r(i: u8)
+            requires[no_panic]
+                i < 10,
+        {
+            if i >= 10 {
+                may_unwind();
+            }
+        }
+
+        // unwinding of r implies !(i < 10)
+        #[verifier::deny_panic(false)]
+        fn f(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            r(i);
+        }
+
+        #[verifier::deny_panic(false)]
+        fn f_fail(i: u8)
+            ensures[on unwind]
+                i >= 11,
+        {
+            r(i); // FAILS
+        }
+
+        // the endpoint of the unwind path checks the negation of requires[no_panic]
+        // and the ensures[on unwind] conditions
+        fn g(i: u8, j: u8)
+            requires[no_panic]
+                i < 10,
+            ensures[on unwind]
+                j == 0,
+        {
+            if i >= 10 && j == 0 {
+                may_unwind();
+            }
+        }
+
+        fn g_fail1(i: u8, j: u8)
+            requires[no_panic]
+                i < 10,
+            ensures[on unwind]
+                j == 0,
+        {
+            if j == 0 {
+                may_unwind(); // FAILS
+            }
+        }
+
+        fn g_fail2(i: u8, j: u8)
+            requires[no_panic]
+                i < 10,
+            ensures[on unwind]
+                j == 0,
+        {
+            if i >= 10 {
+                may_unwind(); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_closure verus_code! {
+        use vstd::prelude::*;
+
+        fn may_unwind() {
+        }
+
+        // closure bodies are checked separately (closures may always unwind)
+        fn f(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            let c = || { may_unwind(); };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_trait verus_code! {
+        use vstd::prelude::*;
+
+        fn may_unwind() {
+        }
+
+        trait T {
+            fn m(&self, i: u8)
+                ensures[on unwind]
+                    i >= 5;
+        }
+
+        struct S;
+
+        impl T for S {
+            fn m(&self, i: u8) {
+                if i >= 5 {
+                    may_unwind();
+                }
+            }
+        }
+
+        struct S2;
+
+        impl T for S2 {
+            fn m(&self, i: u8) {
+                may_unwind(); // FAILS
+            }
+        }
+
+        fn test1<A: T>(a: &A, i: u8)
+            ensures[on unwind]
+                i >= 5,
+        {
+            a.m(i);
+        }
+
+        fn test2(s: &S, i: u8)
+            ensures[on unwind]
+                i >= 6,
+        {
+            s.m(i); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_trait_impl_not_allowed verus_code! {
+        trait T {
+            fn m(&self, i: u8);
+        }
+
+        struct S;
+
+        impl T for S {
+            fn m(&self, i: u8)
+                ensures[on unwind]
+                    i >= 5,
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `ensures[on unwind]` clauses")
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_assume_specification verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        fn ext(i: u8) -> u8 {
+            if i == 0 { panic!() }
+            i
+        }
+
+        pub assume_specification[ext](i: u8) -> (r: u8)
+            ensures
+                r == i,
+            ensures[on unwind]
+                i == 0;
+
+        fn test1(i: u8)
+            ensures[on unwind]
+                i == 0,
+        {
+            let r = ext(i);
+            assert(r == i);
+        }
+
+        fn test2(i: u8)
+            ensures[on unwind]
+                i == 1,
+        {
+            let r = ext(i); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_bad_syntax verus_code! {
+        fn f(i: u8)
+            ensures[on bogus]
+                i >= 5,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected `unwind`")
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_proof_fn verus_code! {
+        proof fn f(i: u8)
+            ensures[on unwind]
+                i >= 5,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`ensures[on unwind]` clauses can only be given on exec functions")
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_private_field verus_code! {
+        mod m {
+            pub struct S { x: u8 }
+
+            pub fn f(s: &S)
+                ensures[on unwind]
+                    s.x == 0,
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: field expression for an opaque datatype")
+}
+
+test_verify_one_file! {
+    #[test] no_unwind_when_deprecated verus_code! {
+        fn f(i: u8)
+            no_unwind when i > 0
+        {
+        }
+    } => Ok(err) => assert_vir_warning_msg(err, "`no_unwind when` is deprecated; use `requires[no_panic]`, `requires[no_panic exact]` or `ensures[on unwind]` instead")
+}
+
+test_verify_one_file! {
+    #[test] no_panic_basic verus_code! {
+        use vstd::prelude::*;
+
+        fn may_panic() {
+        }
+
+        fn never_panics()
+            no_panic
+        {
+        }
+
+        fn never_unwinds()
+            no_unwind
+        {
+        }
+
+        fn cond(i: u8)
+            requires[no_panic]
+                i >= 5,
+        {
+            if i < 5 {
+                may_panic();
+            }
+        }
+
+        fn f1()
+            no_panic
+        {
+            never_panics();
+            cond(5);
+        }
+
+        fn f2()
+            no_panic
+        {
+            may_panic(); // FAILS
+        }
+
+        // a `no_unwind` function might still panic by aborting
+        fn f3()
+            no_panic
+        {
+            never_unwinds(); // FAILS
+        }
+
+        // but a `no_panic` function can be called from a `no_unwind` function
+        fn f4()
+            no_unwind
+        {
+            never_panics();
+            never_unwinds();
+        }
+
+        #[verifier::deny_panic(false)]
+        fn f5(i: u8)
+            no_panic
+        {
+            cond(i); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] no_panic_requires_calls_no_unwind verus_code! {
+        use vstd::prelude::*;
+
+        fn never_unwinds()
+            no_unwind
+        {
+        }
+
+        fn f(i: u8)
+            requires[no_panic]
+                i >= 5,
+        {
+            if i < 5 {
+                never_unwinds();
+            }
+        }
+
+        fn g(i: u8)
+            requires[no_panic]
+                i >= 5,
+        {
+            never_unwinds(); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] no_panic_message verus_code! {
+        fn never_unwinds()
+            no_unwind
+        {
+        }
+
+        fn f()
+            no_panic
+        {
+            never_unwinds();
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        assert!(err.errors[0].message.contains("possible panic"));
+        assert!(err.errors[0].spans.iter().any(|s| s.label.as_ref().is_some_and(|l| l.contains("you may need to mark it `no_panic`"))));
+    }
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_panic verus_code! {
+        use vstd::prelude::*;
+
+        fn may_panic() {
+        }
+
+        fn never_unwinds()
+            no_unwind
+        {
+        }
+
+        fn f(i: u8)
+            ensures[on panic]
+                i >= 10,
+        {
+            if i >= 10 {
+                may_panic();
+                never_unwinds();
+            }
+        }
+
+        fn f_fail1(i: u8)
+            ensures[on panic]
+                i >= 10,
+        {
+            may_panic(); // FAILS
+        }
+
+        // checked on the panic path of a `no_unwind` callee
+        fn f_fail2(i: u8)
+            ensures[on panic]
+                i >= 10,
+        {
+            never_unwinds(); // FAILS
+        }
+
+        // ensures[on panic] can be assumed on both unwind and panic paths
+        fn g1(i: u8)
+            ensures[on panic]
+                i >= 10,
+        {
+            f(i);
+        }
+
+        fn g2(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            f(i);
+        }
+
+        // ensures[on panic] implies that the function doesn't panic when the condition fails
+        fn g3()
+            no_panic
+        {
+            f(3);
+        }
+
+        // ensures[on panic] is not a precondition
+        fn g4() {
+            f(3);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_unwind_does_not_imply_on_panic verus_code! {
+        use vstd::prelude::*;
+
+        fn f(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+        }
+
+        fn g1(i: u8)
+            ensures[on unwind]
+                i >= 10,
+        {
+            f(i);
+        }
+
+        // f might panic without unwinding, in which case i >= 10 is not known
+        fn g2(i: u8)
+            ensures[on panic]
+                i >= 10,
+        {
+            f(i); // FAILS
+        }
+
+        fn g3()
+            no_panic
+        {
+            f(3); // FAILS
+        }
+
+        // but f(3) can't unwind
+        fn g4()
+            no_unwind
+        {
+            f(3);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_panic_syntax verus_code! {
+        use vstd::prelude::*;
+
+        fn f1(i: u8) -> (r: u8)
+            requires
+                i < 100,
+            ensures[on panic]
+                i >= 10,
+            ensures
+                r == i,
+            ensures[on unwind]
+                i >= 20,
+        {
+            i
+        }
+
+        fn f2(i: u8) -> (r: u8)
+            ensures[on unwind]
+                i >= 20,
+            ensures[on panic]
+                i >= 10,
+            ensures
+                r == i,
+        {
+            i
+        }
+
+        fn test() {
+            let r = f1(5);
+            assert(r == 5);
+            let r = f2(5);
+            assert(r == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_panic_duplicate verus_code! {
+        fn f(i: u8)
+            ensures[on panic]
+                i >= 10,
+            ensures[on panic]
+                i >= 20,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "duplicate `ensures[on panic]` clause")
+}
+
+test_verify_one_file! {
+    #[test] no_panic_with_no_unwind verus_code! {
+        fn f()
+            no_unwind
+            no_panic
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "only one `unwind` spec allowed")
+}
+
+test_verify_one_file! {
+    #[test] no_panic_proof_fn verus_code! {
+        proof fn f()
+            no_panic
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "an `unwind` specification can only be given on exec functions")
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_panic_proof_fn verus_code! {
+        proof fn f(i: u8)
+            ensures[on panic]
+                i >= 5,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`ensures[on panic]` clauses can only be given on exec functions")
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_panic_trait verus_code! {
+        use vstd::prelude::*;
+
+        fn may_panic() {
+        }
+
+        trait T {
+            fn m(&self, i: u8)
+                ensures[on panic]
+                    i >= 5;
+        }
+
+        struct S;
+
+        impl T for S {
+            fn m(&self, i: u8) {
+                if i >= 5 {
+                    may_panic();
+                }
+            }
+        }
+
+        struct S2;
+
+        impl T for S2 {
+            fn m(&self, i: u8) {
+                may_panic(); // FAILS
+            }
+        }
+
+        fn test<A: T>(a: &A)
+            no_panic
+        {
+            a.m(3);
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] ensures_on_panic_trait_impl_not_allowed verus_code! {
+        trait T {
+            fn m(&self, i: u8);
+        }
+
+        struct S;
+
+        impl T for S {
+            fn m(&self, i: u8)
+                ensures[on panic]
+                    i >= 5,
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare `ensures[on panic]` clauses")
+}
+
+test_verify_one_file! {
+    #[test] no_panic_drop verus_code! {
+        use vstd::prelude::*;
+
+        struct S { }
+
+        impl Drop for S {
+            fn drop(&mut self)
+                opens_invariants none
+                no_panic
+            {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] no_panic_closure verus_code! {
+        use vstd::prelude::*;
+
+        fn may_panic() {
+        }
+
+        // closure bodies are checked separately (closures may always panic)
+        fn f()
+            no_panic
+        {
+            let c = || { may_panic(); };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] no_panic_vstd_calls verus_code! {
+        use vstd::prelude::*;
+
+        // `?` on Option relies on the inherited `ensures[on panic]` of `branch`/`from_residual`
+        fn try_op(o: Option<u8>) -> (r: Option<u8>)
+            no_panic
+        {
+            let x = o?;
+            Some(x / 2)
+        }
+
+        fn vec_ops(v: &Vec<u8>) -> (r: usize)
+            no_panic
+        {
+            if v.len() > 0 {
+                let _ = v[0];
+            }
+            v.len()
+        }
+
+        // allocation might panic
+        fn vec_push(v: &mut Vec<u8>)
+            no_panic
+        {
+            v.push(3); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] vstd_no_panic_exact_specs verus_code! {
+        use vstd::prelude::*;
+        use core::sync::atomic::{AtomicU32, Ordering};
+
+        fn test1(o: Option<u8>, v: &Vec<u8>, i: usize) {
+            let x = o.unwrap(); // FAILS
+            let y = v[i]; // FAILS
+        }
+
+        // with deny_panic(false), the calls may panic, and a normal return implies the condition
+        #[verifier::deny_panic(false)]
+        fn test2(o: Option<u8>, r: Result<u8, u8>, v: &Vec<u8>, s: &mut [u8], i: usize) {
+            let x = o.unwrap();
+            assert(o is Some);
+            let x = r.expect("ok");
+            assert(r is Ok);
+            let y = v[i];
+            assert(i < v.len());
+            s.swap(i, 0);
+            assert(i < s.len());
+        }
+
+        #[verifier::deny_panic(false)]
+        fn test3(a: &AtomicU32, o: Ordering) {
+            let _ = a.load(o);
+            assert(o != Ordering::Release);
+        }
+
+        #[verifier::deny_panic(false)]
+        fn test4(v: &Vec<u8>, i: usize)
+            no_panic
+        {
+            let y = v[i]; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }

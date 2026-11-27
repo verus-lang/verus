@@ -544,6 +544,7 @@ fn check_one_expr(
             args: _,
             post_args: _,
             body: _,
+            unwind_path: _,
         } => {
             if attrs.assume_external_allowed && !ctxt.funs.contains_key(x) {
                 if ctxt.no_cheating && !ctxt.assumptions_allowed(function) {
@@ -1134,6 +1135,18 @@ fn check_function_inner(
                 "trait method implementation cannot declare an `unwind` specification; this can only be inherited from the trait declaration",
             ));
         }
+        if function.x.unwind_ensure.len() > 0 {
+            return Err(error(
+                &function.span,
+                "trait method implementation cannot declare `ensures[on unwind]` clauses; these can only be inherited from the trait declaration",
+            ));
+        }
+        if function.x.panic_ensure.len() > 0 {
+            return Err(error(
+                &function.span,
+                "trait method implementation cannot declare `ensures[on panic]` clauses; these can only be inherited from the trait declaration",
+            ));
+        }
 
         let orig_decl = ctxt.funs.get(&method).ok_or_else(|| {
             error(&function.span, "implementing a trait method that doesn't exist")
@@ -1317,6 +1330,18 @@ fn check_function_inner(
         return Err(error(
             &function.span,
             "an `unwind` specification can only be given on exec functions",
+        ));
+    }
+    if function.x.unwind_ensure.len() > 0 && function.x.mode != Mode::Exec {
+        return Err(error(
+            &function.span,
+            "`ensures[on unwind]` clauses can only be given on exec functions",
+        ));
+    }
+    if function.x.panic_ensure.len() > 0 && function.x.mode != Mode::Exec {
+        return Err(error(
+            &function.span,
+            "`ensures[on panic]` clauses can only be given on exec functions",
         ));
     }
     if function.x.attrs.broadcast_forall {
@@ -1635,8 +1660,14 @@ fn check_function_inner(
         }
     }
     match &function.x.unwind_spec {
-        None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
-        Some(UnwindSpec::NoUnwindWhen(expr)) => {
+        None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind | UnwindSpec::NoPanic) => {}
+        Some(UnwindSpec::NoUnwindWhen(expr, kind)) => {
+            if *kind == crate::ast::NoUnwindWhenKind::When {
+                emit.diags.push(VirErrAs::Warning(crate::messages::warning(
+                    &expr.span,
+                    "`no_unwind when` is deprecated; use `requires[no_panic]`, `requires[no_panic exact]` or `ensures[on unwind]` instead",
+                )));
+            }
             let msg = "`unwind` clause of public function";
             let disallow_private_access = Some((&function.x.visibility, msg));
             check_expr(
@@ -1649,6 +1680,32 @@ fn check_function_inner(
                 warn_config,
             )?;
         }
+    }
+    for expr in function.x.unwind_ensure.iter() {
+        let msg = "`ensures[on unwind]` clause of public function";
+        let disallow_private_access = Some((&function.x.visibility, msg));
+        check_expr(
+            &ctxt,
+            function,
+            expr,
+            disallow_private_access,
+            Area::PreState("`ensures[on unwind]` clause"),
+            emit,
+            warn_config,
+        )?;
+    }
+    for expr in function.x.panic_ensure.iter() {
+        let msg = "`ensures[on panic]` clause of public function";
+        let disallow_private_access = Some((&function.x.visibility, msg));
+        check_expr(
+            &ctxt,
+            function,
+            expr,
+            disallow_private_access,
+            Area::PreState("`ensures[on panic]` clause"),
+            emit,
+            warn_config,
+        )?;
     }
     for expr in function.x.decrease.iter() {
         let msg = "`decreases` clause of public function";
@@ -1777,10 +1834,13 @@ fn check_function_inner(
                 "a `Drop` implementation must be marked `opens_invariants none`",
             ));
         }
-        if !matches!(&function.x.unwind_spec, Some(crate::ast::UnwindSpec::NoUnwind)) {
+        if !matches!(
+            &function.x.unwind_spec,
+            Some(crate::ast::UnwindSpec::NoUnwind | crate::ast::UnwindSpec::NoPanic)
+        ) {
             return Err(error(
                 &function.span,
-                "a `Drop` implementation must be marked `no_unwind`",
+                "a `Drop` implementation must be marked `no_unwind` or `no_panic`",
             ));
         }
     }

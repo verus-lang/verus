@@ -506,6 +506,11 @@ impl<'a, 'tcx> HeaderFinder<'a, 'tcx> {
                     | SpecItem::OpensInvariantMask
                     | SpecItem::NoUnwind
                     | SpecItem::NoUnwindWhen
+                    | SpecItem::NoPanic
+                    | SpecItem::NoPanicRequires
+                    | SpecItem::NoPanicRequiresExact
+                    | SpecItem::UnwindEnsures
+                    | SpecItem::PanicEnsures
                     | SpecItem::AtomicSpec
             )) | Some(VerusItem::Directive(DirectiveItem::ExtraDependency))
         )

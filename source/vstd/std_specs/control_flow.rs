@@ -26,7 +26,7 @@ pub trait ExTry: FromResidual<Self::Residual> {
 
     type Residual: core::ops::Residual<Self::Output>;
 
-    /// Whether `branch` may unwind for this value.
+    /// Whether `branch` may panic (and hence unwind) for this value.
     spec fn may_unwind(&self) -> bool;
 
     /// The result of `branch` matches its functional spec
@@ -37,7 +37,8 @@ pub trait ExTry: FromResidual<Self::Residual> {
     fn branch(self) -> (ret: ControlFlow<Self::Residual, Self::Output>) where Self: Sized
         ensures
             Self::branch_model_is_valid() ==> ret == Self::branch_model(self),
-        no_unwind when !self.may_unwind()
+        ensures[on panic]
+            self.may_unwind(),
     ;
 
     fn from_output(output: Self::Output) -> Self where Self: Sized;
@@ -48,11 +49,12 @@ pub trait ExTry: FromResidual<Self::Residual> {
 pub trait ExFromResidual<R> {
     type ExternalTraitSpecificationFor: FromResidual<R>;
 
-    /// Whether converting this residual may unwind.
+    /// Whether converting this residual may panic (and hence unwind).
     spec fn may_unwind(residual: &R) -> bool;
 
     fn from_residual(residual: R) -> Self where Self: Sized
-        no_unwind when !Self::may_unwind(&residual)
+        ensures[on panic]
+            Self::may_unwind(&residual),
     ;
 }
 

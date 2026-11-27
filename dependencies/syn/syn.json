@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2026-09-06-0133",
+  "version": "0.0.0-2026-11-01-0251",
   "types": [
     {
       "ident": "Abi",
@@ -338,9 +338,24 @@
             "syn": "Requires"
           }
         },
+        "no_panic_requires": {
+          "option": {
+            "syn": "NoPanicRequires"
+          }
+        },
         "ensures": {
           "option": {
             "syn": "Ensures"
+          }
+        },
+        "unwind_ensures": {
+          "option": {
+            "syn": "UnwindEnsures"
+          }
+        },
+        "panic_ensures": {
+          "option": {
+            "syn": "UnwindEnsures"
           }
         },
         "default_ensures": {
@@ -361,6 +376,11 @@
         "unwind": {
           "option": {
             "syn": "SignatureUnwind"
+          }
+        },
+        "no_panic": {
+          "option": {
+            "syn": "SignatureNoPanic"
           }
         },
         "semi": {
@@ -5398,6 +5418,31 @@
       }
     },
     {
+      "ident": "NoPanicRequires",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Requires"
+        },
+        "bracket_token": {
+          "group": "Bracket"
+        },
+        "no_panic_token": {
+          "proc_macro2": "Ident"
+        },
+        "exact": {
+          "option": {
+            "proc_macro2": "Ident"
+          }
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
       "ident": "Open",
       "features": {
         "any": []
@@ -6600,6 +6645,17 @@
       }
     },
     {
+      "ident": "SignatureNoPanic",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "NoPanic"
+        }
+      }
+    },
+    {
       "ident": "SignatureSpec",
       "features": {
         "any": []
@@ -6620,6 +6676,11 @@
             "syn": "Requires"
           }
         },
+        "no_panic_requires": {
+          "option": {
+            "syn": "NoPanicRequires"
+          }
+        },
         "recommends": {
           "option": {
             "syn": "Recommends"
@@ -6628,6 +6689,16 @@
         "ensures": {
           "option": {
             "syn": "Ensures"
+          }
+        },
+        "unwind_ensures": {
+          "option": {
+            "syn": "UnwindEnsures"
+          }
+        },
+        "panic_ensures": {
+          "option": {
+            "syn": "UnwindEnsures"
           }
         },
         "default_ensures": {
@@ -6653,6 +6724,11 @@
         "unwind": {
           "option": {
             "syn": "SignatureUnwind"
+          }
+        },
+        "no_panic": {
+          "option": {
+            "syn": "SignatureNoPanic"
           }
         },
         "with": {
@@ -7647,6 +7723,29 @@
       }
     },
     {
+      "ident": "UnwindEnsures",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Ensures"
+        },
+        "bracket_token": {
+          "group": "Bracket"
+        },
+        "on_token": {
+          "proc_macro2": "Ident"
+        },
+        "kind": {
+          "proc_macro2": "Ident"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
       "ident": "UseGlob",
       "features": {
         "any": [
@@ -8136,6 +8235,7 @@
     "Mut": "mut",
     "Ne": "!=",
     "NeEq": "!==",
+    "NoPanic": "no_panic",
     "NoUnwind": "no_unwind",
     "Not": "!",
     "Open": "open",

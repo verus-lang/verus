@@ -331,17 +331,19 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             }
             ExprX::AirStmt(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Nondeterministic => R::ret(|| expr_new(expr.x.clone())),
-            ExprX::Call { target, args, post_args, body } => {
+            ExprX::Call { target, args, post_args, body, unwind_path } => {
                 let ct = self.visit_call_target(target)?;
                 let es = self.visit_exprs(args)?;
                 let pa = self.visit_opt_expr(post_args)?;
                 let bd = self.visit_opt_expr(body)?;
+                let up = self.visit_opt_expr(unwind_path)?;
                 R::ret(|| {
                     expr_new(ExprX::Call {
                         target: R::get(ct),
                         args: R::get_vec_a(es),
                         post_args: R::get_opt(pa),
                         body: R::get_opt(bd),
+                        unwind_path: R::get_opt(up),
                     })
                 })
             }
@@ -1142,9 +1144,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
     fn visit_unwind_spec(&mut self, us: &UnwindSpec) -> Result<R::Ret<UnwindSpec>, Err> {
         match us {
             UnwindSpec::NoUnwind => R::ret(|| UnwindSpec::NoUnwind),
-            UnwindSpec::NoUnwindWhen(expr) => {
+            UnwindSpec::NoPanic => R::ret(|| UnwindSpec::NoPanic),
+            UnwindSpec::NoUnwindWhen(expr, kind) => {
                 let e = self.visit_expr(expr)?;
-                R::ret(|| UnwindSpec::NoUnwindWhen(R::get(e)))
+                R::ret(|| UnwindSpec::NoUnwindWhen(R::get(e), *kind))
             }
             UnwindSpec::MayUnwind => R::ret(|| UnwindSpec::MayUnwind),
         }
@@ -1214,6 +1217,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             mask_spec,
             atomic_update,
             unwind_spec,
+            unwind_ensure,
+            panic_ensure,
             item_kind,
             attrs,
             body,
@@ -1251,6 +1256,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         let mask_spec = R::map_opt(mask_spec, &mut |ms| self.visit_mask_spec(ms))?;
         let atomic_update = R::map_opt(atomic_update, &mut |exp| self.visit_expr(exp))?;
         let unwind_spec = R::map_opt(unwind_spec, &mut |us| self.visit_unwind_spec(us))?;
+        let unwind_ensure = self.visit_exprs(unwind_ensure)?;
+        let panic_ensure = self.visit_exprs(panic_ensure)?;
         let body = self.visit_opt_expr(body)?;
         let return_opaque_type_eqs =
             R::map_vec(return_opaque_type_eqs, &mut |(opaque, hidden)| {
@@ -1286,6 +1293,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 mask_spec: R::get_opt(mask_spec),
                 atomic_update: R::get_opt(atomic_update),
                 unwind_spec: R::get_opt(unwind_spec),
+                unwind_ensure: R::get_vec_a(unwind_ensure),
+                panic_ensure: R::get_vec_a(panic_ensure),
                 item_kind: item_kind.clone(),
                 attrs: attrs.clone(),
                 body: R::get_opt(body),

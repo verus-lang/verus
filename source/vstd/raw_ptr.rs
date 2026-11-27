@@ -404,7 +404,7 @@ pub assume_specification<
     ensures
         res == ptr_null::<T>(),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 /// Constructs a mutable null pointer.
@@ -425,7 +425,7 @@ pub assume_specification<
     ensures
         res == ptr_null_mut::<T>(),
     opens_invariants none
-    no_unwind
+    no_panic
 ;
 
 //////////////////////////////////////
@@ -447,7 +447,7 @@ pub fn cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> (result: *mut U
     ensures
         result == spec_cast_ptr_to_thin_ptr::<T, U>(ptr),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     ptr as *mut U
 }
@@ -469,7 +469,7 @@ pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (resu
     ensures
         result == spec_cast_array_ptr_to_slice_ptr(ptr),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     ptr as *mut [T]
 }
@@ -493,7 +493,7 @@ pub fn cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> (result: *mut [U])
     ensures
         result == spec_cast_slice_ptr_to_slice_ptr::<T, U>(ptr),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     ptr as *mut [U]
 }
@@ -517,7 +517,7 @@ pub fn cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> (result: *mut str)
     ensures
         result == spec_cast_slice_ptr_to_str_ptr::<T>(ptr),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     ptr as *mut str
 }
@@ -541,7 +541,7 @@ pub fn cast_str_ptr_to_slice_ptr<T>(ptr: *mut str) -> (result: *mut [T])
     ensures
         result == spec_cast_str_ptr_to_slice_ptr::<T>(ptr),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     ptr as *mut [T]
 }
@@ -561,7 +561,7 @@ pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
     ensures
         result == spec_cast_ptr_to_usize(ptr),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     ptr as usize
 }
@@ -583,7 +583,7 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
         final(perm).ptr() == ptr,
         final(perm).opt_value() == MemContents::Init(v),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     unsafe {
         core::ptr::write(ptr, v);
@@ -608,7 +608,7 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
         final(perm).is_uninit(),
         v == old(perm).value(),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     unsafe { core::ptr::read(ptr) }
 }
@@ -624,7 +624,7 @@ pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T
     ensures
         v == perm.value(),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     unsafe { &*ptr }
 }
@@ -643,7 +643,7 @@ pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> 
         old(perm).value() == *v,
         final(perm).value() == *final(v),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     unsafe { &mut *ptr }
 }
@@ -664,7 +664,7 @@ macro_rules! pointer_specs {
             pub assume_specification<T: ::core::marker::PointeeSized>[<*$mu T>::addr](p: *$mu T) -> (addr: usize)
                 ensures addr == spec_addr(p)
                 opens_invariants none
-                no_unwind;
+                no_panic;
 
             pub open spec fn spec_with_addr<T: ::core::marker::PointeeSized>(p: *$mu T, addr: usize) -> *$mu T {
                 $ptr_from_data(PtrData::<T> { addr: addr, .. p@ })
@@ -675,7 +675,7 @@ macro_rules! pointer_specs {
             pub assume_specification<T: ::core::marker::PointeeSized>[<*$mu T>::with_addr](p: *$mu T, addr: usize) -> (q: *$mu T)
                 ensures q == spec_with_addr(p, addr)
                 opens_invariants none
-                no_unwind;
+                no_panic;
 
             }
         }
@@ -732,7 +732,7 @@ pub fn expose_provenance<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>
     ensures
         provenance@@ == m@.provenance,
     opens_invariants none
-    no_unwind
+    no_panic
 {
     let _ = m as usize;
     Tracked::assume_new()
@@ -750,7 +750,7 @@ pub fn with_exposed_provenance<T: Sized>(
             PtrData::<T> { addr: addr, provenance: provenance@, metadata: () },
         ),
     opens_invariants none
-    no_unwind
+    no_panic
 {
     addr as *mut T
 }
@@ -1045,7 +1045,7 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&'a PointsTo<T>>) -
         v.ptr().addr() == ptr.addr(),
         v.ptr()@.metadata == ptr@.metadata,
     opens_invariants none
-    no_unwind
+    no_panic
 {
     SharedReference(unsafe { &*ptr })
 }

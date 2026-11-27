@@ -772,8 +772,9 @@ test_verify_one_file_with_options! {
         }
 
         fn opens((x, _): (u32, u32))
+            requires[no_panic] x > 0,
+            ensures[on panic] x == 0,
             opens_invariants none
-            no_unwind when x > 0
         {
         }
     } => Ok(())
