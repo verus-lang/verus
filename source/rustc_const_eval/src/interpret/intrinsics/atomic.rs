@@ -1,6 +1,7 @@
 use rustc_middle::mir::BinOp;
-use rustc_middle::{mir, span_bug, ty};
-use rustc_span::{Symbol, sym};
+use rustc_middle::ty::consts::ConstExt;
+use rustc_middle::{mir, ty};
+use rustc_span::{Symbol, span_bug, sym};
 use tracing::trace;
 
 use super::{
@@ -27,6 +28,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         match intrinsic_name {
             sym::atomic_load => {
                 let ord = get_ord_at(1);
+                let _volatile = generic_args.const_at(2).to_value(); // makes no difference for us
                 let [ptr] = args else { span_bug!(self.cur_span(), "invalid `atomic_load` call") };
 
                 let place = self.deref_pointer(ptr)?;
@@ -35,6 +37,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             }
             sym::atomic_store => {
                 let ord = get_ord_at(1);
+                let _volatile = generic_args.const_at(2).to_value(); // makes no difference for us
                 let [ptr, val] = args else {
                     span_bug!(self.cur_span(), "invalid `atomic_store` call")
                 };

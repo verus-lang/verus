@@ -351,6 +351,31 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         }
     }
 
+    // Collect the binders of all non-exec (i.e., spec or proof) variables.
+    // Ghost code never runs drop, so the MIR builder should not emit drops for these.
+    let mut no_drop_vars = HashSet::<HirId>::new();
+    for (span, mode) in erasure_modes.binder_modes.iter() {
+        if *mode == Mode::Exec {
+            continue;
+        }
+        if let Some(hir_ids) = binder_id_to_hir.get(&span.id) {
+            no_drop_vars.extend(hir_ids.iter().copied());
+        }
+    }
+    for (span, (var_mode, _mode)) in erasure_modes.local_modes.iter() {
+        if *var_mode == Mode::Exec {
+            continue;
+        }
+        if let Some(hir_ids) = local_id_to_hir.get(&span.id) {
+            for hir_id in hir_ids.iter() {
+                if let Some((_, _, binder_hir_id)) = get_binder_hir_id(tcx, *hir_id) {
+                    no_drop_vars.insert(binder_hir_id);
+                }
+            }
+        }
+    }
+    no_drop_vars.extend(erasure_hints.ghost_param_binders.iter().copied());
+
     let mut ctor_modes = HashMap::<HirId, Mode>::new();
     for (span, mode) in erasure_modes.ctor_modes.iter() {
         if crate::spans::from_raw_span(&span.raw_span).is_none() {
@@ -412,6 +437,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         bodies,
         loop_erasure,
         local_invariant_bodies,
+        no_drop_vars: Arc::new(no_drop_vars),
 
         erased_ghost_value_fn_def_id: *verus_items
             .name_to_id
@@ -580,8 +606,11 @@ pub(crate) fn prepare_local_def_id<'tcx>(
 /// Should a call to the given verus item be erased in full-erasure mode?
 /// (See `FullErasureCtxt` in rustc_mir_build/verus.rs)
 fn full_erasure_erases_call(verus_item: &VerusItem) -> bool {
-    use crate::verus_items::CompilableOprItem;
+    use crate::verus_items::{BuiltinFunctionItem, CompilableOprItem};
     match verus_item {
+        // Replaced by its compiled argument (see `FullErasureCtxt`)
+        VerusItem::BuiltinFunction(BuiltinFunctionItem::ProofWithCallee) => false,
+
         VerusItem::Spec(_)
         | VerusItem::Quant(_)
         | VerusItem::Directive(_)
@@ -659,7 +688,7 @@ pub(crate) fn setup_full_erasure_ctxt<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     verus_items: &VerusItems,
 ) {
-    use crate::verus_items::BuiltinTypeItem;
+    use crate::verus_items::{BuiltinFunctionItem, BuiltinTypeItem};
 
     let ghost = verus_items.name_to_id.get(&VerusItem::BuiltinType(BuiltinTypeItem::Ghost));
     let tracked = verus_items.name_to_id.get(&VerusItem::BuiltinType(BuiltinTypeItem::Tracked));
@@ -682,15 +711,24 @@ pub(crate) fn setup_full_erasure_ctxt<'tcx>(
         .filter(|(_, verus_item)| full_erasure_erases_call(verus_item))
         .map(|(def_id, _)| *def_id)
         .collect();
+    let proof_with_callee_fn_def_id = verus_items
+        .name_to_id
+        .get(&VerusItem::BuiltinFunction(BuiltinFunctionItem::ProofWithCallee))
+        .copied()
+        .expect("proof_with_callee function");
 
+    let ghost_detection = rustc_mir_build_verus::verus::GhostDetectionCtxt {
+        erase_call_fns,
+        ghost_struct_def_id: *ghost,
+        tracked_struct_def_id: *tracked,
+        ghost_assume_new_fn_def_id: find_assume_new(*ghost),
+        tracked_assume_new_fn_def_id: find_assume_new(*tracked),
+        is_ghost_attrs: full_erasure_is_ghost_attrs,
+    };
     rustc_mir_build_verus::verus::set_full_erasure_ctxt(Arc::new(
         rustc_mir_build_verus::verus::FullErasureCtxt {
-            erase_call_fns,
-            ghost_struct_def_id: *ghost,
-            tracked_struct_def_id: *tracked,
-            ghost_assume_new_fn_def_id: find_assume_new(*ghost),
-            tracked_assume_new_fn_def_id: find_assume_new(*tracked),
-            is_ghost_attrs: full_erasure_is_ghost_attrs,
+            ghost_detection: Arc::new(ghost_detection),
+            proof_with_callee_fn_def_id,
         },
     ));
 }
