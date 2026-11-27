@@ -1135,6 +1135,15 @@ impl Verifier {
         let per_second = match air_context.get_solver() {
             air::context::SmtSolver::Z3 => RLIMIT_PER_SECOND_Z3,
             air::context::SmtSolver::Cvc5 => RLIMIT_PER_SECOND_CVC5,
+            // Sundance takes a wall-clock timeout in whole seconds
+            air::context::SmtSolver::Sundance => {
+                air_context.set_rlimit(if rlimit == f32::INFINITY {
+                    0
+                } else {
+                    rlimit.ceil().clamp(1.0, u32::MAX as f32) as u32
+                });
+                return;
+            }
         };
         air_context.set_rlimit(if rlimit == f32::INFINITY {
             0 // both solvers interpret a zero rlimit as infinity
@@ -1274,7 +1283,7 @@ impl Verifier {
                     air_context.set_solver_option("smt.arith.solver", "6")
                 }
                 // TODO: What cvc5 settings would help here?
-                air::context::SmtSolver::Cvc5 => {}
+                air::context::SmtSolver::Cvc5 | air::context::SmtSolver::Sundance => {}
             },
             vir::def::ProverChoice::DefaultProver | vir::def::ProverChoice::Singular => {}
         }
@@ -1304,6 +1313,7 @@ impl Verifier {
             PreludeConfig {
                 arch_word_bits: ctx.arch_word_bits,
                 smt_encoding: self.args.smt_encoding,
+                real_axioms: !matches!(self.args.solver, SmtSolver::Sundance),
             },
             profile_file_name,
             prover_choice,
@@ -1366,6 +1376,7 @@ impl Verifier {
             PreludeConfig {
                 arch_word_bits: ctx.arch_word_bits,
                 smt_encoding: self.args.smt_encoding,
+                real_axioms: !matches!(self.args.solver, SmtSolver::Sundance),
             },
             profile_all_file_name.as_ref(),
             vir::def::ProverChoice::DefaultProver,
@@ -1377,22 +1388,23 @@ impl Verifier {
         // query results during verification).
         air_context.set_observers(ctx.air_observer.clone(), ctx.query_result_observer.clone());
 
-        if self.args.solver_version_check {
-            air_context.set_expected_solver_version(match self.args.solver {
-                air::context::SmtSolver::Z3 => {
-                    cargo_verus_toolchains::external_deps::Z3_VERSION.to_string()
-                }
-                air::context::SmtSolver::Cvc5 => {
-                    cargo_verus_toolchains::external_deps::CVC5_VERSION.to_string()
-                }
-            });
+        let expected_solver_version = match self.args.solver {
+            air::context::SmtSolver::Z3 => Some(cargo_verus_toolchains::external_deps::Z3_VERSION),
+            air::context::SmtSolver::Cvc5 => {
+                Some(cargo_verus_toolchains::external_deps::CVC5_VERSION)
+            }
+            // Sundance is experimental and not pinned to a version
+            air::context::SmtSolver::Sundance => None,
+        };
+        if let (true, Some(version)) = (self.args.solver_version_check, expected_solver_version) {
+            air_context.set_expected_solver_version(version.to_string());
         }
 
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
         let mut spunoff_rlimit_count: Option<(u64, u64)> = match self.args.solver {
             SmtSolver::Z3 => Some((0, 0)),
-            SmtSolver::Cvc5 => None,
+            SmtSolver::Cvc5 | SmtSolver::Sundance => None,
         };
 
         let module = &ctx.module_path();
@@ -1541,7 +1553,9 @@ impl Verifier {
 
                         let mut func_curr_smt_rlimit_count = match self.args.solver {
                             air::context::SmtSolver::Z3 => Some(0),
-                            air::context::SmtSolver::Cvc5 => None,
+                            air::context::SmtSolver::Cvc5 | air::context::SmtSolver::Sundance => {
+                                None
+                            }
                         };
                         for cmds in commands_with_context_list.iter() {
                             if is_recommend && cmds.skip_recommends {

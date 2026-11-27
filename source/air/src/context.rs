@@ -75,6 +75,9 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
 pub enum SmtSolver {
     Z3,
     Cvc5,
+    /// Experimental; Sundance has no interactive mode, so it is run once per query
+    /// (see `crate::smt_batch`)
+    Sundance,
 }
 
 impl Default for SmtSolver {
@@ -89,13 +92,14 @@ impl SmtSolver {
         match self {
             SmtSolver::Z3 => "z3",
             SmtSolver::Cvc5 => "cvc5",
+            SmtSolver::Sundance => "sundance",
         }
     }
 
     pub fn default_encoding(&self) -> SmtEncoding {
         match self {
             SmtSolver::Z3 => SmtEncoding::Z3,
-            SmtSolver::Cvc5 => SmtEncoding::Cvc5,
+            SmtSolver::Cvc5 | SmtSolver::Sundance => SmtEncoding::Cvc5,
         }
     }
 }
@@ -218,7 +222,7 @@ impl Context {
             time_smt_run: Duration::new(0, 0),
             rlimit_count: match solver {
                 SmtSolver::Z3 => Some((0, 0)),
-                SmtSolver::Cvc5 => None,
+                SmtSolver::Cvc5 | SmtSolver::Sundance => None,
             },
             state: ContextState::NotStarted,
             expected_solver_version: None,
@@ -336,7 +340,7 @@ impl Context {
     /// Can the rlimit be adjusted for each check-sat query?
     pub fn rlimit_is_mutable(&self) -> bool {
         match self.solver {
-            SmtSolver::Z3 => true,
+            SmtSolver::Z3 | SmtSolver::Sundance => true,
             SmtSolver::Cvc5 => matches!(self.state, ContextState::NotStarted),
         }
     }
@@ -402,6 +406,7 @@ impl Context {
                 SmtSolver::Cvc5 => {
                     self.set_solver_option_bool("incremental", true, true);
                 }
+                SmtSolver::Sundance => {}
             }
         } else if option == "single_check_query" && value {
             self.single_check_query = true;
