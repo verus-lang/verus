@@ -3404,3 +3404,110 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] derive_debug_all_formatter_fns verus_code! {
+        use vstd::prelude::*;
+
+        // write_str: unit struct, empty tuple struct, empty braced struct
+        #[derive(Debug)] struct Unit;
+        #[derive(Debug)] struct EmptyTuple();
+        #[derive(Debug)] struct EmptyStruct {}
+
+        // write_str with a match: all-fieldless enum
+        #[derive(Debug)] enum Fieldless { A, B(), C {} }
+
+        // debug_tuple_field{1..5}_finish
+        #[derive(Debug)] struct T1(u8);
+        #[derive(Debug)] struct T2(u8, u16);
+        #[derive(Debug)] struct T3(u8, u16, u32);
+        #[derive(Debug)] struct T4(u8, u16, u32, u64);
+        #[derive(Debug)] struct T5(u8, u16, u32, u64, bool);
+        // debug_tuple_fields_finish
+        #[derive(Debug)] struct T6(u8, u16, u32, u64, bool, char);
+
+        // debug_struct_field{1..5}_finish
+        #[derive(Debug)] struct S1 { a: u8 }
+        #[derive(Debug)] struct S2 { a: u8, b: u16 }
+        #[derive(Debug)] struct S3 { a: u8, b: u16, c: u32 }
+        #[derive(Debug)] struct S4 { a: u8, b: u16, c: u32, d: u64 }
+        #[derive(Debug)] struct S5 { a: u8, b: u16, c: u32, d: u64, e: bool }
+        // debug_struct_fields_finish
+        #[derive(Debug)] struct S6 { a: u8, b: u16, c: u32, d: u64, e: bool, f: char }
+
+        // enum mixing all of the above
+        #[derive(Debug)]
+        enum Mixed {
+            U,
+            T0(),
+            S0 {},
+            T1(u8),
+            T2(u8, i8),
+            T3(u8, i8, u16),
+            T4(u8, i8, u16, i16),
+            T5(u8, i8, u16, i16, u32),
+            T6(u8, i8, u16, i16, u32, i32),
+            S1 { a: u8 },
+            S2 { a: u8, b: i8 },
+            S3 { a: u8, b: i8, c: u16 },
+            S4 { a: u8, b: i8, c: u16, d: i16 },
+            S5 { a: u8, b: i8, c: u16, d: i16, e: u32 },
+            S6 { a: u8, b: i8, c: u16, d: i16, e: u32, f: i32 },
+        }
+
+        // references to Debug types
+        #[derive(Debug)] struct Refs<'a> { a: &'a u8, b: &'a str }
+        #[derive(Debug)] struct Refs6<'a>(&'a u8, &'a u8, &'a u8, &'a u8, &'a u8, &'a &'a str);
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] derive_debug_generic verus_code! {
+        use vstd::prelude::*;
+        use core::fmt::{Debug, Formatter};
+        use vstd::std_specs::fmt::{DebugSpec, DebugSpecImpl};
+
+        #[derive(Debug)]
+        pub struct G<A> { pub a: A, pub b: u8 }
+
+        #[derive(Debug)]
+        pub struct G6<A>(pub A, pub A, pub A, pub A, pub A, pub A);
+
+
+        #[derive(Debug)]
+        pub enum E<A> { None, Some(A) }
+
+        // nested derived types
+        #[derive(Debug)]
+        struct Outer { g: G<u32>, e: E<G<u8>>, g6: G6<u8> }
+
+        fn test(o: &Outer) {
+            let _ = vstd::pervasive::__new_argument(o);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] derive_debug_format verus_code! {
+        use vstd::prelude::*;
+        use core::fmt::Formatter;
+        use vstd::std_specs::fmt::DebugSpecImpl;
+
+        #[derive(Debug)]
+        struct P { x: u8, y: u8 }
+
+        fn test() {
+            let p = P { x: 1, y: 2 };
+            let s = format!("{:?}", p);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] derive_debug_generic_without_spec_ok verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Debug)] // FAILS
+        struct G<A> { a: A }
+    } => Ok(())
+}

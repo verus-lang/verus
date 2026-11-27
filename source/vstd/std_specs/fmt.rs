@@ -159,6 +159,134 @@ pub assume_specification<'a, const N: usize, const M: usize>[ arguments_new ](
 ) -> Arguments<'a>
 ;
 
+pub assume_specification<'a>[ Formatter::<'a>::write_str ](
+    f: &mut Formatter<'a>,
+    data: &str,
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field1_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    value1: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field1_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    name1: &str,
+    value1: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field2_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    value1: &dyn core::fmt::Debug,
+    value2: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field2_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    name1: &str,
+    value1: &dyn core::fmt::Debug,
+    name2: &str,
+    value2: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field3_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    value1: &dyn core::fmt::Debug,
+    value2: &dyn core::fmt::Debug,
+    value3: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field3_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    name1: &str,
+    value1: &dyn core::fmt::Debug,
+    name2: &str,
+    value2: &dyn core::fmt::Debug,
+    name3: &str,
+    value3: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field4_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    value1: &dyn core::fmt::Debug,
+    value2: &dyn core::fmt::Debug,
+    value3: &dyn core::fmt::Debug,
+    value4: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field4_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    name1: &str,
+    value1: &dyn core::fmt::Debug,
+    name2: &str,
+    value2: &dyn core::fmt::Debug,
+    name3: &str,
+    value3: &dyn core::fmt::Debug,
+    name4: &str,
+    value4: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_field5_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    value1: &dyn core::fmt::Debug,
+    value2: &dyn core::fmt::Debug,
+    value3: &dyn core::fmt::Debug,
+    value4: &dyn core::fmt::Debug,
+    value5: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_field5_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    name1: &str,
+    value1: &dyn core::fmt::Debug,
+    name2: &str,
+    value2: &dyn core::fmt::Debug,
+    name3: &str,
+    value3: &dyn core::fmt::Debug,
+    name4: &str,
+    value4: &dyn core::fmt::Debug,
+    name5: &str,
+    value5: &dyn core::fmt::Debug,
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_tuple_fields_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    values: &[&dyn core::fmt::Debug],
+) -> Result<(), Error>
+;
+
+pub assume_specification<'a, 'b>[ Formatter::<'a>::debug_struct_fields_finish ](
+    f: &'b mut Formatter<'a>,
+    name: &str,
+    names: &[&str],
+    values: &[&dyn core::fmt::Debug],
+) -> Result<(), Error>
+    requires
+        names@.len() == values@.len(),
+;
+
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification[ alloc::fmt::format ](args: Arguments<'_>) -> alloc::string::String
 ;
