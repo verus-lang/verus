@@ -47,7 +47,7 @@ pub fn derive_structural_eq(mut s: synstructure::Structure) -> proc_macro2::Toke
     let tokens2 = quote_spanned_builtin_vstd! { builtin, vstd, s.ast().span() =>
         #[automatically_derived]
         #[allow(non_local_definitions)]
-        impl #vstd::std_specs::cmp::PartialEqSpecImpl for #name {
+        impl #vstd::std_specs::cmp::PartialEqSpecImpl for #name where Self: #builtin::Structural {
             #[verus::internal(spec)]
             #[verus::internal(open)]
             fn obeys_eq_spec() -> ::core::primitive::bool {
