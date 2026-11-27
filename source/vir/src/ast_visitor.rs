@@ -1,10 +1,11 @@
 use crate::ast::{
     Arm, ArmX, Arms, AssocTypeImpl, AssocTypeImplX, BinaryOpr, CallTarget, CallTargetKind,
     CtorUpdateTail, Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind,
-    FunctionX, GenericBound, GenericBoundX, Krate, KrateX, LoopInvariant, LoopInvariants, MaskSpec,
-    NullaryOpr, Param, ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX,
-    SpannedTyped, Stmt, StmtX, Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX,
-    Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr,
+    FunctionX, GenericBound, GenericBoundX, ImplPaths, Krate, KrateX, LoopInvariant,
+    LoopInvariants, MaskSpec, NullaryOpr, Param, ParamX, Params, Pattern, PatternBinding, PatternX,
+    Place, PlaceX, SpannedTyped, Stmt, StmtX, Trait, TraitImpl, TraitImplX, TraitX, Typ,
+    TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders,
+    VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -183,6 +184,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         R::map_vec(binders, &mut |b| self.visit_binder_typ(b))
     }
 
+    fn visit_impl_paths(&mut self, impl_paths: &ImplPaths) -> Result<R::Ret<ImplPaths>, Err> {
+        R::ret(|| impl_paths.clone())
+    }
+
     fn visit_call_target_kind(
         &mut self,
         call_target_kind: &CallTargetKind,
@@ -193,10 +198,11 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             CallTargetKind::Dynamic => R::ret(|| call_target_kind.clone()),
             CallTargetKind::DynamicResolved { resolved, typs, impl_paths, is_trait_default } => {
                 let typs = self.visit_typs(typs)?;
+                let impl_paths = self.visit_impl_paths(impl_paths)?;
                 R::ret(|| CallTargetKind::DynamicResolved {
                     resolved: resolved.clone(),
                     typs: R::get_vec_a(typs),
-                    impl_paths: impl_paths.clone(),
+                    impl_paths: R::get(impl_paths),
                     is_trait_default: *is_trait_default,
                 })
             }
@@ -209,12 +215,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             CallTarget::Fun(kind, fun, typs, impl_paths, attrs) => {
                 let kind = self.visit_call_target_kind(kind)?;
                 let typs = self.visit_typs(typs)?;
+                let impl_paths = self.visit_impl_paths(impl_paths)?;
                 R::ret(|| {
                     CallTarget::Fun(
                         R::get(kind),
                         fun.clone(),
                         R::get_vec_a(typs),
-                        impl_paths.clone(),
+                        R::get(impl_paths),
                         attrs.clone(),
                     )
                 })
@@ -225,8 +232,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             }
             CallTarget::BuiltinSpecFun(bsf, typs, impl_paths) => {
                 let typs = self.visit_typs(typs)?;
+                let impl_paths = self.visit_impl_paths(impl_paths)?;
                 R::ret(|| {
-                    CallTarget::BuiltinSpecFun(bsf.clone(), R::get_vec_a(typs), impl_paths.clone())
+                    CallTarget::BuiltinSpecFun(bsf.clone(), R::get_vec_a(typs), R::get(impl_paths))
                 })
             }
             CallTarget::AssumeExternal => R::ret(|| call_target.clone()),
@@ -284,7 +292,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             }
             UnaryOpr::ToDyn(t, impl_paths) => {
                 let t = self.visit_typ(t)?;
-                R::ret(|| UnaryOpr::ToDyn(R::get(t), impl_paths.clone()))
+                let impl_paths = self.visit_impl_paths(impl_paths)?;
+                R::ret(|| UnaryOpr::ToDyn(R::get(t), R::get(impl_paths)))
             }
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
@@ -1024,13 +1033,15 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             }
             TypX::Datatype(path, ts, impl_paths) => {
                 let ts = self.visit_typs(ts)?;
+                let impl_paths = self.visit_impl_paths(impl_paths)?;
                 R::ret(|| {
-                    Arc::new(TypX::Datatype(path.clone(), R::get_vec_a(ts), impl_paths.clone()))
+                    Arc::new(TypX::Datatype(path.clone(), R::get_vec_a(ts), R::get(impl_paths)))
                 })
             }
             TypX::Dyn(path, ts, impl_paths) => {
                 let ts = self.visit_typs(ts)?;
-                R::ret(|| Arc::new(TypX::Dyn(path.clone(), R::get_vec_a(ts), impl_paths.clone())))
+                let impl_paths = self.visit_impl_paths(impl_paths)?;
+                R::ret(|| Arc::new(TypX::Dyn(path.clone(), R::get_vec_a(ts), R::get(impl_paths))))
             }
             TypX::Primitive(p, ts) => {
                 let ts = self.visit_typs(ts)?;
@@ -1405,6 +1416,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         let type_bounds = self.visit_generic_bounds(typ_bounds)?;
         let trait_typ_args = self.visit_typs(trait_typ_args)?;
         let typ = self.visit_typ(typ)?;
+        let impl_paths = self.visit_impl_paths(impl_paths)?;
         R::ret(|| {
             imp.new_x(AssocTypeImplX {
                 name: name.clone(),
@@ -1414,7 +1426,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 trait_path: trait_path.clone(),
                 trait_typ_args: R::get_vec_a(trait_typ_args),
                 typ: R::get(typ),
-                impl_paths: impl_paths.clone(),
+                impl_paths: R::get(impl_paths),
             })
         })
     }
@@ -1434,6 +1446,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         } = &imp.x;
         let type_bounds = self.visit_generic_bounds(typ_bounds)?;
         let trait_typ_args = self.visit_typs(trait_typ_args)?;
+        let trait_typ_arg_impls_x = self.visit_impl_paths(&trait_typ_arg_impls.x)?;
         R::ret(|| {
             imp.new_x(TraitImplX {
                 impl_path: impl_path.clone(),
@@ -1441,7 +1454,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 typ_bounds: R::get_vec_a(type_bounds),
                 trait_path: trait_path.clone(),
                 trait_typ_args: R::get_vec_a(trait_typ_args),
-                trait_typ_arg_impls: trait_typ_arg_impls.clone(),
+                trait_typ_arg_impls: trait_typ_arg_impls.new_x(R::get(trait_typ_arg_impls_x)),
                 owning_module: owning_module.clone(),
                 auto_imported: *auto_imported,
                 external_trait_blanket: *external_trait_blanket,

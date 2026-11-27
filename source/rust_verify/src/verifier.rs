@@ -1423,10 +1423,6 @@ impl Verifier {
             ),
             CommandBatch::new("Trait-Bounds", vir::traits::trait_bound_axioms(ctx, &krate.traits)),
             CommandBatch::new(
-                "Trait-Extension-Blanket-Impls",
-                vir::traits::external_trait_blanket_impls_to_air(ctx, &krate.trait_impls),
-            ),
-            CommandBatch::new(
                 "Associated-Type-Impls",
                 vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls),
             ),
@@ -2077,6 +2073,9 @@ impl Verifier {
             None
         };
 
+        let mut warning_ctx = (*self.warning_ctx.clone().expect("warning_ctx")).clone();
+        let krate = vir::trait_extensions::eliminate_trait_extensions(&krate, &mut warning_ctx)?;
+        self.warning_ctx = Some(Arc::new(warning_ctx));
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             self.crate_id.clone().expect("crate_id"),

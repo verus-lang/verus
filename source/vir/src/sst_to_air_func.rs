@@ -861,13 +861,11 @@ pub fn func_axioms_to_air(
             }
 
             if let FunctionKind::TraitMethodImpl { trait_path, .. } = &function.x.kind {
-                let orig_trait =
-                    ctx.global.extension_to_trait.get(trait_path).unwrap_or(trait_path);
-                if ctx.reached_dyn_traits.contains(orig_trait) {
+                if ctx.reached_dyn_traits.contains(trait_path) {
                     crate::traits::dyn_spec_fn_axiom(
                         ctx,
                         &mut decl_commands,
-                        orig_trait,
+                        trait_path,
                         &function,
                     );
                 }

@@ -79,7 +79,7 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
 
     for krate in imported.iter() {
         for t in &krate.traits {
-            if let Some((spec, imp)) = &t.x.external_trait_extension {
+            for (spec, imp) in t.x.external_trait_extension.iter() {
                 let m = &mut external_info.external_trait_extension_impl_map;
                 assert!(!m.contains_key(imp));
                 m.insert(imp.clone(), spec.clone());
@@ -369,6 +369,22 @@ pub(crate) fn translate_trait<'tcx>(
             );
             if mode == Mode::Spec {
                 if external_trait_extension.is_some() {
+                    // Forbid extension spec functions from sharing a name with an item
+                    // in the value namespace (e.g. a method) of the original trait.
+                    // (Rust would consider such names ambiguous in many contexts,
+                    // and Verus merges the extension trait into the original trait.)
+                    let overlap = ex_assoc_items
+                        .filter_by_name_unhygienic(ident.name)
+                        .any(|a| !matches!(a.kind, rustc_middle::ty::AssocKind::Type { .. }));
+                    if overlap {
+                        let name = tcx.def_path_str(ex_trait_id_for);
+                        return err_span(
+                            *span,
+                            format!(
+                                "spec function `{ident}` in `external_trait_extension` has the same name as a member of trait `{name}`"
+                            ),
+                        );
+                    }
                     // spec functions live in extension trait, not in our trait
                     // (including any default bodies, which are copied to the extension trait)
                     no_erasure_needed.push(owner_id.to_def_id());
@@ -609,9 +625,9 @@ pub(crate) fn translate_trait<'tcx>(
     let external_trait_extension = if let Some((spec, imp)) = external_trait_extension {
         let spec = orig_trait_path.replace_last(vir::ast::Segment::T(Arc::new(spec.clone()), 0));
         let imp = orig_trait_path.replace_last(vir::ast::Segment::T(Arc::new(imp.clone()), 0));
-        Some((spec, imp))
+        vec![(spec, imp)]
     } else {
-        None
+        vec![]
     };
     let traitx = TraitX {
         name: trait_path,

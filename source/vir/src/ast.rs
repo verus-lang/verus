@@ -1971,9 +1971,11 @@ pub struct TraitX {
     // Initially set to None during translation to VIR,
     // then set to Some after all the Function declarations have been processed.
     pub dyn_compatible: Option<Arc<DynCompatible>>,
-    // If this trait has a verifier::external_trait_extension(TSpec via TSpecImpl),
-    // Some((TSpec, TSpecImpl))
-    pub external_trait_extension: Option<(Path, Path)>,
+    // For each verifier::external_trait_extension(TSpec via TSpecImpl) on this trait,
+    // (TSpec, TSpecImpl).
+    // (There may be more than one if there are multiple external_trait_specifications
+    // for this trait, each with its own external_trait_extension.)
+    pub external_trait_extension: Vec<(Path, Path)>,
 }
 
 /// impl<typ_params> trait_name<trait_typ_args[1..]> for trait_typ_args[0] { type name = typ; }
