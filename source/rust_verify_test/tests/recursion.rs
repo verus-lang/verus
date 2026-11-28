@@ -2433,3 +2433,32 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] reveal_with_fuel_inside_recursive_spec_fn_issue3487 verus_code! {
+        spec fn f(n: nat) -> nat
+            decreases n
+        {
+            proof { reveal_with_fuel(f, 2); }
+            if n == 0 { 0 } else { f((n - 1) as nat) + 1 }
+        }
+
+        spec fn a(n: nat) -> nat
+            decreases n
+        {
+            proof { reveal_with_fuel(b, 2); }
+            if n == 0 { 0 } else { b((n - 1) as nat) + 1 }
+        }
+
+        spec fn b(n: nat) -> nat
+            decreases n
+        {
+            if n == 0 { 0 } else { a((n - 1) as nat) + 1 }
+        }
+
+        proof fn test() {
+            reveal_with_fuel(f, 3);
+            assert(f(2) == 2);
+        }
+    } => Ok(())
+}
