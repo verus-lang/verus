@@ -337,7 +337,6 @@ fn func_body_to_air(
     // non-recursive:
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) body))))
     // recursive:
-    //   (declare-const fuel_nat%f Fuel)
     //   (axiom (forall (... fuel) (= (rec%f ... fuel) (rec%f ... zero) )))
     //   (axiom (forall (... fuel) (= (rec%f ... (succ fuel)) body[rec%f ... fuel] )))
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
@@ -382,10 +381,8 @@ fn func_body_to_air(
         let implies_body = mk_implies(&mk_and(&def_reqs), &eq_body);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &implies_body);
-        let fuel_nat_decl = Arc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
         let axiom_zero = mk_unnamed_axiom(forall_zero);
         let axiom_body = mk_unnamed_axiom(forall_body);
-        decl_commands.push(Arc::new(CommandX::Global(fuel_nat_decl)));
         decl_commands.push(Arc::new(CommandX::Global(axiom_zero)));
         decl_commands.push(Arc::new(CommandX::Global(axiom_body)));
         rec_f_def
@@ -560,6 +557,11 @@ pub fn func_name_to_air(
                 let typ = typ_to_air(ctx, &function.x.outer_ret.x.typ);
                 let rec_decl = Arc::new(DeclX::Fun(rec_f, Arc::new(rec_typs), typ));
                 commands.push(Arc::new(CommandX::Global(rec_decl)));
+                // reveal_with_fuel can refer to fuel_nat%f before the definition axioms are emitted
+                let fuel_nat_f =
+                    prefix_fuel_nat(&fun_to_air_ident(&ctx.name_ctxt, &function.x.name));
+                let fuel_nat_decl = Arc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
+                commands.push(Arc::new(CommandX::Global(fuel_nat_decl)));
             }
         }
     };
